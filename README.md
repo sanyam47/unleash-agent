@@ -13,6 +13,10 @@
 
 <br/>
 
+<img src="docs/assets/unleash_studio_showcase.png" alt="Unleash-Agent Studio Workflow" width="100%" />
+
+<br/>
+
 *Zero API costs • Zero data leaks • Zero hallucinated DOM • Real OS Workspace persistence*
 
 </div>
@@ -145,7 +149,15 @@ Open your browser at **`http://127.0.0.1:8001/`** and start building!
 ## 🎮 Example Prompts to Try
 
 * **Cyberpunk Focus Station:**  
-  `"Build a modern Cyberpunk Focus & Pomodoro Station with a dark theme (#0d0f17, neon cyan #00f2fe and violet #8a2be2 accents). Include a 25-minute timer, controls, and task list with completion checkmarks."`
+  `"Build a modern Cyberpunk Focus & Pomodoro Station with a dark theme (#0b0f17, neon cyan #00f2fe and violet #8a2be2 accents). Include a 25-minute timer, controls, and task list with completion checkmarks."`
+
+  <div align="center">
+    <br/>
+    <img src="docs/assets/cyberpunk_station_live.gif" alt="Live Generated Cyberpunk Pomodoro Station" width="85%" />
+    <br/>
+    <sub><em>100% generated offline by local Dolphin 3 8B through the Unleash-Agent 4-layer DoD harness</em></sub>
+  </div>
+  <br/>
 
 * **Real OS Workspace Target:**  
   `"Build a modern e-commerce storefront at C:\coding\my-store with shopping cart drawer and price calculations."`

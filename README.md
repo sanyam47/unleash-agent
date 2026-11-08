@@ -1,74 +1,167 @@
-# 🚀 AI Model Trainer: Professional Async Engine
+<div align="center">
 
-A production-ready, multi-modal AI training workstation built with **FastAPI**, **Celery**, and **Scikit-Learn**. 
+# ⚡ Unleash-Agent
+### The Autonomous Coding Agent Harness for Local & Cloud LLMs
 
-This application allows anyone—regardless of technical background—to describe an AI task in plain English and have the machine automatically fetch data, label it, and train a professional model in the background.
+**Unleash modest 8B & 14B open-source models to build real, interactive, full-stack web applications completely offline.**
 
-## ✨ Key Features
+[![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/ai-trainer)
+[![Local Inference](https://img.shields.io/badge/Local%20GPU-RTX%203050%2B-green?style=flat-square)](#)
+[![Ollama Engine](https://img.shields.io/badge/Ollama-100%25%20Offline-black?style=flat-square&logo=ollama)](#)
+[![Free Cloud Bridge](https://img.shields.io/badge/Free%20Cloud-Kaggle%20(30h)%20%7C%20Colab-blue?style=flat-square)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](LICENSE)
 
-- **🧠 Smart Intent Router:** Uses LLMs (GPT-4o) to automatically extract data modality and task requirements from natural language.
-- **⚡ Asynchronous Architecture:** Powered by **FastAPI** and **Celery** with a local filesystem broker. Training never blocks the web server.
-- **🌐 Multi-Modal Training:**
-  - **Text:** Automated internet scraping, AI-labeling, and TF-IDF classification.
-  - **Image:** Feature-extraction based grayscale classification.
-  - **Audio:** MFCC analysis for sound-wave signature recognition.
-  - **Numeric Regression:** Multi-file merging and numerical prediction using Random Forests.
-- **📁 Manual Mode:** Support for uploading multiple CSV datasets with automatic merging.
-- **💹 Progress Tracking:** Real-time polling UI with live job status updates.
-- **📥 Model Export:** Instant download of trained `.pkl` models for immediate deployment.
+<br/>
 
-## 🛠️ Technology Stack
+*Zero API costs • Zero data leaks • Zero hallucinated DOM • Real OS Workspace persistence*
 
-- **Backend:** FastAPI (Python 3.10+)
-- **Task Queue:** Celery (Filesystem Broker)
-- **Database:** SQLAlchemy + SQLite
-- **Machine Learning:** Scikit-Learn, Librosa (Audio), PIL (Image), Pandas
-- **Frontend:** Vanilla JS + CSS (Premium Dark Theme)
+</div>
 
-## 🚦 Getting Started
+---
 
-### 1. Requirements
-Ensure you have Python installed, then run:
+## 💡 Why Unleash-Agent?
+
+Most developers assume lightweight local models (like **Llama 3 8B**, **Dolphin 3**, or **Qwen 2.5 Coder**) cannot write production software. Left to raw prompting, smaller models hit three walls:
+1. **DOM Hallucinations:** They guess random element IDs and non-existent CSS selectors.
+2. **Context Truncation:** Rewriting 200+ line files causes them to drop features or emit truncated snippets.
+3. **Lazy Comment Stubs:** They cut corners with `// Logic goes here` or `<!-- ... (no changes needed) -->`.
+
+**Unleash-Agent solves this through a deterministic agent harness.** Instead of trying to make the 8B model "smarter", we give it the spatial awareness, surgical tools, and compilation gates required to build working software reliably.
+
+---
+
+## 🛠️ The 5 Core Frontier Systems
+
+```
+                      ┌────────────────────────────────────────┐
+                      │             User Prompt                │
+                      │ ("Build a Cyberpunk Pomodoro Station") │
+                      └───────────────────┬────────────────────┘
+                                          │
+                                          ▼
+                      ┌────────────────────────────────────────┐
+                      │    Autonomous Scout & Manifest Engine  │
+                      │  (Architecture Contract & Goal Memory) │
+                      └───────────────────┬────────────────────┘
+                                          │
+                                          ▼
+            ┌────────────────────────────────────────────────────────────┐
+            │            Antigravity Multi-Turn ReAct Loop               │
+            │                                                            │
+            │  1. Workspace Tree: Scans files & sizes before coding      │
+            │  2. AST Symbol Table: Extracts active HTML IDs & JS state  │
+            │  3. Surgical Patcher: Search & Replace (5-line diffs)      │
+            │  4. Real OS Jail: Saves to default or chosen Windows path  │
+            └─────────────────────────────┬──────────────────────────────┘
+                                          │
+                                          ▼
+                      ┌────────────────────────────────────────┐
+                      │  4-Layer Acceptance Gate (DoD Audit)   │
+                      │  - Node.js syntax & JS compilation     │
+                      │  - DOM listener & HTML ID contract     │
+                      │  - Anti-placeholder & stub interception│
+                      └───────────────────┬────────────────────┘
+                                    │           │
+                          [Errors Found]     [Passed 100%]
+                                    │           │
+                                    ▼           ▼
+                      Autonomous Self-Repair   Live Interactive
+                            Loop                 Browser App
+```
+
+### 1. 🌲 Interactive Workspace Tree Awareness
+Before the model writes or edits code, the engine scans the active directory and injects a clean directory tree (`|-- index.html (1.2KB)`, `|-- styles.css (800B)`, `|-- app.js (2.1KB)`). The model always knows what files already exist before taking action.
+
+### 2. 🧬 AST & DOM Symbol Table Injection
+An AST and regex parsing engine extracts all active HTML IDs, CSS variables, and JavaScript state variables. When you ask to "add a button" or "fix the search", the model hooks directly into existing functions without inventing random new names.
+
+### 3. 🎯 Surgical Code Patching (`edit_project_file`)
+Instead of rewriting 200–400 lines of code across turns (which causes token truncation), the agent surgically searches and replaces only the 5–10 lines needed, keeping 100% of the surrounding styling and logic intact.
+
+### 4. 🛡️ 4-Layer "Definition of Done" Acceptance Gate
+The model is not allowed to simply declare "Done". A deterministic background gate audits:
+* **Layer 1:** Node.js syntax & compilation check (`node -c`).
+* **Layer 2:** Semantic layout & entity parity (no 1-div stubs).
+* **Layer 3:** HTML-to-JS interactive contract (every button must have a listener).
+* **Layer 4:** **Anti-Placeholder Shield:** Catches lazy comment stubs like `// Logic to handle search` or empty event listener callbacks and triggers an autonomous self-repair loop until the app actually functions!
+
+### 5. 💻 Real OS Workspace Target & Memory
+Unleash-Agent is not trapped in an isolated browser playground. You can target any real folder on your host machine:
+> *"Create a portfolio site at `C:\coding\my-portfolio`"*
+
+The engine safely validates OS paths (protecting system directories) and persists workspace bindings in `workspace_registry.json` across reboots.
+
+---
+
+## ⚡ 1-Click Free Cloud GPU Bridge (Kaggle & Colab)
+
+Don't have a high-end local GPU? Unleash-Agent includes an on-demand Cloud Bridge:
+
+| Provider | VRAM | Free Tier Limit | Runs Models |
+| :--- | :--- | :--- | :--- |
+| **Local Offline** | Your GPU (e.g. RTX 3050 6GB) | Unlimited / Free | 1.5B – 8B |
+| **Kaggle Cloud** | **Dual Tesla T4 (30 GB VRAM)** | **30 Hours / Week (Free)** | 14B – 32B (Qwen 2.5 Coder) |
+| **Google Colab** | **Tesla T4 (16 GB VRAM)** | **12 Hours / Session (Free)** | 14B (Qwen / DeepSeek) |
+| **Paid On-Demand** | A100 / H100 / RTX 4090 | Live Credit Tracking ($) | 70B+ Frontier Weights |
+
+Click **📋 Copy 1-Click Cloud Script** in the UI, run the 3-line notebook on Kaggle or Colab, paste your tunnel URL, and Unleash-Agent immediately begins streaming high-end 32B coding inference for free!
+
+---
+
+## 🚀 Quickstart
+
+### Prerequisites
+* Python 3.10+
+* [Ollama](https://ollama.com/) (for offline local inference)
+
+### 1. Clone & Install
 ```bash
+git clone https://github.com/sanyam47/ai-trainer.git unleash-agent
+cd unleash-agent
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# Mac/Linux:
+source venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-### 2. Configure Environment
-Copy `.env.example` to `.env` and add your keys:
+### 2. Pull a Local Coding Model
 ```bash
-OPENAI_API_KEY=your_key_here
-SERP_API_KEY=your_key_here
+ollama pull dolphin3:latest
+# Or high-efficiency code specialist:
+ollama pull qwen2.5-coder:7b
 ```
 
-### 3. Run the System (Separate Terminals)
-
-**Start the Worker:**
+### 3. Launch Unleash-Agent
 ```bash
-python -m celery -A backend.workers.celery_app worker --loglevel=info --pool=solo --purge
+python scripts/run_server.py
 ```
+Open your browser at **`http://127.0.0.1:8001/`** and start building!
 
-**Start the API Server:**
-```bash
-python -m uvicorn backend.api.main:app --reload --port 8001
-```
+---
 
-Access the UI at: `http://localhost:8001`
+## 🎮 Example Prompts to Try
 
-## Deploy Free on Render
+* **Cyberpunk Focus Station:**  
+  `"Build a modern Cyberpunk Focus & Pomodoro Station with a dark theme (#0d0f17, neon cyan #00f2fe and violet #8a2be2 accents). Include a 25-minute timer, controls, and task list with completion checkmarks."`
 
-This repo includes `render.yaml`, so you can deploy without keeping your PC on:
+* **Real OS Workspace Target:**  
+  `"Build a modern e-commerce storefront at C:\coding\my-store with shopping cart drawer and price calculations."`
 
-1. Push latest code to GitHub.
-2. In Render, click **New +** -> **Blueprint**.
-3. Select this repository and deploy.
-4. Add secrets when prompted:
-   - `OPENAI_API_KEY`
-   - `SERP_API_KEY` (optional)
-5. Open the generated URL and share it.
+* **Surgical Edit on Existing App:**  
+  `"Add a sound effect toggle and filter tasks by completed status."`
 
-Notes:
-- The web service runs FastAPI + Celery worker in one free instance for simple demos/reviews.
-- Free instances may sleep after inactivity; first request can take ~30-60s.
+---
 
-## 🔐 Security
-This project is configured to safely exclude sensitive data (`.db`, `.env`, `models/`, `uploads/`) from version control via `.gitignore`. 
+## 🤝 Contributing & Community
+
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue.
+
+If Unleash-Agent helps you run local agents without API costs, consider giving it a ⭐ on GitHub!
+
+---
+
+## 📄 License
+This project is open-source under the [MIT License](LICENSE).

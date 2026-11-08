@@ -1,0 +1,24 @@
+{
+  "id": "ecommerce_marketplace",
+  "name": "E-Commerce Store & Shopping Cart Engine",
+  "description": "Retail catalog, department filters, search autocomplete, responsive product grid, and slide-out cart",
+  "keywords": [
+    "ecommerce",
+    "e-commerce",
+    "store",
+    "shop",
+    "amazon",
+    "cart",
+    "product",
+    "checkout",
+    "marketplace",
+    "retail",
+    "buy"
+  ],
+  "architecture": {
+    "archetype": "E-Commerce Marketplace",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>E-Commerce Store & Shopping Cart Engine</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <header class='nav-bar'><div class='nav-brand'>\u26a1 HyperStore</div><div class='nav-search'><select id='catFilter'><option value='all'>All Depts</option><option value='gear'>Hardware</option><option value='audio'>Audio</option></select><input type='text' id='searchInput' placeholder='Search catalog...'></div><div class='cart-trigger' id='openCartBtn'>\ud83d\uded2 Cart (<span id='cartCount'>0</span>)</div></header><main class='store-grid' id='productGrid'></main><div class='cart-drawer' id='cartDrawer'><div class='drawer-header'><h3>Cart (<span id='drawerCount'>0</span>)</h3><button id='closeCartBtn'>&times;</button></div><div class='drawer-body' id='cartList'></div><div class='drawer-footer'><div class='total-row'><span>Total:</span><strong id='cartSubtotal'>$0.00</strong></div><button class='btn-checkout' id='checkoutBtn'>Checkout</button></div></div>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": ":root { --bg: #eaeded; --header: #131921; --accent: #f0c14b; --card: #ffffff; } body { background: var(--bg); margin: 0; font-family: -apple-system, sans-serif; } .nav-bar { background: var(--header); color: #fff; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: sticky; top: 0; z-index: 100; } .store-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; max-width: 1400px; margin: 24px auto; padding: 0 16px; } .product-card { background: var(--card); border: 1px solid #d5d9d9; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; }",
+    "js_state_machine": "const catalog = [ { id: 1, name: 'Neural Processor NX', price: 599.99, cat: 'gear', rating: 4.8 }, { id: 2, name: 'Quantum Headset', price: 249.50, cat: 'audio', rating: 4.6 } ]; let cart = []; function addToCart(id) { const item = catalog.find(p => p.id === id); const inCart = cart.find(c => c.id === id); if (inCart) inCart.qty++; else cart.push({...item, qty: 1}); updateCart(); } function updateCart() { document.getElementById('cartCount').textContent = cart.reduce((s,i) => s + i.qty, 0); }"
+  }
+}

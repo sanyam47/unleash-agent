@@ -63,9 +63,16 @@ def run_auto_train_pipeline(job_id: str):
         if model_path is None:
             raise ValueError(f"Training failed: {message}")
             
+        if isinstance(accuracy, dict):
+            job.accuracy = accuracy
+            acc_val = accuracy.get("accuracy", accuracy.get("r2_score", 0.0))
+        else:
+            job.accuracy = {"accuracy": float(accuracy)}
+            acc_val = accuracy
+            
         job.status = "completed"
         job.model_path = model_path
-        job.message = f"Auto-training ({modality}) completed. Accuracy: {accuracy}"
+        job.message = f"Auto-training ({modality}) completed. Score: {acc_val}"
         db.commit()
     except Exception as e:
         job.status = "failed"
@@ -97,9 +104,16 @@ def run_manual_train_pipeline(job_id: str, filepath: str):
         if model_path is None:
             raise ValueError(f"Training failed: {message}")
             
+        if isinstance(accuracy, dict):
+            job.accuracy = accuracy
+            acc_val = accuracy.get("accuracy", accuracy.get("r2_score", 0.0))
+        else:
+            job.accuracy = {"accuracy": float(accuracy)}
+            acc_val = accuracy
+
         job.status = "completed"
         job.model_path = model_path
-        job.message = f"Manual training ({modality}) completed. Accuracy: {accuracy}"
+        job.message = f"Manual training ({modality}) completed. Score: {acc_val}"
         db.commit()
     except Exception as e:
         job.status = "failed"

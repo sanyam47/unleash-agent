@@ -5,16 +5,18 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import Pipeline
 from backend.data_fetcher import build_dataset
 from backend.core.analytics_engine import AnalyticsEngine
+from backend.pipelines.text_pipeline import clean_text, SemanticTransformerEncoder
 
 class RefinePipeline:
     def __init__(self, model_name: str):
         self.model_path = os.path.join(os.getcwd(), "models", model_name)
-        self.vectorizer_path = os.path.join(os.getcwd(), "models", "vectorizer.pkl") # Assuming standard naming for now
+        self.vectorizer_path = os.path.join(os.getcwd(), "models", "vectorizer.pkl")
 
     def execute(self, job_intent: dict) -> tuple[str, float, str]:
-        """Performs the Knowledge Distillation and Refinement."""
+        """Performs Knowledge Distillation and Refinement."""
         analysis = job_intent.get("analysis", {})
         injected_path = job_intent.get("injected_file_path")
         auto_fill = job_intent.get("auto_fill_gaps", False)
@@ -53,7 +55,6 @@ class RefinePipeline:
                 needed = 50 - human_count
                 if needed > 0:
                     df_ai = build_dataset(f"data for {cls}", [cls], modality)
-                    # build_dataset currently returns 50, let's slice it
                     df_list.append(df_ai.head(needed))
                     if auto_df.empty:
                         auto_df = df_ai.head(needed)
@@ -64,16 +65,14 @@ class RefinePipeline:
             return None, 0.0, "No data available for training."
 
         # 2. THE INTELLIGENCE SHIELD (Memory Replay)
-        # We fetch a 'Safety Set' from the teacher's original knowledge 
-        # to ensure the student doesn't forget old classes.
         safety_data = pd.DataFrame()
         if os.path.exists(self.model_path):
             print("🛡️ Activating Intelligence Shield: Fetching safety memories...")
             teacher = joblib.load(self.model_path)
             # Try to identify what the teacher already knows
-            if hasattr(teacher, 'classes_'):
-                old_classes = teacher.classes_.tolist()
-                # Fetch 20 high-confidence samples for EACH old class from our AI generator
+            teacher_classes = getattr(teacher, 'classes_', None)
+            if teacher_classes is not None:
+                old_classes = teacher_classes.tolist()
                 safety_data = build_dataset("safety memories", old_classes, modality)
         
         # 3. Merge Knowledge
@@ -90,53 +89,75 @@ class RefinePipeline:
         
         return None, 0.0, f"Modality {modality} not supported in Lab yet."
 
-    def _retrain_text(self, df, model_name):
+    def _retrain_text(self, df: pd.DataFrame, model_name: str):
+        df = df.dropna(subset=["text", "label"]).copy()
+        df["text"] = df["text"].apply(clean_text)
+        df = df[df["text"].str.strip() != ""]
+
         X_text = df["text"]
         y = df["label"]
         classes = df["label"].unique().tolist()
-        
-        vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
-        X = vectorizer.fit_transform(X_text)
-        
+
+        # Split raw text first before vectorizing
         try:
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        except:
-            X_train, X_test, y_train, y_test = X, X, y, y
-        
-        # 1. Train Student
-        model = LogisticRegression(max_iter=1000)
-        model.fit(X_train, y_train)
-        
+            X_train_text, X_test_text, y_train, y_test = train_test_split(
+                X_text, y, test_size=0.2, random_state=42
+            )
+        except Exception:
+            X_train_text, X_test_text, y_train, y_test = X_text, X_text, y, y
+
+        try:
+            vectorizer_step = ("vectorizer", SemanticTransformerEncoder(model_name="all-MiniLM-L6-v2"))
+        except Exception:
+            vectorizer_step = ("vectorizer", TfidfVectorizer(stop_words="english", max_features=5000, lowercase=True))
+        classifier = LogisticRegression(max_iter=1000, class_weight="balanced", random_state=42)
+
+        pipeline = Pipeline([
+            vectorizer_step,
+            ("classifier", classifier)
+        ])
+
+        pipeline.fit(X_train_text, y_train)
+
         # 2. Compare with Parent (Teacher)
         analytics = {}
         try:
             if os.path.exists(self.model_path):
                 teacher = joblib.load(self.model_path)
                 
-                # Attempt to load teacher's vectorizer (assumed to be in the same dir)
-                # For external models, it might be vectorizer.pkl in the root /models
-                v_path = os.path.join("models", "vectorizer.pkl")
-                if os.path.exists(v_path):
-                    t_vectorizer = joblib.load(v_path)
-                    X_teacher = t_vectorizer.transform(X_text) # Use teacher's own glasses
-                    # We need to slice X_teacher to match X_test indices
-                    # For simplicity in this lab, we'll re-split or just use X_teacher
-                    analytics = AnalyticsEngine.compare_models(teacher, model, X_test, y_test, classes)
+                # Check if teacher is a Pipeline
+                if isinstance(teacher, Pipeline):
+                    teacher_acc = teacher.score(X_test_text, y_test)
+                    student_acc = pipeline.score(X_test_text, y_test)
+                    analytics = {
+                        "overall": {
+                            "student_accuracy": round(float(student_acc), 4),
+                            "parent_accuracy": round(float(teacher_acc), 4),
+                            "gain": round(float(student_acc - teacher_acc), 4)
+                        },
+                        "class_drift": {}
+                    }
                 else:
-                    # Fallback: Just get student accuracy if teacher is incompatible
-                    student_acc = model.score(X_test, y_test)
-                    analytics = {"overall": {"student_accuracy": student_acc, "parent_accuracy": 0, "gain": 0}, "class_drift": {}}
+                    v_path = os.path.join("models", "vectorizer.pkl")
+                    if os.path.exists(v_path):
+                        t_vectorizer = joblib.load(v_path)
+                        X_teacher = t_vectorizer.transform(X_test_text)
+                        X_student = pipeline.named_steps["vectorizer"].transform(X_test_text)
+                        analytics = AnalyticsEngine.compare_models(teacher, classifier, X_student, y_test, classes)
+                    else:
+                        student_acc = pipeline.score(X_test_text, y_test)
+                        analytics = {"overall": {"student_accuracy": round(float(student_acc), 4), "parent_accuracy": 0, "gain": 0}, "class_drift": {}}
         except Exception as e:
             print(f"Analytics Sync Error: {e}")
-            analytics = {"overall": {"student_accuracy": model.score(X_test, y_test), "parent_accuracy": 0, "gain": 0}, "class_drift": {}}
+            student_acc = pipeline.score(X_test_text, y_test)
+            analytics = {"overall": {"student_accuracy": round(float(student_acc), 4), "parent_accuracy": 0, "gain": 0}, "class_drift": {}}
 
         # 3. Save
         model_path = os.path.join("models", model_name)
-        joblib.dump(model, model_path)
-        joblib.dump(vectorizer, os.path.join("models", "refined_vectorizer.pkl"))
-        # Save model-specific vectorizer so predictions always find the right one
+        joblib.dump(pipeline, model_path)
+        joblib.dump(pipeline.named_steps["vectorizer"], os.path.join("models", "refined_vectorizer.pkl"))
         base_name = os.path.splitext(model_name)[0]
-        joblib.dump(vectorizer, os.path.join("models", f"{base_name}_vectorizer.pkl"))
+        joblib.dump(pipeline.named_steps["vectorizer"], os.path.join("models", f"{base_name}_vectorizer.pkl"))
         
         accuracy = analytics.get("overall", {}).get("student_accuracy", 0.0)
         

@@ -1,0 +1,24 @@
+{
+  "id": "cybersecurity_terminal_tools",
+  "name": "Cybersecurity & Terminal Matrix Workstation",
+  "description": "Interactive retro/cyber hacker terminal, matrix rain canvas, real-time command parser, and security log analyzer",
+  "keywords": [
+    "terminal",
+    "hacker",
+    "cyber",
+    "matrix",
+    "security",
+    "cli",
+    "console",
+    "packet",
+    "scanner",
+    "shell",
+    "soc"
+  ],
+  "architecture": {
+    "archetype": "Cyber Terminal & Security Console",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>Cybersecurity & Terminal Matrix Workstation</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <div class='terminal-frame'><div class='terminal-titlebar'><div class='dots'><span class='dot r'></span><span class='dot y'></span><span class='dot g'></span></div><span class='title'>CYBER_OS v4.2 [SECURE CONNECTION]</span></div><div class='terminal-body' id='terminalBody'><div class='log-line'>System initialized. Type <span class='cmd'>help</span> to list commands.</div><div class='input-line'><span class='prompt'>root@cyber-deck:~$</span><input type='text' id='termInput' autofocus autocomplete='off'></div></div></div><canvas id='matrixBg'></canvas>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": "body { background: #000; color: #00ff66; font-family: 'Courier New', Courier, monospace; margin: 0; overflow: hidden; height: 100vh; display: flex; justify-content: center; align-items: center; } #matrixBg { position: fixed; inset: 0; z-index: 1; opacity: 0.35; } .terminal-frame { position: relative; z-index: 10; width: 850px; max-width: 95%; height: 520px; background: rgba(5, 10, 8, 0.92); border: 1px solid #00ff66; border-radius: 8px; box-shadow: 0 0 30px rgba(0,255,102,0.25); display: flex; flex-direction: column; overflow: hidden; } .terminal-titlebar { background: #0d1a12; padding: 8px 12px; display: flex; align-items: center; border-bottom: 1px solid #00ff66; } .terminal-body { flex: 1; padding: 16px; overflow-y: auto; } input { background: transparent; border: none; color: #fff; font-family: inherit; font-size: 1rem; outline: none; flex: 1; margin-left: 8px; }",
+    "js_state_machine": "const commands = { help: 'Available: scan, status, matrix, clear, date', status: 'All local defenses active. Air-gapped isolation: 100%.', scan: 'Scanning ports... 80: OPEN, 443: OPEN, 8001: AIR-GAPPED.', clear: () => { document.getElementById('terminalBody').innerHTML = ''; } }; document.getElementById('termInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { const cmd = e.target.value.trim().toLowerCase(); handleCommand(cmd); e.target.value = ''; } });"
+  }
+}

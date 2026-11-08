@@ -13,7 +13,9 @@ def migrate():
     columns = [
         ('accuracy', 'JSON'),
         ('parent_id', 'TEXT'),
-        ('version', "TEXT DEFAULT 'v1'")
+        ('version', "TEXT DEFAULT 'v1'"),
+        ('username', "TEXT DEFAULT 'Anonymous'"),
+        ('feedback', 'JSON')
     ]
     
     for col_name, col_type in columns:

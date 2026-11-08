@@ -1,0 +1,24 @@
+{
+  "id": "arcade_canvas_gaming",
+  "name": "HTML5 Canvas 2D Game Loop Engine",
+  "description": "High-performance arcade games, state machines, physics, collision detection, and score persistence",
+  "keywords": [
+    "game",
+    "snake",
+    "pong",
+    "arcade",
+    "tetris",
+    "breakout",
+    "flappy",
+    "canvas",
+    "score",
+    "collision",
+    "arrow keys"
+  ],
+  "architecture": {
+    "archetype": "Arcade 2D Game",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>HTML5 Canvas 2D Game Loop Engine</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <div class='game-wrapper'><header class='score-banner'><div>SCORE: <span id='currentScore' class='highlight'>0</span></div><div>HIGH SCORE: <span id='highScore'>0</span></div></header><canvas id='gameCanvas' width='500' height='500'></canvas><div class='game-controls'><button id='startBtn' class='btn-primary'>Start Game</button><span class='hint'>Use Arrow Keys [\u2191 \u2193 \u2190 \u2192] or WASD to navigate</span></div></div>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": "body { background: #0f1115; color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; } .game-wrapper { display: flex; flex-direction: column; align-items: center; gap: 14px; background: #16181d; padding: 22px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.18); box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5); } canvas { background: #121418; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 6px; } .score-banner { display: flex; justify-content: space-between; width: 100%; font-size: 0.85rem; color: #94a3b8; font-family: monospace; } .highlight { color: #f1f5f9; font-weight: 600; } .btn-primary { background: #1e2229; color: #f1f5f9; border: 1px solid rgba(148, 163, 184, 0.25); padding: 7px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.15s; } .btn-primary:hover { background: #282d37; border-color: rgba(148, 163, 184, 0.4); } .hint { font-size: 0.72rem; color: #64748b; font-family: monospace; }",
+    "js_state_machine": "const state = { running: false, score: 0, highScore: parseInt(localStorage.getItem('hiScore') || '0'), grid: 20, snake: [{x: 10, y: 10}], dir: {x: 1, y: 0} }; const canvas = document.getElementById('gameCanvas'); const ctx = canvas.getContext('2d'); document.getElementById('startBtn').addEventListener('click', () => { state.running = true; state.score = 0; requestAnimationFrame(gameLoop); }); window.addEventListener('keydown', (e) => { /* handle ArrowUp/Down/Left/Right */ }); function gameLoop() { if (!state.running) return; update(); render(); requestAnimationFrame(gameLoop); }"
+  }
+}

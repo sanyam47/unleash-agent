@@ -1,0 +1,24 @@
+{
+  "id": "productivity_task_tools",
+  "name": "Stateful Web Productivity & Kanban Tool",
+  "description": "Interactive workflow applications, task boards, markdown previewers, and local state persistence",
+  "keywords": [
+    "kanban",
+    "todo",
+    "task",
+    "markdown",
+    "editor",
+    "calculator",
+    "notes",
+    "pomodoro",
+    "timer",
+    "drag and drop",
+    "board"
+  ],
+  "architecture": {
+    "archetype": "Productivity Application",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>Stateful Web Productivity & Kanban Tool</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <header class='app-header'><h1>\u26a1 FlowTask Kanban</h1><div class='header-actions'><input type='text' id='newTaskInput' placeholder='New task title...'><button id='addTaskBtn' class='btn-add'>+ Add Task</button></div></header><main class='board-container'><div class='column' id='colTodo'><h3>To Do (<span class='count'>0</span>)</h3><div class='card-list' data-status='todo'></div></div><div class='column' id='colProgress'><h3>In Progress (<span class='count'>0</span>)</h3><div class='card-list' data-status='progress'></div></div><div class='column' id='colDone'><h3>Completed (<span class='count'>0</span>)</h3><div class='card-list' data-status='done'></div></div></main>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": "body { background: #0f172a; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 20px; } .board-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1200px; margin: 20px auto; } .column { background: #1e293b; border-radius: 10px; padding: 16px; border: 1px solid #334155; min-height: 400px; } .task-card { background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: 0.15s; } .task-card:hover { border-color: #38bdf8; transform: translateY(-2px); }",
+    "js_state_machine": "let tasks = JSON.parse(localStorage.getItem('flow_tasks') || '[]'); function saveAndRender() { localStorage.setItem('flow_tasks', JSON.stringify(tasks)); renderBoard(); } function renderBoard() { ['todo', 'progress', 'done'].forEach(status => { const list = document.querySelector(`.card-list[data-status='${status}']`); const filtered = tasks.filter(t => t.status === status); list.innerHTML = filtered.map(t => `<div class='task-card' onclick='cycleStatus(${t.id})'><span>${t.title}</span><button onclick='deleteTask(${t.id}, event)'>&times;</button></div>`).join(''); }); }"
+  }
+}

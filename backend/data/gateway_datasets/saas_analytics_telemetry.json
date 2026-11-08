@@ -1,0 +1,24 @@
+{
+  "id": "saas_analytics_telemetry",
+  "name": "SaaS Analytics & Telemetry Dashboard",
+  "description": "Executive metrics, KPI cards, SVG trend charts, time-range toggles, and searchable data tables",
+  "keywords": [
+    "dashboard",
+    "analytics",
+    "saas",
+    "kpi",
+    "metrics",
+    "chart",
+    "telemetry",
+    "monitoring",
+    "crypto",
+    "table",
+    "admin"
+  ],
+  "architecture": {
+    "archetype": "Analytics Dashboard",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>SaaS Analytics & Telemetry Dashboard</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <div class='app-layout'><aside class='sidebar'><div class='brand'>\u26a1 PulseAI</div><nav class='nav-links'><a href='#' class='active'>\ud83d\udcca Overview</a><a href='#'>\ud83d\udcc8 Telemetry</a><a href='#'>\ud83d\udd12 Security</a><a href='#'>\u2699\ufe0f Settings</a></nav></aside><main class='content-area'><header class='topbar'><h2>Operations Telemetry</h2><div class='time-pills'><button class='pill active' data-range='24h'>24h</button><button class='pill' data-range='7d'>7d</button><button class='pill' data-range='30d'>30d</button></div></header><div class='kpi-grid' id='kpiContainer'></div><div class='chart-card'><h3>Requests & Throughput (req/sec)</h3><div class='svg-chart-wrap' id='chartArea'></div></div><div class='table-card'><div class='table-header'><h3>Service Health</h3><input type='text' id='tableFilter' placeholder='Search services...'></div><table id='dataTable'><thead><tr><th>Service</th><th>Latency</th><th>Uptime</th><th>Status</th></tr></thead><tbody id='tableBody'></tbody></table></div></main></div>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": ":root { --bg: #0f1115; --card: #16181d; --border: rgba(148, 163, 184, 0.15); --text: #f1f5f9; --accent: #94a3b8; } body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; margin: 0; } .app-layout { display: flex; min-height: 100vh; } .sidebar { width: 220px; background: #121418; border-right: 1px solid var(--border); padding: 20px; } .content-area { flex: 1; padding: 24px; overflow-y: auto; } .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; } .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }",
+    "js_state_machine": "const dataset = [ { name: 'Auth Gateway', latency: '24ms', uptime: '99.98%', status: 'Healthy' }, { name: 'Neural Inference Engine', latency: '68ms', uptime: '99.91%', status: 'Healthy' }, { name: 'Vector Database RAG', latency: '112ms', uptime: '99.85%', status: 'Warning' } ]; function renderTable(items) { const tbody = document.getElementById('tableBody'); tbody.innerHTML = items.map(i => `<tr><td>${i.name}</td><td>${i.latency}</td><td>${i.uptime}</td><td><span class='badge ${i.status.toLowerCase()}'>${i.status}</span></td></tr>`).join(''); } document.getElementById('tableFilter').addEventListener('input', (e) => { const q = e.target.value.toLowerCase(); renderTable(dataset.filter(d => d.name.toLowerCase().includes(q))); }); renderTable(dataset);"
+  }
+}

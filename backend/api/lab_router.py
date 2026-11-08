@@ -13,6 +13,7 @@ from backend.core.data_validator import DataValidator
 import json
 from backend.core.paths import MODELS_DIR, LAB_SESSIONS_DIR
 from backend.core.gemini_client import analyze_lab_instruction_gemini, refine_lab_chat_gemini, gemini_available
+from backend.pipelines.image_pipeline import extract_image_features
 
 router = APIRouter(prefix="/lab", tags=["Model Lab"])
 validator = DataValidator()
@@ -235,6 +236,9 @@ from fastapi import File, Form, UploadFile
 import io
 from PIL import Image
 import numpy as np
+from sklearn.pipeline import Pipeline
+from backend.pipelines.text_pipeline import clean_text
+from backend.pipelines.audio_pipeline import extract_audio_features
 
 @router.post("/predict")
 async def live_prediction(
@@ -257,7 +261,28 @@ async def live_prediction(
         X = None
         
         if text:
-            # Try all available vectorizers to find one whose feature count matches
+            cleaned_text = clean_text(text)
+            
+            # If model is a unified Pipeline with its own preprocessor
+            if isinstance(model, Pipeline):
+                try:
+                    prediction = model.predict([cleaned_text])[0]
+                    probs = {}
+                    if hasattr(model, "predict_proba"):
+                        p_vals = model.predict_proba([cleaned_text])[0]
+                        classes = getattr(model, "classes_", [])
+                        for i, cls in enumerate(classes):
+                            probs[str(cls)] = float(p_vals[i])
+                    return {
+                        "prediction": str(prediction),
+                        "confidence": probs.get(str(prediction), 1.0),
+                        "all_probs": probs
+                    }
+                except Exception:
+                    # If direct pipeline prediction on raw text fails, fall back to vectorizer candidates
+                    pass
+            
+            # Legacy raw model: Try all available vectorizers to find one whose feature count matches
             # Priority: model-specific > refined > original
             base_name = os.path.splitext(model_name)[0]
             vectorizer_candidates = [
@@ -271,7 +296,7 @@ async def live_prediction(
                     continue
                 try:
                     vectorizer = joblib.load(v_path)
-                    X = vectorizer.transform([text])
+                    X = vectorizer.transform([cleaned_text])
                     # Quick sanity check: try predict to see if features match
                     model.predict(X)
                     last_error = None
@@ -288,9 +313,49 @@ async def live_prediction(
                 
         elif file:
             contents = await file.read()
-            img = Image.open(io.BytesIO(contents)).convert('L').resize((64, 64))
-            img_array = np.array(img).flatten()
-            X = np.array([img_array])
+            filename = (file.filename or "").lower()
+            audio_exts = [".wav", ".mp3", ".ogg", ".flac", ".m4a"]
+            
+            if any(filename.endswith(ext) for ext in audio_exts) or (file.content_type and "audio" in file.content_type):
+                features = extract_audio_features(io.BytesIO(contents))
+                X = features.reshape(1, -1)
+
+                # Backward compatibility with legacy 26-dim audio models
+                expected_dim = None
+                if hasattr(model, "n_features_in_"):
+                    expected_dim = model.n_features_in_
+                elif isinstance(model, Pipeline) and hasattr(model.named_steps.get("scaler"), "n_features_in_"):
+                    expected_dim = model.named_steps["scaler"].n_features_in_
+                
+                if expected_dim == 26:
+                    X = features[:26].reshape(1, -1)
+
+                if not isinstance(model, Pipeline):
+                    scaler_path = os.path.join(MODELS_DIR, "audio_scaler.pkl")
+                    if os.path.exists(scaler_path):
+                        scaler = joblib.load(scaler_path)
+                        X = scaler.transform(X)
+            else:
+                features = extract_image_features(io.BytesIO(contents))
+                X = features.reshape(1, -1)
+                
+                # Check if this model expects legacy 4096-dim flat pixels
+                expected_dim = None
+                if hasattr(model, "n_features_in_"):
+                    expected_dim = model.n_features_in_
+                elif isinstance(model, Pipeline) and hasattr(model.named_steps.get("scaler"), "n_features_in_"):
+                    expected_dim = model.named_steps["scaler"].n_features_in_
+                
+                if expected_dim == 4096:
+                    img = Image.open(io.BytesIO(contents)).convert('L').resize((64, 64))
+                    img_array = np.array(img, dtype=np.float32).flatten()
+                    X = np.array([img_array])
+
+                if not isinstance(model, Pipeline):
+                    scaler_path = os.path.join(MODELS_DIR, "image_scaler.pkl")
+                    if os.path.exists(scaler_path):
+                        scaler = joblib.load(scaler_path)
+                        X = scaler.transform(X)
         else:
              raise HTTPException(status_code=400, detail="Must provide text or file based on model modality")
         
@@ -299,7 +364,8 @@ async def live_prediction(
         probs = {}
         if hasattr(model, "predict_proba"):
             p_vals = model.predict_proba(X)[0]
-            for i, cls in enumerate(model.classes_):
+            classes = getattr(model, "classes_", [])
+            for i, cls in enumerate(classes):
                 probs[str(cls)] = float(p_vals[i])
                 
         return {

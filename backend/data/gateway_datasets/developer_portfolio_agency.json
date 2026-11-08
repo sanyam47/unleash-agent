@@ -1,0 +1,22 @@
+{
+  "id": "developer_portfolio_agency",
+  "name": "Developer Portfolio & Agency Showcase",
+  "description": "Interactive developer portfolio, live project showcase modal, skills grid, and contact form validation",
+  "keywords": [
+    "portfolio",
+    "resume",
+    "agency",
+    "cv",
+    "personal",
+    "showcase",
+    "developer",
+    "freelancer",
+    "designer portfolio"
+  ],
+  "architecture": {
+    "archetype": "Developer Portfolio",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>Developer Portfolio & Agency Showcase</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <header class='nav-header'><div class='logo'>&lt;Developer /&gt;</div><nav class='nav-menu'><a href='#about'>About</a><a href='#projects'>Projects</a><a href='#skills'>Skills</a><a href='#contact'>Contact</a></nav></header><section class='hero' id='about'><span class='status-pill'>\ud83d\udfe2 Available for Opportunities</span><h1>Senior Full-Stack & Systems Architect</h1><p>Crafting high-throughput, air-gapped systems and polished user experiences.</p></section><section class='projects' id='projects'><h2>Featured Projects</h2><div class='filters'><button class='f-btn active' data-filter='all'>All</button><button class='f-btn' data-filter='ai'>AI & Systems</button><button class='f-btn' data-filter='web'>Web Apps</button></div><div class='project-grid' id='projGrid'></div></section>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": "body { background: #0a0e17; color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; line-height: 1.6; } .nav-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; background: rgba(10, 14, 23, 0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 100; border-bottom: 1px solid #1e293b; } .hero { max-width: 900px; margin: 80px auto; text-align: center; padding: 0 20px; } .project-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; max-width: 1100px; margin: 40px auto; padding: 0 20px; }",
+    "js_state_machine": "const projects = [ { title: 'Local AI Trainer Studio', cat: 'ai', desc: 'Air-gapped LLM orchestration engine with ReAct agent loop.', tech: ['Python', 'FastAPI', 'Ollama'] }, { title: 'CyberStore Prime', cat: 'web', desc: 'Modern responsive e-commerce application with live preview.', tech: ['HTML5', 'CSS Grid', 'Vanilla JS'] } ]; function renderProjects(items) { document.getElementById('projGrid').innerHTML = items.map(p => `<div class='card'><h3>${p.title}</h3><p>${p.desc}</p><div class='tags'>${p.tech.map(t => `<span>${t}</span>`).join('')}</div></div>`).join(''); } renderProjects(projects);"
+  }
+}

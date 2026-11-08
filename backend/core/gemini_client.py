@@ -22,26 +22,34 @@ def _get_client():
         _client = genai.Client(api_key=api_key)
     return _client
 
+get_gemini_client = _get_client
+
 
 def gemini_available() -> bool:
     return _get_client() is not None
 
 
 def _call_gemini(prompt: str) -> str:
-    """Core Gemini call. Returns raw text."""
+    """Core Gemini call with resilient fallback across flash models."""
     client = _get_client()
     if client is None:
         raise RuntimeError("Gemini API key not configured")
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt
-    )
-    text = response.text.strip()
-    # Strip markdown code fences if present
-    text = re.sub(r"^```(?:json)?\s*", "", text)
-    text = re.sub(r"\s*```$", "", text)
-    return text.strip()
+    models_to_try = ["gemini-flash-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.8-flash"]
+    last_err = None
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt
+            )
+            text = response.text.strip()
+            return text
+        except Exception as e:
+            last_err = e
+            continue
+
+    raise RuntimeError(f"All Gemini models failed: {last_err}")
 
 
 def interpret_intent_gemini(user_text: str) -> dict:

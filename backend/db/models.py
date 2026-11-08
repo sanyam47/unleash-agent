@@ -12,6 +12,10 @@ class Job(Base):
     accuracy = Column(JSON, nullable=True) # Store metrics
     message = Column(String, nullable=True)
     
+    # Community & Feedback
+    username = Column(String, default="Anonymous")
+    feedback = Column(JSON, nullable=True) # {"rating": 5, "comment": "good"}
+    
     # Lineage Fields
     parent_id = Column(String, nullable=True)
     version = Column(String, default="v1")

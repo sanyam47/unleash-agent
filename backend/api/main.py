@@ -8,7 +8,7 @@ from backend.core.router import interpret_intent
 from backend.db.database import engine, Base, get_db
 from backend.db.models import Job
 from backend.workers.tasks import run_auto_train_pipeline, run_manual_train_pipeline
-from backend.api import lab_router
+from backend.api import lab_router, llm_studio_router, chat_router, skills_router
 from backend.core.paths import FRONTEND_DIR
 import os
 import shutil
@@ -17,7 +17,7 @@ from uuid import uuid4
 # Create DB tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AI Trainer API")
+app = FastAPI(title="Unleash-Agent API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +28,9 @@ app.add_middleware(
 )
 
 app.include_router(lab_router.router)
+app.include_router(llm_studio_router.router, prefix="/api")
+app.include_router(chat_router.router, prefix="/api/chat")
+app.include_router(skills_router.router)
 
 
 @app.get("/debug/gemini")
@@ -61,7 +64,7 @@ def auto_train(req: TrainingRequest, background_tasks: BackgroundTasks, db: Sess
     intent = interpret_intent(req.task)
     intent_payload = intent.model_dump()
     intent_payload["user_prompt"] = req.task
-    job = Job(intent=intent_payload)
+    job = Job(intent=intent_payload, username=req.username)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -75,6 +78,7 @@ def auto_train(req: TrainingRequest, background_tasks: BackgroundTasks, db: Sess
 async def train_manual(
     background_tasks: BackgroundTasks,
     task: str = Form(...),
+    username: str = Form("Anonymous"),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db)
 ):
@@ -96,7 +100,7 @@ async def train_manual(
     merged_df = pd.concat(dfs, ignore_index=True)
     final_path = os.path.join("uploads", f"manual_merged_{uuid4().hex}.csv")
     merged_df.to_csv(final_path, index=False)
-    job = Job(intent=intent_payload)
+    job = Job(intent=intent_payload, username=username)
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -111,6 +115,43 @@ def get_job_status(job_id: str, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job: raise HTTPException(status_code=404, detail="Job not found")
     return JobStatusResponse(job_id=job.id, status=job.status, intent=job.intent, model_path=job.model_path, message=job.message)
+
+@app.get("/community-models")
+def get_community_models(db: Session = Depends(get_db)):
+    # Fetch latest 10 completed jobs
+    jobs = db.query(Job).filter(Job.status == "completed").order_by(Job.id.desc()).limit(10).all()
+    
+    result = []
+    for j in jobs:
+        task_type = j.intent.get("task", "Unknown Task") if j.intent else "Unknown Task"
+        modality = j.intent.get("modality", "text") if j.intent else "text"
+        acc = j.accuracy.get("accuracy", 0.0) if j.accuracy and isinstance(j.accuracy, dict) else 0.0
+        
+        rating = None
+        if j.feedback and isinstance(j.feedback, dict):
+            rating = j.feedback.get("rating")
+            
+        result.append({
+            "job_id": j.id,
+            "username": j.username or "Anonymous",
+            "task_type": task_type,
+            "modality": modality,
+            "accuracy": acc,
+            "rating": rating
+        })
+    return result
+
+from backend.core.schemas import FeedbackRequest
+
+@app.post("/jobs/{job_id}/feedback")
+def submit_feedback(job_id: str, req: FeedbackRequest, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job.feedback = {"rating": req.rating, "comment": req.comment}
+    db.commit()
+    return {"status": "success", "message": "Feedback saved"}
 
 @app.get("/download_model")
 def download_model(job_id: str = None, db: Session = Depends(get_db)):

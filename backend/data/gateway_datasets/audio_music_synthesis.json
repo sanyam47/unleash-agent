@@ -1,0 +1,25 @@
+{
+  "id": "audio_music_synthesis",
+  "name": "Web Audio API Synthesizer & Sound Deck",
+  "description": "Interactive sound generation, audio nodes, oscillators, musical keys, and visualizers",
+  "keywords": [
+    "audio",
+    "synthesizer",
+    "synth",
+    "piano",
+    "sound",
+    "frequency",
+    "oscillator",
+    "music",
+    "notes",
+    "waveform",
+    "volume",
+    "beats"
+  ],
+  "architecture": {
+    "archetype": "Web Audio Synthesis",
+    "html_scaffold": "<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n  <meta charset=\\\"UTF-8\\\">\\n  <meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1.0\\\">\\n  <title>Web Audio API Synthesizer & Sound Deck</title>\\n  <link rel=\\\"stylesheet\\\" href=\\\"styles.css\\\">\\n</head>\\n<body>\\n  <header class='audio-header'><h2>\u26a1 CyberSynth FX-800</h2><span class='badge'>Web Audio API Active</span></header><main class='rack-container'><div class='dial-rack'><div class='dial-group'><label>Waveform</label><select id='waveSelect'><option value='sine'>Sine (Smooth)</option><option value='sawtooth'>Sawtooth (Buzzy)</option><option value='square'>Square (Retro 8-Bit)</option><option value='triangle'>Triangle (Flute)</option></select></div><div class='dial-group'><label>Master Gain</label><input type='range' id='volSlider' min='0' max='1' step='0.05' value='0.3'></div><div class='dial-group'><label>Filter Cutoff (Hz)</label><input type='range' id='filterSlider' min='200' max='8000' value='2500'></div></div><div class='piano-keyboard' id='keyboard'></div><canvas id='oscilloscope' width='600' height='120'></canvas></main>\\n  <script src=\\\"app.js\\\"></script>\\n</body>\\n</html>",
+    "css_design_system": "body { background: #0b0f19; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 24px; } .rack-container { background: #161e2e; border: 2px solid #2d3748; border-radius: 12px; padding: 24px; width: 100%; max-width: 800px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); } .dial-rack { display: flex; gap: 20px; margin-bottom: 24px; flex-wrap: wrap; } .piano-keyboard { display: flex; height: 160px; position: relative; border-radius: 6px; overflow: hidden; background: #fff; border: 1px solid #111; } .key-white { flex: 1; background: #fff; border-right: 1px solid #ccc; cursor: pointer; transition: 0.1s; } .key-white:active, .key-white.active { background: #60a5fa; }",
+    "js_state_machine": "let audioCtx = null; function getAudioContext() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); return audioCtx; } function playTone(freq) { const ctx = getAudioContext(); const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = document.getElementById('waveSelect').value; osc.frequency.setValueAtTime(freq, ctx.currentTime); gain.gain.setValueAtTime(parseFloat(document.getElementById('volSlider').value), ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6); osc.connect(gain); gain.connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.6); }"
+  }
+}

@@ -3,6 +3,11 @@ from typing import List, Optional
 
 class TrainingRequest(BaseModel):
     task: str  # User's prompt, e.g. "I want to train a text classifier for legal documents"
+    username: Optional[str] = "Anonymous"
+
+class FeedbackRequest(BaseModel):
+    rating: int
+    comment: Optional[str] = ""
 
 class IntentAnalysis(BaseModel):
     modality: str  # text, image, audio, numeric

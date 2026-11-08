@@ -3,8 +3,10 @@
 *.py[cod]
 *$py.class
 
-# Environments
+# Environments & Private API Secrets
 **/.env
+**/.env.*
+*.env
 .venv
 env/
 venv/
@@ -13,11 +15,55 @@ ENV/
 # Database & Celery Results
 **/*.db
 **/*.sqlite3
+celery_results.db
+jobs.db
+
+# Large Binary & Generated Media Assets
+**/recordings/
+recordings/
+*.mp4
+*.webm
+*.zip
+*.tar.gz
+*.bin
+*.pkl
+uvicorn_stdout.log
+uvicorn_stderr.log
+*.log
+
+# Generated Cloud Packages & Models
+cloud_packages/
+**/models/
+models/
+
+# Ephemeral Sandbox runs
+**/sandbox/run_*
+backend/data/sandbox/
+
+# Personal & User-generated Workspace Data
+backend/data/projects/
+backend/data/conversations/
+backend/data/chat_sessions.json
+backend/data/workspace_registry.json
+backend/data/cloud_gpu_config.json
+backend/data/restored_sessions_backup.json
+test_out/
+
+# Temporary / Scratch scripts & recordings
+record_*.py
+patch_*.py
+scratch_*.py
+test_*.py
+verify_*.py
+debug_*.py
+inject_*.py
+append_*.py
+live_test.py
+mirofish_simulation_report.json
 
 # Local Broker & Storage
 **/broker/
 **/uploads/
-**/models/
 **/lab_sessions/
 **/control/
 *.pidbox.exchange

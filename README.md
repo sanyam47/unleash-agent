@@ -5,7 +5,7 @@
 
 **Unleash modest 8B & 14B open-source models to build real, interactive, full-stack web applications completely offline.**
 
-[![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/ai-trainer)
+[![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/unleash-agent)
 [![Local Inference](https://img.shields.io/badge/Local%20GPU-RTX%203050%2B-green?style=flat-square)](#)
 [![Ollama Engine](https://img.shields.io/badge/Ollama-100%25%20Offline-black?style=flat-square&logo=ollama)](#)
 [![Free Cloud Bridge](https://img.shields.io/badge/Free%20Cloud-Kaggle%20(30h)%20%7C%20Colab-blue?style=flat-square)](#)
@@ -116,7 +116,7 @@ Click **📋 Copy 1-Click Cloud Script** in the UI, run the 3-line notebook on K
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/sanyam47/ai-trainer.git unleash-agent
+git clone https://github.com/sanyam47/unleash-agent.git unleash-agent
 cd unleash-agent
 python -m venv venv
 # Windows:

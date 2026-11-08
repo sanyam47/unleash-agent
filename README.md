@@ -155,11 +155,11 @@ Open your browser at **`http://127.0.0.1:8001/`** and start building!
 
 ---
 
-## 🤝 Contributing & Community
-
-Contributions are welcome! Please feel free to submit a Pull Request or open an issue.
+## ⭐ Community & Feedback
 
 If Unleash-Agent helps you run local agents without API costs, consider giving it a ⭐ on GitHub!
+
+Found a bug or have a suggestion? Feel free to open an issue.
 
 ---
 

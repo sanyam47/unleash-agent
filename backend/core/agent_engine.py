@@ -224,13 +224,15 @@ def parse_react_output(text: str) -> Tuple[Optional[str], Optional[str], Optiona
         code_content = cb.group(3).strip()
 
         preceding = text[:cb.start()]
-        file_hint = re.search(r"(?:file|path|filename|in|create|write|to)\s*[:`'\"]*([a-zA-Z0-9_\-\.]+\.(?:html|htm|css|js|py|json))", preceding, re.IGNORECASE)
+        file_hint = re.search(r"\b(?:file|path|filename|create|write|to|in|for)\b\s*[:`'\"]*\s*([a-zA-Z0-9_\-\.]+\.(?:html|htm|css|js|py|json))\b", preceding, re.IGNORECASE)
 
         target_fname = None
         if explicit_fname and "." in explicit_fname:
             target_fname = explicit_fname.strip()
         elif file_hint:
             target_fname = file_hint.group(1).strip()
+            if target_fname.lower() in ("dex.html", "ndex.html"):
+                target_fname = "index.html"
         elif lang in ("html", "xml") or "<!doctype" in code_content.lower() or "<html" in code_content.lower():
             target_fname = "index.html"
         elif lang == "css" or ("{" in code_content and ":" in code_content and ";" in code_content and "<" not in code_content):
@@ -275,7 +277,7 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
         "options": {
             "temperature": temperature,
             "top_p": 0.9,
-            "num_predict": 4096,  # Generous token budget so complete, extensive files are written!
+            "num_predict": 2048,  # Generous token budget so complete, extensive files are written!
             "num_ctx": context_window
         }
     }
@@ -283,7 +285,7 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
     req = urllib.request.Request(get_ollama_chat_url(), data=req_bytes, headers={"Content-Type": "application/json"})
 
     start_t = time.perf_counter()
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    with urllib.request.urlopen(req, timeout=300) as resp:
         res_data = json.loads(resp.read().decode("utf-8"))
     dur = time.perf_counter() - start_t
 
@@ -315,6 +317,14 @@ def run_agentic_react_loop(
     5. Repeats until Final Answer or max_steps reached
     """
     clean_proj = sanitize_project_name(project_name or f"project_{int(time.time())}")
+
+    # Dynamic Compute Tiering Probe (Lite Edge vs Cloud Balanced vs Frontier Ultra)
+    from backend.core.adaptive_tier import probe_active_compute_tier
+    tier_profile = probe_active_compute_tier(model_name=model)
+    if max_steps == DEFAULT_MAX_STEPS:
+        max_steps = tier_profile["max_steps"]
+    context_window = max(context_window, tier_profile["context_window"])
+    viewports = tier_profile.get("viewports", [])
     
     # Check if user specified a custom OS workspace folder in their prompt (e.g. 'at C:\coding\my-app')
     from backend.core.agent_tools import (
@@ -350,6 +360,12 @@ def run_agentic_react_loop(
         existing_files = []
 
     system_prompt = format_agentic_system_prompt(base_system_prompt, clean_proj, skills_prompt)
+    system_prompt += (
+        f"\n=== ACTIVE COMPUTE TIER: {tier_profile['tier_display']} ===\n"
+        f"Hardware Profile: {tier_profile['gpu_name']} ({tier_profile['vram_gb']}GB VRAM)\n"
+        f"Execution Budget: Max {tier_profile['max_milestones']} atomic milestones, {max_steps} ReAct turns, {context_window} context tokens.\n"
+        f"Verification Engine: Mode '{tier_profile['visual_mode']}' with {len(viewports)} responsive target viewports.\n\n"
+    )
     system_prompt += f"\nCURRENT WORKSPACE ROOT: {proj_dir}\nAll project files are saved and modified directly inside this folder.\n"
 
     # Dynamic Project Manifest & Workspace Tree Ingestion
@@ -372,7 +388,7 @@ def run_agentic_react_loop(
  
 
         from backend.core.workspace_validator import validate_workspace
-        health = validate_workspace(clean_proj)
+        health = validate_workspace(clean_proj, viewports=viewports)
         if not health.get("valid") or health.get("warnings"):
             system_prompt += f"\n=== AUTOMATED WORKSPACE DIAGNOSTIC AUDIT ===\n"
             system_prompt += f"{health.get('summary')}\n"
@@ -391,7 +407,7 @@ def run_agentic_react_loop(
 
     # Autonomous Micro-Goal Decomposition
     from backend.core.goal_stepper import decompose_goals, verify_milestones, format_goal_checklist_for_prompt
-    goals = decompose_goals(user_prompt, scout_res)
+    goals = decompose_goals(user_prompt, scout_res, max_milestones=tier_profile["max_milestones"])
     goal_checklist_text = format_goal_checklist_for_prompt(goals)
     system_prompt += f"\n\n{goal_checklist_text}\n"
 
@@ -427,7 +443,10 @@ def run_agentic_react_loop(
                 "architecture": "Data-Driven Web Application" if scout_res["is_data_app"] else ("Python CLI Script" if scout_res["is_cli"] else ("Interactive Game" if scout_res["is_game"] else "Productivity Tool")),
                 "planned_files": target_files,
                 "dataset": scout_res.get("dataset_info"),
-                "dom_contract": scout_res.get("dom_contract")
+                "dom_contract": scout_res.get("dom_contract"),
+                "compute_tier": tier_profile["tier"],
+                "tier_display": tier_profile["tier_display"],
+                "vram_gb": tier_profile["vram_gb"]
             },
             "observation": f"Scout contract compiled in {scout_res['elapsed_ms']}ms. Target files: {target_files}",
             "status": "success"
@@ -463,7 +482,7 @@ def run_agentic_react_loop(
 
     from backend.core.container_runner import DockerEphemeralSession
 
-    with DockerEphemeralSession(enabled=True):
+    with DockerEphemeralSession(enabled=os.getenv("UNLEASH_DOCKER_ENABLED", "0") == "1"):
         for step_num in range(1, max_steps + 1):
             step_record = {
                 "step": step_num + 1,
@@ -571,7 +590,7 @@ def run_agentic_react_loop(
             elif final_ans:
                 set_project_progress(clean_proj, phase="validating", headline="Verifying Dual Acceptance Gate...", detail="Auditing compiler integrity and feature milestones", step=step_num+1)
                 from backend.core.workspace_validator import validate_workspace
-                health = validate_workspace(clean_proj, required_entities=scout_res.get("entities"))
+                health = validate_workspace(clean_proj, required_entities=scout_res.get("entities"), viewports=viewports)
                 milestone_res = verify_milestones(proj_dir, goals, current_step=step_num)
 
                 # Gate 1: Compiler, Syntax, and DOM contract validation
@@ -640,7 +659,7 @@ def run_agentic_react_loop(
                     continue
                 set_project_progress(clean_proj, phase="validating", headline="Verifying Dual Acceptance Gate...", detail="Auditing compiler integrity and feature milestones", step=step_num+1)
                 from backend.core.workspace_validator import validate_workspace
-                health = validate_workspace(clean_proj, required_entities=scout_res.get("entities"))
+                health = validate_workspace(clean_proj, required_entities=scout_res.get("entities"), viewports=viewports)
                 milestone_res = verify_milestones(proj_dir, goals, current_step=step_num)
 
                 # Gate 1: Compiler, Syntax, and DOM contract validation
@@ -761,6 +780,7 @@ def run_agentic_react_loop(
         "project_name": clean_proj,
         "created_files": created_files,
         "steps": steps,
+        "compute_tier": tier_profile,
         "gateway_grounding": {
             "matched": bool(scout_res.get("dataset_info")),
             "dataset_name": (scout_res.get("dataset_info") or {}).get("dataset_id") or (scout_res.get("dataset_info") or {}).get("dataset_name"),

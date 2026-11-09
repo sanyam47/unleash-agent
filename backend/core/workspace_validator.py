@@ -137,7 +137,11 @@ def validate_html_js_contract(html_content: str, js_content: str) -> List[str]:
     return issues
 
 
-def validate_workspace(project_name: str, required_entities: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def validate_workspace(
+    project_name: str,
+    required_entities: Optional[Dict[str, Any]] = None,
+    viewports: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """
     Antigravity 3-Layer Acceptance Gate / Definition of Done (DoD):
       Layer 1: Syntactic & Compilation Integrity (Node.js syntax check, py_compile, safe storage)
@@ -340,7 +344,7 @@ def validate_workspace(project_name: str, required_entities: Optional[Dict[str, 
     if len(errors) == 0 and html_file.exists():
         try:
             from backend.core.browser_gate import audit_workspace_runtime
-            browser_audit = audit_workspace_runtime(proj_dir, timeout_sec=4.0)
+            browser_audit = audit_workspace_runtime(proj_dir, timeout_sec=4.0, viewports=viewports)
             if not browser_audit.get("valid"):
                 for b_err in browser_audit.get("critical_errors", []):
                     errors.append(f"BROWSER RUNTIME DEFECT: {b_err}")

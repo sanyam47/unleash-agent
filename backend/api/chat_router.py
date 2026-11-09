@@ -101,6 +101,16 @@ def _extract_vision_description(base64_image: str) -> str:
     return "[Attached Screenshot: Image transcription unavailable]"
 
 
+@router.get("/compute-tier")
+def get_compute_tier(model: Optional[str] = None):
+    """
+    Returns the active compute tier profile for the current machine / cloud bridge.
+    Dynamically maps VRAM, step budget, milestone depth, and responsive browser viewports.
+    """
+    from backend.core.adaptive_tier import probe_active_compute_tier
+    return probe_active_compute_tier(model_name=model)
+
+
 @router.post("/send")
 def send_chat_message(req: ChatRequest):
     """
@@ -271,6 +281,7 @@ def send_chat_message(req: ChatRequest):
                 "created_files": agent_res["created_files"],
                 "steps": agent_res["steps"],
                 "telemetry": agent_res["telemetry"],
+                "compute_tier": agent_res.get("compute_tier"),
                 "rag_sources": rag_sources,
                 "active_skills": active_skills_names,
                 "bake_recommendation": bake_recommendation,

@@ -141,8 +141,19 @@ def resolve_safe_project_path(project_name: str, file_path: str) -> Path:
 def write_project_file(project_name: str, file_path: str, content: str) -> Dict[str, Any]:
     """Writes a text or code file safely inside the project directory."""
     try:
-        # Anti-stub validation: reject lazy comment placeholders for HTML/CSS/JS
+        # Normalize truncated HTML filenames
+        if file_path.lower().strip() in ("dex.html", "ndex.html", "index.htm"):
+            file_path = "index.html"
+
+        # Anti-stub validation: reject lazy comment placeholders and empty ellipsis
         lowered = content.lower().strip()
+        if lowered in ("...", "/* ... */", "// ...", "<!-- ... -->") or (len(lowered) < 5 and not lowered.isalnum()):
+            return {
+                "status": "error",
+                "file_path": file_path,
+                "error": f"REJECTED: File content for '{file_path}' cannot be an ellipsis placeholder ('...'). You must write complete, working code!"
+            }
+
         is_web_file = any(file_path.lower().endswith(ext) for ext in [".html", ".htm", ".css", ".js"])
         
         lazy_markers = [

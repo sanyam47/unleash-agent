@@ -12,10 +12,14 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
 
-def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def decompose_goals(
+    user_prompt: str,
+    scout_res: Optional[Dict[str, Any]] = None,
+    max_milestones: int = 4
+) -> List[Dict[str, Any]]:
     """
-    Decomposes the user's prompt into 2 to 4 atomic, verifiable milestones.
-    Capped at 4 milestones to prevent 8B/14B context overload.
+    Decomposes the user's prompt into atomic, verifiable milestones.
+    Dynamically scaled according to active compute tier (4 on Lite, 6 on Balanced, 8 on Ultra).
     """
     lowered = user_prompt.lower()
     milestones: List[Dict[str, Any]] = []
@@ -40,7 +44,7 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
     })
 
     # Milestone: Timer / Pomodoro / Clock
-    if any(k in lowered for k in ["timer", "pomodoro", "countdown", "stopwatch", "clock"]):
+    if any(k in lowered for k in ["timer", "pomodoro", "countdown", "stopwatch", "clock"]) and len(milestones) < max_milestones:
         modes_hint = "with break toggles" if any(k in lowered for k in ["break", "work", "mode", "toggle"]) else "with controls"
         milestones.append({
             "id": "milestone_timer",
@@ -52,7 +56,7 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
         })
 
     # Milestone: Sound / Audio Feedback
-    if any(k in lowered for k in ["sound", "audio", "beep", "sfx", "tone", "feedback"]):
+    if any(k in lowered for k in ["sound", "audio", "beep", "sfx", "tone", "feedback"]) and len(milestones) < max_milestones:
         milestones.append({
             "id": "milestone_audio",
             "name": "Audio Feedback Engine (Web Audio API / SFX)",
@@ -63,7 +67,7 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
         })
 
     # Milestone: Task List / Objective Queue / Todo
-    if any(k in lowered for k in ["task", "tasks", "todo", "objective", "goals", "checklist", "check off"]):
+    if any(k in lowered for k in ["task", "tasks", "todo", "objective", "goals", "checklist", "check off"]) and len(milestones) < max_milestones:
         milestones.append({
             "id": "milestone_tasks",
             "name": "Task Queue & Interactive Completion",
@@ -74,7 +78,7 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
         })
 
     # Milestone: Search / Filter / Category Queries
-    if any(k in lowered for k in ["search", "filter", "find", "query", "filter by", "categories"]) and len(milestones) < 4:
+    if any(k in lowered for k in ["search", "filter", "find", "query", "filter by", "categories"]) and len(milestones) < max_milestones:
         milestones.append({
             "id": "milestone_search",
             "name": "Live Search & Filter Engine",
@@ -85,7 +89,7 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
         })
 
     # Milestone: E-Commerce Storefront / Shopping Cart
-    if any(k in lowered for k in ["cart", "store", "shop", "checkout", "ecommerce", "price", "buy"]) and len(milestones) < 4:
+    if any(k in lowered for k in ["cart", "store", "shop", "checkout", "ecommerce", "price", "buy"]) and len(milestones) < max_milestones:
         milestones.append({
             "id": "milestone_cart",
             "name": "Cart Drawer & Checkout Engine",
@@ -96,12 +100,45 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
         })
 
     # Milestone: Canvas / Game Arena / 3D Simulation
-    if any(k in lowered for k in ["game", "canvas", "arcade", "physics", "solar system", "webgl", "animation", "player"]) and len(milestones) < 4:
+    if any(k in lowered for k in ["game", "canvas", "arcade", "physics", "solar system", "webgl", "animation", "player"]) and len(milestones) < max_milestones:
         milestones.append({
             "id": "milestone_canvas_game",
             "name": "Canvas Rendering & Interactive Controls",
             "desc": "HTML5 Canvas loop with 2D/WebGL rendering (requestAnimationFrame) and user control buttons.",
             "required_signals": ["<canvas", "getcontext", "requestanimationframe", "ctx."],
+            "status": "pending",
+            "turn_verified": None
+        })
+
+    # Milestone: Persistence / Local Storage (Unlocked for Balanced & Ultra tiers or explicitly requested)
+    if (max_milestones > 4 or any(k in lowered for k in ["save", "load", "storage", "persist", "history"])) and len(milestones) < max_milestones:
+        milestones.append({
+            "id": "milestone_persistence",
+            "name": "State Persistence & Storage Engine",
+            "desc": "Client-side state persistence (localStorage/sessionStorage with safe try/catch wrapper) to retain data across reloads.",
+            "required_signals": ["localstorage", "sessionstorage", "setitem", "getitem", "json.stringify"],
+            "status": "pending",
+            "turn_verified": None
+        })
+
+    # Milestone: Theme Switcher / Visual Customization (Unlocked for Balanced & Ultra tiers or requested)
+    if (max_milestones > 4 or any(k in lowered for k in ["theme", "dark", "mode", "accent", "color", "toggle"])) and len(milestones) < max_milestones:
+        milestones.append({
+            "id": "milestone_theme",
+            "name": "Theme & Presentation Customization",
+            "desc": "Interactive theme toggle (dark/light mode or visual presets) updating CSS variables and data attributes.",
+            "required_signals": ["theme", "dark", "light", "data-theme", "style", "class"],
+            "status": "pending",
+            "turn_verified": None
+        })
+
+    # Milestone: Responsive Mobile & Multi-Viewport Layout (Unlocked for Ultra tier)
+    if max_milestones >= 8 and len(milestones) < max_milestones:
+        milestones.append({
+            "id": "milestone_responsive",
+            "name": "Responsive Multi-Device Layout",
+            "desc": "Adaptive mobile & tablet layout using media queries, flexible grid/flexbox, and viewport optimization.",
+            "required_signals": ["@media", "flex-wrap", "grid-template-columns", "viewport"],
             "status": "pending",
             "turn_verified": None
         })
@@ -129,8 +166,8 @@ def decompose_goals(user_prompt: str, scout_res: Optional[Dict[str, Any]] = None
             "turn_verified": None
         })
 
-    # Strictly cap at 4 milestones to protect 8B context window
-    return milestones[:4]
+    # Dynamically cap according to compute tier profile
+    return milestones[:max_milestones]
 
 
 def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_step: int = 1) -> Dict[str, Any]:
@@ -203,6 +240,18 @@ def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_
             has_listeners = "addeventlistener" in js_content or "onclick" in html_content
             has_state = any(s in js_content for s in ["let ", "const ", "var "]) and len(js_content) > 150
             is_verified = has_listeners and has_state
+
+        elif m_id == "milestone_persistence":
+            has_storage = any(s in js_content for s in ["localstorage", "sessionstorage", "setitem", "getitem", "json.stringify"])
+            is_verified = has_storage
+
+        elif m_id == "milestone_theme":
+            has_theme = any(s in all_code for s in ["theme", "dark", "light", "data-theme", "toggle-theme", "theme-toggle"])
+            is_verified = has_theme
+
+        elif m_id == "milestone_responsive":
+            has_resp = any(s in css_content for s in ["@media", "flex-wrap", "grid-template-columns", "minmax"]) or "viewport" in html_content
+            is_verified = has_resp
 
         else:
             # Fallback signal matching

@@ -47,18 +47,26 @@ backend/data/chat_sessions.json
 backend/data/workspace_registry.json
 backend/data/cloud_gpu_config.json
 backend/data/restored_sessions_backup.json
+backend/data/.vault_master.key
+backend/data/vault.enc
+backend/data/user_memory.json
+backend/data/snapshots/
 test_out/
 
 # Temporary / Scratch scripts & recordings
-record_*.py
-patch_*.py
-scratch_*.py
-test_*.py
-verify_*.py
-debug_*.py
-inject_*.py
-append_*.py
-live_test.py
+**/scratch_*.py
+**/patch_*.py
+**/inject_*.py
+**/append_*.py
+/record_*.py
+/test_*.py
+/verify_*.py
+/debug_*.py
+/live_test.py
+scripts/test_*.py
+scripts/verify_*.py
+!tests/**
+tests/__pycache__/
 mirofish_simulation_report.json
 
 # Local Broker & Storage

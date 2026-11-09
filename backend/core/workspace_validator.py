@@ -545,11 +545,29 @@ def validate_workspace(
         except Exception:
             pass
 
+    # ==============================================================
+    # LAYER 6: APPSEC & SECRET LEAKAGE AUDIT GATE (Marcus Kane)
+    # ==============================================================
+    try:
+        from backend.core.security_scanner import audit_workspace_security
+        sec_audit = audit_workspace_security(proj_dir)
+        if not sec_audit.get("valid"):
+            for finding in sec_audit.get("findings", []):
+                if finding["severity"] in ("CRITICAL", "HIGH"):
+                    add_error(
+                        finding["file"],
+                        finding["category"],
+                        f"SECURITY VULNERABILITY [{finding['severity']}]: {finding['title']} at line {finding['line']}. {finding['remediation']}"
+                    )
+    except Exception:
+        pass
+
     is_valid = len(errors) == 0
 
     # Determine primary file requiring repair based on defect severity
     primary_repair_file = None
     priority_order = [
+        "secret_leakage", "code_injection", "insecure_transport",
         "runtime_exception", "interaction_crash", "browser_runtime", "syntax_error", "unsafe_storage",
         "missing_file", "html_structure", "missing_link", "html_depth", "entity_parity",
         "canvas_logic", "empty_listener", "dead_control", "id_mismatch", "placeholder",

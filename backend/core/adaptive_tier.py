@@ -13,6 +13,7 @@ from typing import Dict, Any, List, Optional
 
 
 class ExecutionTier:
+    CPU_SAFE = "cpu_safe"
     LITE_EDGE = "lite_edge"
     CLOUD_BALANCED = "cloud_balanced"
     FRONTIER_ULTRA = "frontier_ultra"
@@ -71,7 +72,7 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
       Tier 2: CLOUD_BALANCED  (12GB-32GB VRAM / Kaggle Dual T4 / Colab / 14B-32B models)
       Tier 3: FRONTIER_ULTRA  (>32GB VRAM / A100 / H100 / Multimodal Vision weights)
     """
-    if user_override and user_override in (ExecutionTier.LITE_EDGE, ExecutionTier.CLOUD_BALANCED, ExecutionTier.FRONTIER_ULTRA):
+    if user_override and user_override in (ExecutionTier.CPU_SAFE, ExecutionTier.LITE_EDGE, ExecutionTier.CLOUD_BALANCED, ExecutionTier.FRONTIER_ULTRA):
         override_tier = user_override
     else:
         override_tier = None
@@ -127,6 +128,8 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
         tier = ExecutionTier.FRONTIER_ULTRA
     elif is_cloud_active or vram_gb >= 12.0 or is_large_weight:
         tier = ExecutionTier.CLOUD_BALANCED
+    elif not local_hw.get("has_gpu", False) or vram_gb < 2.0:
+        tier = ExecutionTier.CPU_SAFE
     else:
         tier = ExecutionTier.LITE_EDGE
 
@@ -165,6 +168,22 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
                 {"name": "mobile", "width": 390, "height": 844}
             ],
             "description": "Balanced mode: Unlocks 6 milestones, mobile+desktop responsive layout checks, and expanded ReAct turns."
+        }
+    elif tier == ExecutionTier.CPU_SAFE:
+        return {
+            "tier": ExecutionTier.CPU_SAFE,
+            "tier_display": "CPU SAFE (Integrated Graphics / Zero-GPU Fallback)",
+            "gpu_name": gpu_name or "CPU Only",
+            "vram_gb": vram_gb,
+            "is_cloud": False,
+            "max_milestones": 3,
+            "max_steps": 10,
+            "context_window": 4096,
+            "visual_mode": "dom_delta",
+            "viewports": [
+                {"name": "desktop", "width": 1280, "height": 800}
+            ],
+            "description": "Accessible mode: 3 focused milestones, 4k lightweight context, zero GPU requirements."
         }
     else:  # LITE_EDGE
         return {

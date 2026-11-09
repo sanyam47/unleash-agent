@@ -116,6 +116,8 @@ You have access to the following tools:
 
    - If domain specifications or schemas are needed: Call 'search_internet_dataset' to consult real-world datasets from the internet.
 
+   - If you need external CDN script links, modern library documentation, or code recipes: Call 'search_web_docs' (e.g. 'Leaflet map quickstart CDN') for privacy-preserving web documentation search.
+
    - If files already exist in workspace: Use 'get_project_tree' to inspect files. For targeted changes or bug fixes, prefer 'edit_project_file' to surgically replace only the needed code blocks rather than rewriting the entire file.
 
    - If creating new web project: Write 'index.html', 'styles.css', and 'app.js' with full working logic.
@@ -169,10 +171,16 @@ When concluding with 'Final Answer:', you MUST format your response in clear, pr
 
 
     if base_system and base_system.strip():
-
         instructions += f"\n\n=== PERSONA ===\n{base_system.strip()}"
 
-
+    # Inject Persistent Cross-Session Memory
+    try:
+        from backend.core.memory_manager import format_memory_for_system_prompt
+        mem_block = format_memory_for_system_prompt()
+        if mem_block:
+            instructions += f"\n\n{mem_block}"
+    except Exception:
+        pass
 
     return instructions
 
@@ -668,6 +676,13 @@ def run_agentic_react_loop(
 
     )
 
+    # Sync persistent project index from disk
+    try:
+        from backend.core.memory_manager import sync_project_index
+        sync_project_index()
+    except Exception:
+        pass
+
     custom_ws = extract_workspace_path_from_prompt(user_prompt)
 
     if custom_ws:
@@ -692,8 +707,28 @@ def run_agentic_react_loop(
 
 
 
-    # Detect if user is asking to build a completely new project/application
+    # Auto-snapshot before modifying existing project
+    if existing_files:
+        try:
+            from backend.core.workspace_snapshot import create_snapshot
+            create_snapshot(clean_proj, "pre_turn", f"Checkpoint before: {user_prompt[:60]}")
+        except Exception:
+            pass
 
+    # Record explainable intent event
+    try:
+        from backend.core.decision_tracer import record_decision_event
+        record_decision_event(
+            clean_proj,
+            "intent_analysis",
+            f"Prompt Received: {user_prompt[:60]}",
+            f"Analyzing prompt under {tier_profile.get('tier')} tier. Existing files on disk: {existing_files}",
+            {"tier": tier_profile.get("tier"), "context_window": tier_profile.get("context_window")}
+        )
+    except Exception:
+        pass
+
+    # Detect if user is asking to build a completely new project/application
     is_new_app_creation = bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
 
     
@@ -1558,6 +1593,13 @@ def run_agentic_react_loop(
                 created_files.append(entry)
 
 
+
+    # Sync newly built or modified project into persistent memory index
+    try:
+        from backend.core.memory_manager import sync_project_index
+        sync_project_index(force_refresh=True)
+    except Exception:
+        pass
 
     set_project_progress(clean_proj, phase="completed", headline="Project build completed", detail="Interactive preview ready", step=len(steps))
 

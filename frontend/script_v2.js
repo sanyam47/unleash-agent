@@ -6984,9 +6984,19 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                             </button>
                         ` : ''}
                         <button type="button" onclick="window._setWorkspaceView('code')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'code' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'code' ? '#ffffff' : 'var(--text-secondary)'};">
-                            📄 Code View
+                            📄 Code
+                        </button>
+                        <button type="button" onclick="window._setWorkspaceView('audit')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'audit' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'audit' ? '#ffffff' : 'var(--text-secondary)'};" title="Explainability Timeline & Decision Tracer">
+                            🔍 Audit Trail
+                        </button>
+                        <button type="button" onclick="window._setWorkspaceView('snapshots')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'snapshots' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'snapshots' ? '#ffffff' : 'var(--text-secondary)'};" title="Workspace Snapshots & History">
+                            🕒 Snapshots
                         </button>
                     </div>
+
+                    <button type="button" onclick="window.undoProjectStep('${projectName}')" class="btn-quiet" style="font-size: 0.72rem; padding: 4px 10px; color: var(--text-primary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 4px; background: rgba(239, 68, 68, 0.08);" title="1-Click Undo: Revert workspace to state before last agent turn">
+                        <span>↩ Undo Step</span>
+                    </button>
 
                     ${hasHtml ? `
                         <a href="/api/chat/agent/projects/${encodeURIComponent(projectName)}/preview/" target="_blank" class="btn-quiet" style="font-size: 0.72rem; padding: 4px 10px; text-decoration: none; color: var(--text-primary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 4px;" title="Open live website in full browser tab">
@@ -7034,6 +7044,102 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                         <iframe id="projectPreviewIframe" src="${previewUrl}" style="flex: 1; width: 100%; border: none; background: #ffffff;" sandbox="allow-scripts allow-forms allow-same-origin allow-modals"></iframe>
                     </div>
                 `;
+            } else if (currentView === 'audit') {
+                // Decision Audit Trail & Explainability Timeline View (Elena Vance & Clara Higgins)
+                bodyEl.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading explainability audit trail...</div>';
+                try {
+                    const [aRes, sRes] = await Promise.all([
+                        fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/audit-trail`),
+                        fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/security-audit`)
+                    ]);
+                    const auditEvents = aRes.ok ? await aRes.json() : [];
+                    const secAudit = sRes.ok ? await sRes.json() : { valid: true, critical_count: 0 };
+
+                    bodyEl.innerHTML = `
+                        <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 12px; padding: 6px 4px;">
+                            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">AppSec & Gate Status:</span>
+                                    <span style="font-size: 0.74rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; background: ${secAudit.valid ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${secAudit.valid ? '#10b981' : '#ef4444'};">
+                                        ${secAudit.valid ? 'Verified Clean (0 Defects)' : `${secAudit.critical_count} Critical Issues`}
+                                    </span>
+                                </div>
+                                <span style="font-size: 0.74rem; color: var(--text-muted); font-family: var(--font-mono);">${auditEvents.length} Recorded Decision Events</span>
+                            </div>
+
+                            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 6px;">
+                                ${auditEvents.length === 0 ? '<div style="text-align: center; color: var(--text-muted); padding: 40px;">No decision events recorded for this project yet.</div>' : ''}
+                                ${auditEvents.map(ev => {
+                                    const typeColors = {
+                                        intent_analysis: '#3b82f6',
+                                        milestone_plan: '#8b5cf6',
+                                        action_execution: '#10b981',
+                                        gate_audit: '#f59e0b',
+                                        provenance_routed: '#ec4899',
+                                        security_check: '#ef4444'
+                                    };
+                                    const color = typeColors[ev.type] || '#60a5fa';
+                                    return `
+                                        <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-left: 3px solid ${color}; border-radius: 6px; padding: 12px 14px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                                <div style="display: flex; align-items: center; gap: 8px;">
+                                                    <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; background: rgba(255,255,255,0.06); color: ${color}; font-family: var(--font-mono);">${ev.type}</span>
+                                                    <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(ev.title)}</span>
+                                                </div>
+                                                <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-mono);">${ev.timestamp || ''}</span>
+                                            </div>
+                                            <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: ${ev.metadata && Object.keys(ev.metadata).length ? '8px' : '0'};">
+                                                ${escapeHtml(ev.rationale)}
+                                            </div>
+                                            ${ev.metadata && Object.keys(ev.metadata).length ? `
+                                                <pre style="margin: 0; background: rgba(0,0,0,0.25); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 6px 10px; font-size: 0.7rem; font-family: var(--font-mono); color: var(--text-muted); overflow-x: auto;">${escapeHtml(JSON.stringify(ev.metadata, null, 2))}</pre>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                } catch (err) {
+                    bodyEl.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--danger);">Failed to load audit trail: ${err.message}</div>`;
+                }
+            } else if (currentView === 'snapshots') {
+                // Workspace Snapshots & 1-Click Rollback History View (Priya Patel & Clara Higgins)
+                bodyEl.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-muted);">Loading snapshots...</div>';
+                try {
+                    const sRes = await fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/snapshots`);
+                    const snapshots = sRes.ok ? await sRes.json() : [];
+
+                    bodyEl.innerHTML = `
+                        <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; gap: 12px; padding: 6px 4px;">
+                            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center;">
+                                <span style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Workspace Checkpoints (${snapshots.length})</span>
+                                <span style="font-size: 0.72rem; color: var(--text-muted);">Auto-created before each turn & self-repair attempt</span>
+                            </div>
+                            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 6px;">
+                                ${snapshots.length === 0 ? '<div style="text-align: center; color: var(--text-muted); padding: 40px;">No snapshots captured yet for this workspace.</div>' : ''}
+                                ${snapshots.map(s => `
+                                    <div style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center;">
+                                        <div>
+                                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                                <span style="font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono); color: var(--accent);">${s.snapshot_id}</span>
+                                                <span style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary);">${escapeHtml(s.label || s.turn_id || '')}</span>
+                                            </div>
+                                            <div style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">
+                                                ${s.created_at || ''} &bull; ${s.file_count || 0} files (${Math.round((s.total_bytes || 0) / 1024 * 10) / 10} KB)
+                                            </div>
+                                        </div>
+                                        <button type="button" onclick="window.rollbackProjectSnapshot('${projectName}', '${s.snapshot_id}')" class="btn-quiet" style="font-size: 0.72rem; padding: 5px 12px; color: var(--text-primary); border: 1px solid var(--border-subtle); background: rgba(59, 130, 246, 0.1);">
+                                            ⏪ Rollback
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } catch (err) {
+                    bodyEl.innerHTML = `<div style="padding: 30px; text-align: center; color: var(--danger);">Failed to load snapshots: ${err.message}</div>`;
+                }
             } else {
                 // Code Explorer View
                 let fileContent = 'Loading...';
@@ -7097,6 +7203,36 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
 window.closeAgentProjectModal = function() {
     const modal = document.getElementById('agentProjectModal');
     if (modal) modal.style.display = 'none';
+};
+
+window.undoProjectStep = async function(projectName) {
+    if (!confirm(`Are you sure you want to undo the last turn in '${projectName}'? The workspace will revert to its previous checkpoint.`)) return;
+    try {
+        const res = await fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/undo`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.message || 'Undo failed');
+        alert(`Undone successfully: Reverted to checkpoint '${data.restored_snapshot_id || ''}'`);
+        window.openAgentProjectModal(projectName);
+    } catch (err) {
+        alert("Undo Error: " + err.message);
+    }
+};
+
+window.rollbackProjectSnapshot = async function(projectName, snapshotId) {
+    if (!confirm(`Rollback workspace '${projectName}' to snapshot '${snapshotId}'? Current files will be replaced with this checkpoint.`)) return;
+    try {
+        const res = await fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/rollback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ snapshot_id: snapshotId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.message || 'Rollback failed');
+        alert(`Successfully rolled back to snapshot: ${snapshotId}`);
+        window.openAgentProjectModal(projectName);
+    } catch (err) {
+        alert("Rollback Error: " + err.message);
+    }
 };
 
 

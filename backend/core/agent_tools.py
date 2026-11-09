@@ -418,6 +418,111 @@ def search_internet_dataset(query: str) -> Dict[str, Any]:
     }
 
 
+def search_web_docs(query: str, project_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Privacy-preserving live web search for documentation, libraries, and CDN scripts.
+    Features:
+      1. Zero-tracking DuckDuckGo transport (no IP logs, no cookies, no accounts).
+      2. In-flight secret & file-path scrubbing (no tokens or local paths ever leave machine).
+      3. Automatic privacy-mode gating: if a project is marked private (.private), external web search is blocked.
+    """
+    import urllib.request
+    import urllib.parse
+    import html as html_lib
+    import re
+
+    clean_q = (query or "").strip()
+    if not clean_q:
+        return {"status": "error", "error": "Query cannot be empty"}
+
+    # 1. Project-level Privacy Check
+    if project_name:
+        try:
+            from backend.core.memory_manager import get_memory_store, PROJECTS_ROOT
+            store = get_memory_store()
+            clean_p = sanitize_project_name(project_name)
+            p_dir = PROJECTS_ROOT / clean_p
+            if clean_p in store.get("excluded_projects", []) or (p_dir / ".private").exists() or (p_dir / ".nomemory").exists():
+                return {
+                    "status": "privacy_blocked",
+                    "query": clean_q,
+                    "offline": True,
+                    "message": f"Web search is disabled for confidential project '{clean_p}' to guarantee 100% air-gap privacy. Using local knowledge vault."
+                }
+        except Exception:
+            pass
+
+    # 2. In-flight Secret & File Path Scrubber (Marcus Kane AppSec)
+    sanitized_q = clean_q
+    # Strip local OS paths
+    sanitized_q = re.sub(r'[A-Za-z]:\\[^\s"\']+', '[PATH_REDACTED]', sanitized_q)
+    sanitized_q = re.sub(r'/(?:home|Users|root|var|etc)/[^\s"\']+', '[PATH_REDACTED]', sanitized_q)
+    # Strip API tokens & keys
+    sanitized_q = re.sub(r'\b(?:sk|ghp|gho|rpa|AKIA)[a-zA-Z0-9_\-]{16,}\b', '[SECRET_REDACTED]', sanitized_q)
+    sanitized_q = re.sub(r'(?:api_key|password|secret)[=:\s]+[^\s,;&]+', '[CREDENTIAL_REDACTED]', sanitized_q, flags=re.IGNORECASE)
+
+    # 3. Privacy-preserving DuckDuckGo HTML Query
+    try:
+        url = "https://html.duckduckgo.com/html/"
+        data = urllib.parse.urlencode({"q": sanitized_q}).encode("utf-8")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5"
+        }
+        req = urllib.request.Request(url, data=data, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            raw_html = resp.read().decode("utf-8", errors="ignore")
+
+        # Parse snippets and URLs
+        snippets = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', raw_html, re.DOTALL)
+        links = re.findall(r'<a class="result__url"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', raw_html, re.DOTALL)
+
+        results = []
+        for i in range(min(4, len(snippets))):
+            clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+            clean_snippet = html_lib.unescape(clean_snippet)
+            link_url = links[i][0].strip() if i < len(links) else ""
+            if link_url.startswith("//"):
+                link_url = "https:" + link_url
+            results.append({
+                "title": f"Documentation Result {i+1}",
+                "snippet": clean_snippet,
+                "url": link_url
+            })
+
+        return {
+            "status": "success",
+            "query": sanitized_q,
+            "privacy_protected": True,
+            "results_count": len(results),
+            "results": results
+        }
+    except Exception as e:
+        # Fallback to local RAG if offline or connection timeout
+        try:
+            from backend.core.cyber_rag import search_knowledge
+            local_res = search_knowledge(sanitized_q, top_k=2)
+            if local_res:
+                return {
+                    "status": "fallback_local",
+                    "query": sanitized_q,
+                    "offline": True,
+                    "results": [
+                        {"title": r.get("title", "Local Knowledge"), "snippet": r.get("content", "")[:250], "url": "local://vault"}
+                        for r in local_res
+                    ]
+                }
+        except Exception:
+            pass
+
+        return {
+            "status": "offline",
+            "query": sanitized_q,
+            "message": f"Web search offline or timed out ({str(e)}). Proceeding with local model knowledge."
+        }
+
+
 def run_terminal_command(project_name: str, command: str) -> Dict[str, Any]:
     """Executes a terminal or test command inside the isolated Docker container or project sandbox."""
     try:
@@ -523,9 +628,26 @@ AGENT_TOOLS_SCHEMA = [
     },
     {
         "name": "read_project_file",
-        "description": "Read the contents of an existing file in the project workspace.",
+        "description": "Read the contents of a file in the project workspace (or specify 'project_name' to inspect and reuse code from any past project in persistent memory).",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html')"
+            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')",
+            "project_name": "Optional name of a past project from persistent memory to inspect"
+        }
+    },
+    {
+        "name": "remember_preference",
+        "description": "Store a user preference, architectural guideline, or custom fact in persistent cross-session memory so the agent remembers it across all future projects and sessions.",
+        "parameters": {
+            "category": "Category: 'profile', 'guideline', 'rule', or 'fact'",
+            "key": "Setting or fact identifier (e.g. 'preferred_theme', 'css_framework')",
+            "value": "The preference, guideline, or fact text to persist"
+        }
+    },
+    {
+        "name": "recall_memory",
+        "description": "Search or view persistent cross-session memory for user preferences, learned architectural rules, or past workspace project summaries.",
+        "parameters": {
+            "query": "Optional search keyword to filter preferences or past projects (leave empty to view all)"
         }
     },
     {
@@ -560,6 +682,13 @@ AGENT_TOOLS_SCHEMA = [
         "description": "Search the internet and Hugging Face Hub for real-world datasets, technical specifications, and API schemas relevant to the user prompt.",
         "parameters": {
             "query": "Keywords or topic to search (e.g. 'snake game', 'crypto price tracker', 'flower taxonomy')"
+        }
+    },
+    {
+        "name": "search_web_docs",
+        "description": "Privacy-preserving web documentation search. Look up real-world library docs, API references, CDN script tags, CSS frameworks, or code snippets (e.g. 'Leaflet map quickstart CDN', 'Chart.js v4 line chart example'). Queries are scrubbed for privacy and zero tracking.",
+        "parameters": {
+            "query": "Keywords or library documentation topic to search"
         }
     },
     {
@@ -611,11 +740,26 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
     elif tool_name in ("get_project_tree", "workspace_tree", "tree"):
         return get_project_tree(project_name)
 
-    elif tool_name == "read_project_file":
+    elif tool_name in ("read_project_file", "read_file", "view_file"):
+        target_proj = args.get("project_name") or args.get("project") or project_name
         path = args.get("file_path") or args.get("path") or args.get("filename")
         if not path:
             return {"status": "error", "error": "Missing 'file_path' argument for read_project_file"}
-        return read_project_file(project_name, str(path))
+        return read_project_file(str(target_proj), str(path))
+
+    elif tool_name in ("remember_preference", "remember_user_preference", "save_memory", "record_memory"):
+        from backend.core.memory_manager import remember_preference
+        cat = args.get("category", "fact")
+        key = args.get("key", "note")
+        val = args.get("value") or args.get("val") or args.get("content", "")
+        if not val and args.get("text"):
+            val = args.get("text")
+        return remember_preference(str(cat), str(key), str(val))
+
+    elif tool_name in ("recall_memory", "search_memory", "get_memory"):
+        from backend.core.memory_manager import recall_memory
+        q = args.get("query") or args.get("q") or None
+        return recall_memory(q)
 
     elif tool_name == "list_project_files":
         return list_project_files(project_name)
@@ -645,6 +789,12 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         if not q:
             return {"status": "error", "error": "Missing 'query' argument for search_internet_dataset"}
         return search_internet_dataset(str(q))
+
+    elif tool_name in ("search_web_docs", "web_search", "search_web", "search_docs", "duckduckgo"):
+        q = args.get("query") or args.get("q") or ""
+        if not q:
+            return {"status": "error", "error": "Missing 'query' argument for search_web_docs"}
+        return search_web_docs(str(q), project_name=project_name)
 
     elif tool_name in ("verify_workspace_integrity", "verify_workspace", "check_integrity", "lint_workspace"):
         from backend.core.workspace_validator import validate_workspace

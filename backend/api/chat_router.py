@@ -1525,6 +1525,64 @@ def preview_project_file_endpoint(project_name: str, file_path: str):
     return FileResponse(path=safe_path, media_type=mime_type or "application/octet-stream", headers=headers)
 
 
+# ========================================================
+# WORKSPACE SNAPSHOTS & 1-CLICK ROLLBACK APIS
+# ========================================================
+
+class RollbackRequest(BaseModel):
+    snapshot_id: str
+
+@router.get("/agent/projects/{project_name}/snapshots")
+def get_project_snapshots(project_name: str):
+    """Returns all snapshots for a project in reverse chronological order."""
+    from backend.core.workspace_snapshot import list_snapshots
+    return list_snapshots(project_name)
+
+@router.post("/agent/projects/{project_name}/rollback")
+def rollback_project_version(project_name: str, req: RollbackRequest):
+    """Rolls back the workspace to a specific snapshot ID."""
+    from backend.core.workspace_snapshot import rollback_to_snapshot
+    return rollback_to_snapshot(project_name, req.snapshot_id)
+
+@router.post("/agent/projects/{project_name}/undo")
+def undo_last_project_step(project_name: str):
+    """1-Click Undo: Reverts the workspace to the state immediately before the last turn."""
+    from backend.core.workspace_snapshot import undo_last_step
+    return undo_last_step(project_name)
+
+
+# ========================================================
+# EXPLAINABILITY & AUDIT TRAIL APIS
+# ========================================================
+
+@router.get("/agent/projects/{project_name}/audit-trail")
+def get_project_audit_trail(project_name: str):
+    """Returns human-readable explainable decision timeline for a project."""
+    from backend.core.decision_tracer import get_audit_trail
+    return get_audit_trail(project_name)
+
+@router.get("/agent/projects/{project_name}/audit-trail/markdown")
+def get_project_audit_trail_markdown(project_name: str):
+    """Returns human-readable markdown summary of all decision events."""
+    from backend.core.decision_tracer import format_audit_trail_markdown
+    return {"markdown": format_audit_trail_markdown(project_name)}
+
+@router.get("/agent/projects/{project_name}/security-audit")
+def get_project_security_audit(project_name: str):
+    """Performs an AppSec vulnerability and credential leakage scan on the workspace."""
+    from backend.core.agent_tools import get_project_dir, sanitize_project_name
+    from backend.core.security_scanner import audit_workspace_security
+    clean_p = sanitize_project_name(project_name)
+    proj_dir = get_project_dir(clean_p)
+    return audit_workspace_security(proj_dir)
+
+@router.get("/agent/tools/web-search")
+def run_privacy_web_search(query: str, project_name: Optional[str] = None):
+    """Executes a privacy-preserving documentation web search with secret scrubbing."""
+    from backend.core.agent_tools import search_web_docs
+    return search_web_docs(query, project_name=project_name)
+
+
 @router.get("/agent/projects/{project_name}/{file_path:path}")
 def preview_project_asset_fallback(project_name: str, file_path: str):
     """Fallback static asset resolver if browser resolves relative assets to project root."""
@@ -1681,3 +1739,86 @@ def get_one_click_cloud_script(provider: str):
     from backend.core.cloud_gpu_bridge import CloudGpuBridge
     script = CloudGpuBridge.get_cloud_one_click_script(provider)
     return {"provider": provider, "script": script}
+
+
+# ========================================================
+# CROSS-SESSION PERSISTENT MEMORY & PROFILE APIS
+# ========================================================
+
+class UpdateMemoryRequest(BaseModel):
+    category: str = Field("fact", description="'profile', 'guideline', 'rule', or 'fact'")
+    key: str = Field(..., description="Key or identifier for the preference or fact")
+    value: Any = Field(..., description="Value or text to store")
+
+@router.get("/memory")
+def get_user_memory():
+    """Returns persistent memory store including user profile, learned rules, and project index."""
+    from backend.core.memory_manager import get_memory_store, sync_project_index
+    sync_project_index()
+    return get_memory_store()
+
+@router.post("/memory/preference")
+def update_user_memory_preference(req: UpdateMemoryRequest):
+    """Adds or updates a persistent user preference, guideline, or rule."""
+    from backend.core.memory_manager import remember_preference
+    return remember_preference(req.category, req.key, req.value)
+
+@router.post("/memory/sync-projects")
+def sync_memory_projects():
+    """Forces re-indexing of all workspace projects into persistent memory."""
+    from backend.core.memory_manager import sync_project_index
+    return sync_project_index(force_refresh=True)
+
+@router.delete("/memory/{category}/{key}")
+def delete_user_memory(category: str, key: str):
+    """Deletes an item from persistent memory."""
+    from backend.core.memory_manager import forget_memory
+    deleted = forget_memory(category, key)
+    return {"status": "success" if deleted else "not_found", "deleted": deleted}
+
+@router.get("/memory/privacy-status")
+def get_memory_privacy_audit():
+    """Returns audit of indexed projects vs privacy-excluded projects."""
+    from backend.core.memory_manager import get_memory_privacy_status
+    return get_memory_privacy_status()
+
+@router.post("/memory/exclude-project/{project_name}")
+def exclude_project_memory_endpoint(project_name: str):
+    """Excludes a workspace project from cross-session memory indexing for data privacy."""
+    from backend.core.memory_manager import exclude_project_from_memory
+    return exclude_project_from_memory(project_name)
+
+@router.post("/memory/include-project/{project_name}")
+def include_project_memory_endpoint(project_name: str):
+    """Re-includes an excluded workspace project in cross-session memory indexing."""
+    from backend.core.memory_manager import include_project_in_memory
+    return include_project_in_memory(project_name)
+
+
+
+# ========================================================
+# ENCRYPTED CREDENTIAL VAULT APIS
+# ========================================================
+
+class StoreSecretRequest(BaseModel):
+    service: str = Field(..., description="Service name e.g. 'runpod', 'openai', 'kaggle'")
+    secret: str = Field(..., description="Plaintext secret or API key to encrypt at rest")
+
+@router.post("/vault/secret")
+def store_vault_secret(req: StoreSecretRequest):
+    """Encrypts and stores a service credential at rest using AES-128/Fernet."""
+    from backend.core.credential_vault import store_secret
+    return store_secret(req.service, req.secret)
+
+@router.get("/vault/services")
+def list_vault_services():
+    """Lists configured encrypted services without exposing secret keys."""
+    from backend.core.credential_vault import list_configured_services
+    return {"configured_services": list_configured_services()}
+
+@router.delete("/vault/secret/{service}")
+def delete_vault_secret(service: str):
+    """Deletes an encrypted secret from the vault."""
+    from backend.core.credential_vault import delete_secret
+    deleted = delete_secret(service)
+    return {"status": "success" if deleted else "not_found", "deleted": deleted}

@@ -1,0 +1,141 @@
+{
+  "timestamp": "2026-11-09 12:06:03",
+  "total": 22,
+  "passed": 22,
+  "failed": 0,
+  "duration_sec": 500.0,
+  "tests": [
+    {
+      "category": "Security",
+      "test": "1.1 Relative Path Traversal Block (../../secret.txt)",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.2 Deep Traversal Block (..*7/cmd.exe)",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.3 Absolute Path Stripping & Containment",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.4 Project Name Sanitization & Boundary Cap",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.5 OS System Root Guard (_validate_safe_os_path)",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.6 Destructive Command Blacklist Enforcement",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.7 Ellipsis & Stub Code Injection Rejection",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Security",
+      "test": "1.8 Bare localStorage Sandboxed Iframe Detection",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Architecture",
+      "test": "2.1 Real-Time Hardware & VRAM Probe",
+      "success": true,
+      "details": "GPU: NVIDIA GeForce RTX 3050 6GB Laptop GPU, VRAM: 6.0 GB"
+    },
+    {
+      "category": "Architecture",
+      "test": "2.2 Adaptive Tier Sizing & Milestone Caps (4 -> 6 -> 8)",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Architecture",
+      "test": "2.3 VRAM Budget Protection (8192 context on <=6GB GPU)",
+      "success": true,
+      "details": "Context: 8192"
+    },
+    {
+      "category": "Architecture",
+      "test": "2.4 Dynamic Goal Decomposition Scaling by Tier",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Architecture",
+      "test": "2.5 AST & DOM Milestone Verification Engine",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.1 JS Syntax Error -> Attributed to app.js",
+      "success": true,
+      "details": "Target: app.js"
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.2 Browser Runtime Button Crash -> Attributed to custom_script.js",
+      "success": true,
+      "details": "Target: custom_script.js"
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.3 Unbound HTML Buttons (Dead Control) -> Attributed to app.js",
+      "success": true,
+      "details": "Target: app.js"
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.4 Responsive Horizontal Overflow -> Attributed to styles.css",
+      "success": true,
+      "details": "Target: styles.css"
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.5 Blank Screen Detection -> Attributed to index.html",
+      "success": true,
+      "details": "Target: index.html"
+    },
+    {
+      "category": "Acceptance Gate",
+      "test": "3.6 Prescriptive Guidance & Target File Header in Summary",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Agent Multi-Turn",
+      "test": "4.1 Turn 1 Core Files Creation (HTML/CSS/JS)",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Agent Multi-Turn",
+      "test": "4.2 Turn 2 Workspace File Integrity Preserved",
+      "success": true,
+      "details": ""
+    },
+    {
+      "category": "Agent Multi-Turn",
+      "test": "4.3 app.js Node.js Syntax Validity Post-Edit",
+      "success": true,
+      "details": ""
+    }
+  ]
+}

@@ -80,7 +80,7 @@ def extract_workspace_path_from_prompt(text: str) -> Optional[Path]:
 
 def _validate_safe_os_path(p: Path) -> Optional[Path]:
     """Safety guard: prevents pointing workspace to dangerous OS roots or system folders."""
-    str_p = str(p).lower().replace('/', '\\')
+    str_p = str(p).lower().replace('/', '\\').strip()
     disallowed = [
         r"c:\windows",
         r"c:\program files",
@@ -90,11 +90,11 @@ def _validate_safe_os_path(p: Path) -> Optional[Path]:
         r"c:\boot",
         r"c:\users\default"
     ]
-    # Block raw drive roots like C:\ or D:\
-    if re.match(r'^[a-zA-Z]:[\\/]?$', str_p):
+    # Block raw drive roots like C:\, D:\, C:, or D:\ 
+    if re.match(r'^[a-zA-Z]:[\\/]*$', str_p):
         return None
     for dis in disallowed:
-        if str_p.startswith(dis):
+        if str_p == dis or str_p.startswith(dis + '\\') or str_p.startswith(dis + '/'):
             return None
     return p
 
@@ -147,11 +147,14 @@ def write_project_file(project_name: str, file_path: str, content: str) -> Dict[
 
         # Anti-stub validation: reject lazy comment placeholders and empty ellipsis
         lowered = content.lower().strip()
-        if lowered in ("...", "/* ... */", "// ...", "<!-- ... -->") or (len(lowered) < 5 and not lowered.isalnum()):
+        has_standalone_ellipsis = bool(
+            re.search(r"^\s*(?:\.\.\.|/\*\s*\.\.\.\s*\*/|//\s*\.\.\.|<!--\s*\.\.\.\s*-->)\s*$", content, re.MULTILINE)
+        )
+        if lowered in ("...", "/* ... */", "// ...", "<!-- ... -->") or has_standalone_ellipsis or (len(lowered) < 5 and not lowered.isalnum()):
             return {
                 "status": "error",
                 "file_path": file_path,
-                "error": f"REJECTED: File content for '{file_path}' cannot be an ellipsis placeholder ('...'). You must write complete, working code!"
+                "error": f"REJECTED: File content for '{file_path}' contains an ellipsis placeholder ('...'). You must write complete, working code!"
             }
 
         is_web_file = any(file_path.lower().endswith(ext) for ext in [".html", ".htm", ".css", ".js"])

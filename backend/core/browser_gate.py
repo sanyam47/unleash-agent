@@ -8,6 +8,7 @@ Runs real-world automated testing in headless Chromium via Playwright:
 """
 
 import os
+import re
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -29,6 +30,13 @@ def audit_workspace_runtime(
             "valid": False,
             "error": "Missing 'index.html' on disk. Cannot execute browser runtime audit.",
             "critical_errors": ["Missing 'index.html' on disk. Cannot execute browser runtime audit."],
+            "diagnostics": [
+                {
+                    "file": "index.html",
+                    "category": "missing_file",
+                    "message": "Missing 'index.html' on disk. Cannot execute browser runtime audit."
+                }
+            ],
             "console_errors": [],
             "runtime_exceptions": ["Missing index.html"],
             "interactions": [],
@@ -36,6 +44,14 @@ def audit_workspace_runtime(
             "responsive_issues": [],
             "summary": "Missing index.html file."
         }
+
+    # Discover primary script file linked in index.html for precise diagnostic attribution
+    try:
+        index_txt = index_file.read_text(encoding="utf-8", errors="replace")
+        script_srcs = re.findall(r'<script\s+[^>]*src=["\']([^"\']+)["\']', index_txt, re.IGNORECASE)
+        primary_script = script_srcs[0] if script_srcs else "app.js"
+    except Exception:
+        primary_script = "app.js"
 
     try:
         from playwright.sync_api import sync_playwright
@@ -45,6 +61,7 @@ def audit_workspace_runtime(
             "valid": True,
             "warning": "Playwright not installed, skipping browser runtime audit.",
             "critical_errors": [],
+            "diagnostics": [],
             "console_errors": [],
             "runtime_exceptions": [],
             "interactions": [],
@@ -205,26 +222,57 @@ def audit_workspace_runtime(
 
     # Evaluate Verdict
     critical_errors = []
+    diagnostics: List[Dict[str, Any]] = []
+
     for exc in runtime_exceptions:
-        critical_errors.append(f"UNHANDLED RUNTIME EXCEPTION: {exc}")
+        msg = f"UNHANDLED RUNTIME EXCEPTION: {exc}"
+        critical_errors.append(msg)
+        diagnostics.append({
+            "file": primary_script,
+            "category": "runtime_exception",
+            "message": msg
+        })
     
     # Filter high-severity console errors (ignore benign 404 on optional favicon/audio)
     for c_err in console_errors:
         if any(ignore in c_err.lower() for ignore in ["favicon", "404 (not found)", "audiocontext was not allowed to start"]):
             continue
-        critical_errors.append(f"BROWSER CONSOLE ERROR: {c_err}")
+        msg = f"BROWSER CONSOLE ERROR: {c_err}"
+        critical_errors.append(msg)
+        diagnostics.append({
+            "file": primary_script,
+            "category": "console_error",
+            "message": msg
+        })
 
     # Check for unresponsive button crashes
     for inter in interactions_tested:
         if inter.get("triggered_error"):
-            critical_errors.append(f"BUTTON CRASH: Clicking '{inter['element']}' ({inter['label']}) threw: {inter['error_msg']}")
+            msg = f"BUTTON CRASH: Clicking '{inter['element']}' ({inter['label']}) threw: {inter['error_msg']}"
+            critical_errors.append(msg)
+            diagnostics.append({
+                "file": primary_script,
+                "category": "interaction_crash",
+                "message": msg
+            })
 
     # Responsive layout defects
     for resp_err in responsive_issues:
         critical_errors.append(resp_err)
+        diagnostics.append({
+            "file": "styles.css",
+            "category": "responsive_overflow",
+            "message": resp_err
+        })
 
     if not is_rendered:
-        critical_errors.append("BLANK SCREEN DETECTED: Headless browser rendered empty body with zero visible content or elements.")
+        msg = "BLANK SCREEN DETECTED: Headless browser rendered empty body with zero visible content or elements."
+        critical_errors.append(msg)
+        diagnostics.append({
+            "file": "index.html",
+            "category": "blank_screen",
+            "message": msg
+        })
 
     is_valid = len(critical_errors) == 0
 
@@ -242,6 +290,7 @@ def audit_workspace_runtime(
     return {
         "valid": is_valid,
         "critical_errors": critical_errors,
+        "diagnostics": diagnostics,
         "runtime_exceptions": runtime_exceptions,
         "console_errors": console_errors,
         "interactions": interactions_tested,

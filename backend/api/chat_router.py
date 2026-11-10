@@ -1762,6 +1762,103 @@ def get_execution_status_endpoint(project_name: str):
     return AgentExecutionController.get_state(project_name)
 
 
+# ========================================================
+# ANTIGRAVITY LOCAL PERMISSIONS & HITL APPROVAL APIS
+# ========================================================
+
+class PermissionModeUpdateRequest(BaseModel):
+    mode: str = Field(..., description="'review', 'default', 'auto', or 'turbo'")
+
+class ActionApprovalRequest(BaseModel):
+    project_name: str = Field(..., description="Project workspace name")
+    approved: bool = Field(..., description="True to approve execution, False to reject")
+
+
+@router.get("/permissions/mode")
+def get_permission_mode_endpoint():
+    """Returns active Antigravity local permission mode and metadata."""
+    from backend.core.permission_controller import LocalPermissionController
+    mode = LocalPermissionController.get_mode()
+    return {
+        "mode": mode,
+        "mode_display": LocalPermissionController.get_mode_display(mode)
+    }
+
+
+@router.post("/permissions/mode")
+def set_permission_mode_endpoint(req: PermissionModeUpdateRequest):
+    """Sets Antigravity local permission mode: 'review', 'default', 'auto', or 'turbo'."""
+    from backend.core.permission_controller import LocalPermissionController
+    return LocalPermissionController.set_mode(req.mode)
+
+
+@router.post("/execution/approve")
+def approve_action_endpoint(req: ActionApprovalRequest):
+    """Approves or rejects a proposed tool execution paused by the permissions gate."""
+    from backend.core.agent_tools import sanitize_project_name, dispatch_tool
+    from backend.core.execution_controller import AgentExecutionController
+    from backend.core.agent_engine import resume_agentic_loop
+
+    clean_proj = sanitize_project_name(req.project_name)
+    chk = AgentExecutionController.get_checkpoint(clean_proj)
+    if not chk:
+        raise HTTPException(status_code=400, detail=f"No checkpoint found for project '{clean_proj}'")
+
+    pending = chk.get("pending_action")
+    if not pending:
+        return resume_agentic_loop(clean_proj)
+
+    context = {"project_name": clean_proj, "model": chk.get("model", "")}
+    messages = chk.get("messages", [])
+    steps = chk.get("steps", [])
+    created_files = chk.get("created_files", [])
+    files_written = chk.get("files_written", [])
+
+    if req.approved:
+        tool_res = dispatch_tool(pending["action"], pending["args"] or {}, context)
+        step_rec = {
+            "step": chk.get("step", 1) + 1,
+            "thought": pending.get("thought", ""),
+            "action": pending["action"],
+            "args": pending["args"],
+            "observation": tool_res,
+            "status": "success" if tool_res.get("status") != "error" else "error"
+        }
+        steps.append(step_rec)
+        if tool_res.get("status") == "success" and tool_res.get("file"):
+            f = tool_res["file"]
+            if f not in created_files:
+                created_files.append(f)
+            if f not in files_written:
+                files_written.append(f)
+
+        messages.append({"role": "assistant", "content": f"Action: {pending['action']}\nArgs: {json.dumps(pending['args'])}"})
+        messages.append({"role": "user", "content": f"Observation: {json.dumps(tool_res)}"})
+    else:
+        obs = {"status": "rejected", "message": "User declined permission for this proposed operation."}
+        step_rec = {
+            "step": chk.get("step", 1) + 1,
+            "thought": pending.get("thought", ""),
+            "action": pending["action"],
+            "args": pending["args"],
+            "observation": obs,
+            "status": "declined"
+        }
+        steps.append(step_rec)
+        messages.append({"role": "assistant", "content": f"Action: {pending['action']}\nArgs: {json.dumps(pending['args'])}"})
+        messages.append({"role": "user", "content": f"Observation: {json.dumps(obs)}. Please adjust your plan or propose an alternative."})
+
+    chk["steps"] = steps
+    chk["messages"] = messages
+    chk["created_files"] = created_files
+    chk["files_written"] = files_written
+    chk["pending_action"] = None
+    chk["step"] = chk.get("step", 1) + 1
+    AgentExecutionController.save_checkpoint(clean_proj, chk)
+
+    return resume_agentic_loop(clean_proj)
+
+
 
 # ========================================================
 # CROSS-SESSION PERSISTENT MEMORY & PROFILE APIS

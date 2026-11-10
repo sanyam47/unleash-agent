@@ -1274,7 +1274,49 @@ def run_agentic_react_loop(
 
                 set_project_progress(clean_proj, phase=prog_phase, headline=prog_headline, detail=thought[:60] if thought else "", step=step_num+1, file_path=target_fname)
 
-
+                # Antigravity-Style Local Permissions Gate
+                try:
+                    from backend.core.permission_controller import LocalPermissionController
+                    perm_eval = LocalPermissionController.evaluate_action(
+                        project_name=clean_proj,
+                        tool_name=action,
+                        tool_args=args or {},
+                        existing_files=existing_files or created_files
+                    )
+                    if perm_eval.get("requires_approval"):
+                        chk_data = {
+                            "step": step_num,
+                            "project_name": clean_proj,
+                            "model": active_model,
+                            "user_prompt": user_prompt,
+                            "messages": messages,
+                            "goals": goals,
+                            "created_files": created_files,
+                            "files_written": files_written_this_run,
+                            "steps": steps,
+                            "pending_action": {
+                                "action": action,
+                                "args": args,
+                                "thought": thought
+                            }
+                        }
+                        from backend.core.execution_controller import AgentExecutionController
+                        AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                        AgentExecutionController.set_state(clean_proj, "waiting_approval", f"Awaiting approval for {action}")
+                        set_project_progress(clean_proj, phase="waiting_approval", headline="Action Approval Required", detail=perm_eval.get("action_desc", ""), step=step_num)
+                        return {
+                            "reply": f"[ACTION_APPROVAL_REQUIRED:{action}:{perm_eval.get('target', '')}]\n\n**Action Approval Required** ({perm_eval.get('mode', 'default').capitalize()} Mode):\nThe agent proposes to execute `{action}` on `{perm_eval.get('target', '')}`.\n\n- **Risk Level:** {perm_eval.get('risk_level', 'medium').upper()}\n- **Reason:** {perm_eval.get('action_desc')}\n\nPlease click **Approve** to execute this operation or **Reject** to cancel.",
+                            "agentic": True,
+                            "status": "waiting_approval",
+                            "approval_data": perm_eval,
+                            "project_name": clean_proj,
+                            "created_files": created_files,
+                            "steps": steps,
+                            "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                            "checkpoint_saved": True
+                        }
+                except Exception as perm_err:
+                    print(f"[Permission Gate Warning]: {perm_err}")
 
                 # Execute tool safely
 

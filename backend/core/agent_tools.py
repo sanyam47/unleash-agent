@@ -706,7 +706,7 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
 
     tool_name = tool_name.strip()
 
-    if tool_name == "write_project_file":
+    if tool_name in ("write_project_file", "write_file", "create_file", "overwrite_file"):
         path = args.get("file_path") or args.get("path") or args.get("filename")
         content = args.get("content", "")
         if not path:

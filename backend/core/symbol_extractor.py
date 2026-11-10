@@ -15,10 +15,18 @@ def format_file_size(size_bytes: int) -> str:
 def get_workspace_tree(project_dir: Path) -> str:
     """
     Generates a clean, hierarchical ASCII directory tree of the workspace
-    with file sizes and modification times.
+    with file sizes and modification times. Leverages mtime LRU cache.
     """
     if not project_dir.exists():
         return "Workspace is empty (0 files)."
+
+    try:
+        from backend.core.resource_cache import WorkspaceResourceCache
+        cached = WorkspaceResourceCache.get_workspace_tree(project_dir)
+        if cached:
+            return cached
+    except Exception:
+        pass
 
     lines = []
     items = sorted(list(project_dir.rglob("*")))
@@ -35,7 +43,12 @@ def get_workspace_tree(project_dir: Path) -> str:
         prefix = "|-- " if is_last else "|-- "
         lines.append(f"{prefix}{rel} ({size_str})")
 
-    return "\n".join(lines)
+    tree_str = "\n".join(lines)
+    try:
+        WorkspaceResourceCache.set_workspace_tree(project_dir, tree_str)
+    except Exception:
+        pass
+    return tree_str
 
 
 def extract_workspace_symbols(project_dir: Path) -> Dict[str, Any]:
@@ -43,6 +56,22 @@ def extract_workspace_symbols(project_dir: Path) -> Dict[str, Any]:
     Extracts a lean (< 200 tokens) interface and symbol table from existing workspace files.
     Gives the local model precise interface contracts without context bloat.
     """
+    if not project_dir.exists():
+        return {
+            "html_ids": [],
+            "html_classes": [],
+            "css_variables": [],
+            "js_functions": [],
+            "python_functions": []
+        }
+
+    try:
+        from backend.core.resource_cache import WorkspaceResourceCache
+        cached = WorkspaceResourceCache.get_symbols(project_dir)
+        if cached:
+            return cached
+    except Exception:
+        pass
     symbols = {
         "html_ids": [],
         "html_classes": [],
@@ -53,9 +82,6 @@ def extract_workspace_symbols(project_dir: Path) -> Dict[str, Any]:
         "python_functions": [],
         "python_classes": []
     }
-
-    if not project_dir.exists():
-        return symbols
 
     for file_path in project_dir.glob("*"):
         if not file_path.is_file():
@@ -120,6 +146,12 @@ def extract_workspace_symbols(project_dir: Path) -> Dict[str, Any]:
             for fn in funcs:
                 if not fn.startswith("_") and fn not in symbols["python_functions"]:
                     symbols["python_functions"].append(fn)
+
+    try:
+        from backend.core.resource_cache import WorkspaceResourceCache
+        WorkspaceResourceCache.set_symbols(project_dir, symbols)
+    except Exception:
+        pass
 
     return symbols
 

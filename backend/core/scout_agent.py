@@ -79,13 +79,23 @@ def extract_atomic_requirements(prompt: str) -> Dict[str, Any]:
 def search_huggingface_schema(keywords: List[str]) -> Optional[Dict[str, Any]]:
     """
     Dynamically queries Hugging Face datasets hub for schemas and metadata.
-    Times out in 3.0s to ensure the Scout pre-flight never hangs.
+    Uses in-memory cache to eliminate external network latency (<0.1ms on hit).
+    Times out in 1.5s to ensure the Scout pre-flight never hangs.
     """
     for kw in keywords[:3]:
+        cache_key = f"hf_dataset_{kw.lower()}"
+        try:
+            from backend.core.resource_cache import WorkspaceResourceCache
+            cached = WorkspaceResourceCache.get_scout_contract(cache_key)
+            if cached:
+                return cached
+        except Exception:
+            pass
+
         try:
             url = f"https://huggingface.co/api/datasets?search={urllib.parse.quote(kw)}&limit=3&full=true"
             req = urllib.request.Request(url, headers={"User-Agent": "AITrainer-Scout/2.0"})
-            with urllib.request.urlopen(req, timeout=3.0) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 data = json.loads(resp.read().decode("utf-8", errors="ignore"))
                 if data and isinstance(data, list):
                     for item in data:
@@ -94,7 +104,7 @@ def search_huggingface_schema(keywords: List[str]) -> Optional[Dict[str, Any]]:
                         desc_clean = re.sub(r'[\r\n\t]+', ' ', desc).strip()
                         if len(desc_clean) > 200:
                             desc_clean = desc_clean[:200] + "..."
-                        return {
+                        result = {
                             "source": "Hugging Face Hub",
                             "dataset_id": ds_id,
                             "keyword": kw,
@@ -102,6 +112,12 @@ def search_huggingface_schema(keywords: List[str]) -> Optional[Dict[str, Any]]:
                             "tags": [t for t in item.get("tags", []) if isinstance(t, str) and not t.startswith("region:")][:4],
                             "downloads": item.get("downloads", 0)
                         }
+                        try:
+                            from backend.core.resource_cache import WorkspaceResourceCache
+                            WorkspaceResourceCache.set_scout_contract(cache_key, result)
+                        except Exception:
+                            pass
+                        return result
         except Exception:
             # Silently fall through to local gateway fallback
             continue

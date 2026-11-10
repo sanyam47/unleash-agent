@@ -62,11 +62,26 @@ def extract_project_metadata(initial_prompt: str, scout_res: Optional[Dict[str, 
 def get_or_create_manifest(proj_dir: Path, user_prompt: str, scout_res: Optional[Dict[str, Any]] = None, is_new: bool = False) -> Dict[str, Any]:
     """
     Retrieves existing project manifest or dynamically creates one for a new project.
+    Uses mtime LRU cache to prevent disk reads on hot turns.
     """
     manifest_file = proj_dir / MANIFEST_FILENAME
     if manifest_file.exists() and not is_new:
         try:
-            return json.loads(manifest_file.read_text(encoding="utf-8"))
+            from backend.core.resource_cache import WorkspaceResourceCache
+            cached = WorkspaceResourceCache.get_manifest(manifest_file)
+            if cached:
+                return cached
+        except Exception:
+            pass
+
+        try:
+            data = json.loads(manifest_file.read_text(encoding="utf-8"))
+            try:
+                from backend.core.resource_cache import WorkspaceResourceCache
+                WorkspaceResourceCache.set_manifest(manifest_file, data)
+            except Exception:
+                pass
+            return data
         except Exception:
             pass
 
@@ -75,6 +90,11 @@ def get_or_create_manifest(proj_dir: Path, user_prompt: str, scout_res: Optional
     try:
         proj_dir.mkdir(parents=True, exist_ok=True)
         manifest_file.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        try:
+            from backend.core.resource_cache import WorkspaceResourceCache
+            WorkspaceResourceCache.set_manifest(manifest_file, manifest)
+        except Exception:
+            pass
     except Exception as e:
         print(f"[Manifest Write Error]: {e}")
     return manifest

@@ -347,13 +347,27 @@ class CloudGpuBridge:
         return "cpu_safe"
 
     @classmethod
+    def _get_installed_ollama_models(cls) -> List[str]:
+        """Queries local Ollama tags to find actually downloaded models."""
+        try:
+            url = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+            req = urllib.request.Request(f"{url}/api/tags", headers={"User-Agent": "AITrainer-Bridge/1.0"})
+            with urllib.request.urlopen(req, timeout=1.0) as resp:
+                data = json.loads(resp.read().decode())
+                return [m.get("name", "") for m in data.get("models", [])]
+        except Exception:
+            return []
+
+    @classmethod
     def get_cascaded_model(cls, target_tier: str, current_model: str) -> str:
         """
         Downscales model weights safely when cascading to smaller hardware
         so local GPU / CPU memory doesn't crash with Out-Of-Memory.
+        Dynamically checks locally installed Ollama models to prevent 404/500 errors.
         """
         tier = target_tier.lower()
-        curr = current_model.lower()
+        curr = (current_model or "").lower()
+        installed = cls._get_installed_ollama_models()
 
         if tier in ("kaggle", "colab", "turbo"):
             # Can run 32B or 14B comfortably
@@ -364,14 +378,26 @@ class CloudGpuBridge:
         elif tier in ("local", "balanced"):
             # RTX 3050 6GB: Run 7B or 8B
             if any(k in curr for k in ["70b", "32b", "14b"]):
-                return "dolphin3:latest"
-            return current_model or "dolphin3:latest"
+                for m in installed:
+                    m_lower = m.lower()
+                    if any(k in m_lower for k in ["dolphin3", "coder", "7b", "8b", "llama3", "mistral"]):
+                        return m
+                return installed[0] if installed else "dolphin3:latest"
+            return current_model or (installed[0] if installed else "dolphin3:latest")
 
         elif tier in ("cpu_safe", "cpu"):
             # 0% VRAM: Run fast, low-parameter model
             if any(k in curr for k in ["70b", "32b", "14b", "8b", "7b"]):
-                return "qwen2.5-coder:1.5b"
-            return current_model or "qwen2.5-coder:1.5b"
+                for m in installed:
+                    m_lower = m.lower()
+                    if any(k in m_lower for k in ["1.5b", "1b", "2b", "3b", "tiny"]):
+                        return m
+                for m in installed:
+                    m_lower = m.lower()
+                    if any(k in m_lower for k in ["dolphin3", "coder", "llama3", "mistral"]):
+                        return m
+                return installed[0] if installed else "qwen2.5-coder:1.5b"
+            return current_model or (installed[0] if installed else "qwen2.5-coder:1.5b")
 
         return current_model
 

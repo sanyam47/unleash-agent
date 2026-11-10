@@ -4,6 +4,7 @@ import time
 import threading
 from pathlib import Path
 from typing import Dict, Any, List, Optional
+from backend.core.agent_tools import sanitize_project_name
 
 CHECKPOINTS_DIR = Path(__file__).resolve().parent.parent / "data" / "execution_checkpoints"
 CHECKPOINTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -27,7 +28,7 @@ class AgentExecutionController:
 
     @classmethod
     def _clean_key(cls, project_name: str) -> str:
-        return str(project_name or "default_project").strip().lower().replace(" ", "_")
+        return sanitize_project_name(project_name)
 
     @classmethod
     def register_start(cls, project_name: str, model: str = ""):
@@ -163,7 +164,7 @@ class AgentExecutionController:
         file_path = CHECKPOINTS_DIR / f"{key}.json"
         try:
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(checkpoint_data, f, indent=2)
+                json.dump(checkpoint_data, f, indent=2, default=str)
         except Exception as e:
             print(f"[ExecutionController Checkpoint Error]: {e}")
 
@@ -231,7 +232,8 @@ class AgentExecutionController:
         milestones_text += "\n\nREMAINING MILESTONES TO FINISH:\n" + ("\n".join(pending_milestones) if pending_milestones else "All complete.")
 
         # 2. Files on disk summary
-        files_text = f"Files already created/modified in workspace: {', '.join(existing_files) if existing_files else 'None'}"
+        clean_files = [str(f) for f in (existing_files or []) if f is not None]
+        files_text = f"Files already created/modified in workspace: {', '.join(clean_files) if clean_files else 'None'}"
 
         # 3. Last error trace if any
         err_text = f"\nLast Handled Error: {last_error}" if last_error else ""

@@ -8078,6 +8078,7 @@ window.handlePauseExecutionClick = async function() {
     if (isCurrentlyPaused) {
         // RESUME ACTION
         if (pauseLbl) pauseLbl.textContent = 'Resuming...';
+        const typingId = appendTypingIndicator('Cascaded Model', projName);
         try {
             const res = await fetch('/api/chat/execution/resume', {
                 method: 'POST',
@@ -8085,6 +8086,8 @@ window.handlePauseExecutionClick = async function() {
                 body: JSON.stringify({ project_name: projName })
             });
             const data = await res.json();
+            removeTypingIndicator(typingId);
+
             if (pauseLbl) pauseLbl.textContent = 'Pause';
             if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
             if (pauseBtn) {
@@ -8092,7 +8095,29 @@ window.handlePauseExecutionClick = async function() {
                 pauseBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
                 pauseBtn.style.background = 'rgba(245, 158, 11, 0.1)';
             }
+
+            if (data && data.reply) {
+                const agenticData = data.agentic ? {
+                    steps: data.steps,
+                    created_files: data.created_files,
+                    project_name: data.project_name
+                } : null;
+                const assistantMsg = {
+                    role: 'assistant',
+                    content: data.reply,
+                    model_used: data.model || 'Cascaded Tier',
+                    telemetry: data.telemetry,
+                    agentic_data: agenticData
+                };
+                if (session && session.messages) {
+                    session.messages.push(assistantMsg);
+                    saveChatSessions();
+                    renderChatSessionsSidebar();
+                }
+                appendMessageElement('assistant', data.reply, data.telemetry, true, null, null, null, agenticData, data.model);
+            }
         } catch (e) {
+            removeTypingIndicator(typingId);
             alert("Error resuming: " + e.message);
         }
     } else {
@@ -8168,7 +8193,14 @@ window.resolveComputeBoundaryChoice = async function(choice) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ project_name: projName, rollback: true })
             });
-            alert("Cancelled execution and rolled back workspace to pre-turn snapshot.");
+            appendMessageElement('assistant', '⚠️ **Execution Cancelled**: Workspace rolled back to pre-turn state.');
+            const execControls = document.getElementById('activeExecutionControls');
+            const sendBtn = document.getElementById('btnSendChat');
+            if (execControls) execControls.style.display = 'none';
+            if (sendBtn) {
+                sendBtn.style.display = 'inline-flex';
+                sendBtn.disabled = false;
+            }
         } catch (e) {
             alert("Error: " + e.message);
         }
@@ -8176,6 +8208,7 @@ window.resolveComputeBoundaryChoice = async function(choice) {
     }
 
     // Cascade to balanced or cpu_safe
+    const typingId = appendTypingIndicator(choice === 'balanced' ? 'Local RTX 3050' : 'CPU Safe Mode', projName);
     try {
         const res = await fetch('/api/chat/execution/resume', {
             method: 'POST',
@@ -8186,9 +8219,39 @@ window.resolveComputeBoundaryChoice = async function(choice) {
             })
         });
         const data = await res.json();
-        alert(`Cascaded execution to ${choice === 'balanced' ? 'Local RTX 3050' : 'CPU Safe Mode'}! Continuing task...`);
+        removeTypingIndicator(typingId);
         await window.refreshComputePolicyStatus();
+
+        if (data && data.reply) {
+            const agenticData = data.agentic ? {
+                steps: data.steps,
+                created_files: data.created_files,
+                project_name: data.project_name
+            } : null;
+            const assistantMsg = {
+                role: 'assistant',
+                content: data.reply,
+                model_used: data.model || (choice === 'balanced' ? 'Local RTX 3050' : 'CPU Safe Mode'),
+                telemetry: data.telemetry,
+                agentic_data: agenticData
+            };
+            if (session && session.messages) {
+                session.messages.push(assistantMsg);
+                saveChatSessions();
+                renderChatSessionsSidebar();
+            }
+            appendMessageElement('assistant', data.reply, data.telemetry, true, null, null, null, agenticData, data.model);
+        }
+
+        const execControls = document.getElementById('activeExecutionControls');
+        const sendBtn = document.getElementById('btnSendChat');
+        if (execControls) execControls.style.display = 'none';
+        if (sendBtn) {
+            sendBtn.style.display = 'inline-flex';
+            sendBtn.disabled = false;
+        }
     } catch (e) {
+        removeTypingIndicator(typingId);
         alert("Failed to cascade execution: " + e.message);
     }
 };

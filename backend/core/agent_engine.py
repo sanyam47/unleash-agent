@@ -605,25 +605,16 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
 
 
 def run_agentic_react_loop(
-
     model: str,
-
     user_prompt: str,
-
     base_system_prompt: str = "",
-
     project_name: Optional[str] = None,
-
     skills_prompt: Optional[str] = None,
-
     temperature: float = 0.35,
-
     context_window: int = 8192,
-
     max_steps: int = DEFAULT_MAX_STEPS,
-
-    chat_history: Optional[List[Dict[str, Any]]] = None
-
+    chat_history: Optional[List[Dict[str, Any]]] = None,
+    resume_checkpoint: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
 
     """
@@ -736,28 +727,19 @@ def run_agentic_react_loop(
         pass
 
     # Detect if user is asking to build a completely new project/application
-    is_new_app_creation = bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
-
-    
+    # CRITICAL: If resuming a saved checkpoint, NEVER treat as a brand new app and NEVER wipe existing files!
+    is_resume = bool(resume_checkpoint)
+    is_new_app_creation = (not is_resume) and bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
 
     # If starting a brand new project in default sandbox, reset so previous unrelated project files do not collide
-
     # NOTE: Never wipe an existing custom directory! Only sandbox projects if requested to build new.
-
     if is_new_app_creation and existing_files and not custom_ws and "data" in str(proj_dir):
-
         print(f"[PROJECT ISOLATION]: User requested new application '{user_prompt}', resetting workspace in '{clean_proj}'")
-
         for entry in os.listdir(proj_dir):
-
             try:
-
                 (proj_dir / entry).unlink()
-
             except Exception:
-
                 pass
-
         existing_files = []
 
 
@@ -951,8 +933,27 @@ def run_agentic_react_loop(
     ]
 
     created_files: List[str] = []
-
     files_written_this_run: List[str] = []
+
+    start_step = 1
+    if resume_checkpoint:
+        if resume_checkpoint.get("goals"):
+            goals = resume_checkpoint["goals"]
+        if resume_checkpoint.get("created_files"):
+            created_files = list(resume_checkpoint["created_files"])
+        if resume_checkpoint.get("files_written"):
+            files_written_this_run = list(resume_checkpoint["files_written"])
+        if resume_checkpoint.get("steps"):
+            steps = list(resume_checkpoint["steps"])
+        start_step = int(resume_checkpoint.get("step", 0)) + 1
+
+        from backend.core.execution_controller import AgentExecutionController
+        messages = AgentExecutionController.compress_context_for_relay(
+            user_prompt=user_prompt,
+            messages=resume_checkpoint.get("messages", messages),
+            goals=goals,
+            existing_files=existing_files or created_files
+        )
 
 
 
@@ -1012,7 +1013,7 @@ def run_agentic_react_loop(
 
     with DockerEphemeralSession(enabled=os.getenv("UNLEASH_DOCKER_ENABLED", "0") == "1"):
 
-        for step_num in range(1, max_steps + 1):
+        for step_num in range(start_step, max_steps + 1):
             # Check execution controls: Cancellation
             if AgentExecutionController.is_cancel_requested(clean_proj):
                 set_project_progress(clean_proj, phase="cancelled", headline="Execution cancelled by user", detail="Halted active turn", step=step_num)
@@ -1097,8 +1098,62 @@ def run_agentic_react_loop(
                         )
                     except Exception:
                         pass
-                    # Retry inference on cascaded tier
-                    resp = call_ollama_chat(active_model, messages, temperature=temperature, context_window=min(context_window, 8192))
+                    # Retry inference on cascaded tier with resilience
+                    try:
+                        resp = call_ollama_chat(active_model, messages, temperature=temperature, context_window=min(context_window, 8192))
+                    except Exception as retry_err:
+                        print(f"[WATERFALL CASCADE RETRY WARNING]: Cascaded tier '{next_tier}' failed: {retry_err}")
+                        if next_tier != "cpu_safe":
+                            CloudGpuBridge.switch_provider("cpu_safe")
+                            active_model = CloudGpuBridge.get_cascaded_model("cpu_safe", active_model)
+                            try:
+                                resp = call_ollama_chat(active_model, messages, temperature=temperature, context_window=4096)
+                            except Exception as cpu_err:
+                                chk_data = {
+                                    "step": step_num,
+                                    "project_name": clean_proj,
+                                    "model": active_model,
+                                    "user_prompt": user_prompt,
+                                    "messages": messages,
+                                    "goals": goals,
+                                    "created_files": created_files,
+                                    "files_written": files_written_this_run,
+                                    "steps": steps
+                                }
+                                AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                                return {
+                                    "reply": f"Cascaded tiers exhausted ({cpu_err}). Execution paused safely with checkpoint saved.",
+                                    "agentic": True,
+                                    "status": "paused",
+                                    "project_name": clean_proj,
+                                    "created_files": created_files,
+                                    "steps": steps,
+                                    "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                                    "checkpoint_saved": True
+                                }
+                        else:
+                            chk_data = {
+                                "step": step_num,
+                                "project_name": clean_proj,
+                                "model": active_model,
+                                "user_prompt": user_prompt,
+                                "messages": messages,
+                                "goals": goals,
+                                "created_files": created_files,
+                                "files_written": files_written_this_run,
+                                "steps": steps
+                            }
+                            AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                            return {
+                                "reply": f"Cascaded tier failed ({retry_err}). Execution paused safely with checkpoint saved.",
+                                "agentic": True,
+                                "status": "paused",
+                                "project_name": clean_proj,
+                                "created_files": created_files,
+                                "steps": steps,
+                                "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                                "checkpoint_saved": True
+                            }
                 elif action == "auto_resume":
                     chk_data = {
                         "step": step_num,
@@ -1798,14 +1853,15 @@ def resume_agentic_loop(
 
     AgentExecutionController.request_resume(clean_proj, new_tier=new_tier)
 
-    # Resume the loop using the saved prompt and context
+    # Resume the loop using the saved prompt, context, and checkpoint state
     user_prompt = chk.get("user_prompt", f"Resume and finish goals for {clean_proj}")
     return run_agentic_react_loop(
         model=model,
         user_prompt=user_prompt,
         project_name=clean_proj,
         context_window=chk.get("context_window", 8192),
-        temperature=chk.get("temperature", 0.35)
+        temperature=chk.get("temperature", 0.35),
+        resume_checkpoint=chk
     )
 
 

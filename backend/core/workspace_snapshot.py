@@ -173,14 +173,47 @@ def rollback_to_snapshot(project_name: str, snapshot_id: str) -> Dict[str, Any]:
 
 
 def undo_last_step(project_name: str) -> Dict[str, Any]:
-    """Convenience helper: rolls back to the previous snapshot."""
-    snaps = list_snapshots(project_name)
-    if len(snaps) < 2:
+    """Convenience helper: rolls back to the previous snapshot or initial pre-turn state."""
+    clean_proj = sanitize_project_name(project_name)
+    snaps = list_snapshots(clean_proj)
+    proj_dir = get_project_dir(clean_proj)
+
+    if not snaps:
+        # If no snapshots exist but files were created during a cancelled new run, revert to clean slate
+        if proj_dir.exists():
+            wiped = []
+            for item in proj_dir.iterdir():
+                if item.name.startswith(".") or item.name == ".snapshots":
+                    continue
+                if item.is_file():
+                    item.unlink()
+                    wiped.append(item.name)
+                elif item.is_dir():
+                    shutil.rmtree(item, ignore_errors=True)
+                    wiped.append(f"{item.name}/")
+            return {
+                "status": "success",
+                "project": clean_proj,
+                "rolled_back_to": "initial_empty_workspace",
+                "restored_files": [],
+                "message": f"Successfully rolled back to initial clean state. Removed {len(wiped)} files."
+            }
         return {"status": "error", "error": "No previous snapshot available to undo."}
 
-    # snaps[0] is the current state; snaps[1] is the previous turn
-    target_snapshot = snaps[1]["snapshot_id"]
-    return rollback_to_snapshot(project_name, target_snapshot)
+    # If exactly 1 snapshot exists, that is the pre-turn baseline snapshot taken at the start of this turn
+    if len(snaps) == 1:
+        target_snapshot = snaps[0]["snapshot_id"]
+        return rollback_to_snapshot(clean_proj, target_snapshot)
+
+    # If 2 or more snapshots exist:
+    # If the newest snapshot is a pre_turn snapshot from an aborted/cancelled turn, roll back to it!
+    first_id = str(snaps[0].get("snapshot_id", ""))
+    if "_pre_turn" in first_id:
+        target_snapshot = first_id
+    else:
+        target_snapshot = snaps[1]["snapshot_id"]
+
+    return rollback_to_snapshot(clean_proj, target_snapshot)
 
 
 def _prune_old_snapshots(clean_proj: str):

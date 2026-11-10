@@ -80,6 +80,23 @@ KEY ARCHITECTURAL PILLARS:
     - 1-Click "Undo Step" button in workspace toolbar to instantly revert broken turns.
     - Dedicated "Decision Audit" timeline tab displaying color-coded intent, gate checks, and provenance.
     - Checkpoint history view allowing 1-click rollback to any past turn.
+
+12. Free Cloud GPU Waterfall & Live Execution Controls:
+    - Multi-tier dynamic compute waterfall cascading seamlessly: Kaggle Dual T4 (30h/wk) -> Google Colab T4 -> Local RTX 3050 (6GB) -> CPU Safe Mode (0% VRAM).
+    - 3 Fallback Policies: Prompt First (user boundary modal), Auto-Cascade (uninterrupted failover), Auto-Resume (freezes safely for quota recovery).
+    - Cooperative Pause & Resume with atomic checkpoint persistence and compressed context relay (<3,500 tokens) for safe 70B/32B -> 8B handoffs.
+    - Real-time Execution Controls in Composer: 1-click Pause, Resume, and Cancel with pre-turn snapshot rollback.
+
+13. Antigravity-Style Local Permissions & HITL Governance Gate:
+    - 4 Autonomy Levels: Request Review (Strict approval on every command/write), Default (Recommended - asks before sensitive operations/overwrites/shell), Auto (AST blast radius auto-evaluation), and Turbo (full autonomy).
+    - In-stream Action Approval Cards: Pops up clean action proposal cards in the chat with target details and [ Approve & Run ] / [ Reject ] buttons before high-risk changes occur.
+
+14. High-Speed In-Memory Resource Cache with Inode mtime Invalidation:
+    - Zero-latency (<0.3ms) RAM caching for AST symbols, project manifests, directory trees, and pre-flight scout scans.
+    - Automatic mtime invalidation ensures hot turns run without disk I/O bottlenecks while never serving stale files.
+
+15. Micro-Guidance Info Tooltips:
+    - Non-intrusive hover badges on critical controls (permissions, compute tiering, decision audit, and rollback) providing clear, 1-sentence explanations for junior and first-time developers.
 """
 
 PERSONAS = [

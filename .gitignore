@@ -46,6 +46,7 @@ backend/data/conversations/
 backend/data/chat_sessions.json
 backend/data/workspace_registry.json
 backend/data/cloud_gpu_config.json
+backend/data/local_permissions_config.json
 backend/data/restored_sessions_backup.json
 backend/data/.vault_master.key
 backend/data/vault.enc
@@ -54,6 +55,9 @@ backend/data/snapshots/
 test_out/
 
 # Temporary / Scratch scripts & recordings
+*linkedin_banner*
+*banner_option*
+personal_assets/
 **/scratch_*.py
 **/patch_*.py
 **/inject_*.py

@@ -3327,6 +3327,43 @@ window.refreshChatStatus = async function() {
     }
 };
 
+window.startOllamaService = async function() {
+    const btn = document.getElementById('btnStartOllama');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+    }
+    try {
+        const res = await fetch('/api/chat/start_ollama', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'started' || data.status === 'already_running') {
+            await window.refreshChatStatus();
+        } else {
+            let attempts = 0;
+            const timer = setInterval(async () => {
+                attempts++;
+                await window.refreshChatStatus();
+                const badge = document.getElementById('chatOllamaStatusBadge');
+                if (badge && badge.textContent.includes('Online')) {
+                    clearInterval(timer);
+                } else if (attempts > 8) {
+                    clearInterval(timer);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Retry';
+                    }
+                }
+            }, 800);
+        }
+    } catch (err) {
+        alert("Failed to start Ollama: " + err.message);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Start';
+        }
+    }
+};
+
 window.refreshDockerStatus = async function() {
     try {
         const res = await fetch('/api/chat/sandbox/docker/status');

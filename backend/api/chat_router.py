@@ -1822,3 +1822,79 @@ def delete_vault_secret(service: str):
     from backend.core.credential_vault import delete_secret
     deleted = delete_secret(service)
     return {"status": "success" if deleted else "not_found", "deleted": deleted}
+
+
+# ========================================================
+# DYNAMIC MODEL CONTEXT PROTOCOL (MCP) HOST APIS
+# ========================================================
+
+class MCPServerConfigRequest(BaseModel):
+    name: str = Field(..., description="Unique identifier name for this MCP server (e.g. 'github', 'postgres')")
+    command: str = Field(..., description="Executable command to run (e.g. 'npx', 'python', 'uvx')")
+    args: List[str] = Field(default=[], description="Command line arguments (e.g. ['-y', '@modelcontextprotocol/server-github'])")
+    env: Dict[str, str] = Field(default={}, description="Environment variables. Prefix with 'vault:key' to auto-resolve encrypted secrets.")
+    disabled: bool = Field(default=False, description="Whether this server is disabled")
+    timeout_seconds: float = Field(default=25.0, description="Process timeout for tool calls")
+
+
+class MCPToolCallRequest(BaseModel):
+    tool: str = Field(..., description="Full namespaced tool name (e.g. 'github__create_issue' or 'postgres__query')")
+    arguments: Dict[str, Any] = Field(default={}, description="Input arguments map for the tool")
+    project_name: Optional[str] = Field(default="default_project", description="Target workspace project name")
+
+
+@router.get("/mcp/servers")
+def get_mcp_servers():
+    """Lists all configured MCP servers, connection statuses, and dynamically discovered tools."""
+    from backend.core.mcp_client import get_mcp_manager
+    mgr = get_mcp_manager()
+    if not mgr.initialized:
+        mgr.initialize()
+    return {
+        "status": "success",
+        "servers": mgr.get_server_statuses(),
+        "total_dynamic_tools": len(mgr.get_all_tool_schemas())
+    }
+
+
+@router.post("/mcp/servers")
+def register_mcp_server(req: MCPServerConfigRequest):
+    """Registers or updates an MCP server configuration and initiates dynamic tool discovery."""
+    from backend.core.mcp_client import get_mcp_manager
+    mgr = get_mcp_manager()
+    success = mgr.add_or_update_server(req.name, {
+        "command": req.command,
+        "args": req.args,
+        "env": req.env,
+        "disabled": req.disabled,
+        "timeout_seconds": req.timeout_seconds
+    })
+    return {"status": "success" if success else "error", "name": req.name}
+
+
+@router.delete("/mcp/servers/{name}")
+def delete_mcp_server(name: str):
+    """Stops an active MCP server subprocess and removes it from configuration."""
+    from backend.core.mcp_client import get_mcp_manager
+    mgr = get_mcp_manager()
+    deleted = mgr.remove_server(name)
+    return {"status": "success" if deleted else "not_found", "name": name}
+
+
+@router.post("/mcp/restart")
+def restart_mcp_servers():
+    """Restarts all configured MCP servers and refreshes the dynamic tool catalog."""
+    from backend.core.mcp_client import get_mcp_manager
+    mgr = get_mcp_manager()
+    mgr.restart_all()
+    return {"status": "success", "message": "All MCP servers reloaded."}
+
+
+@router.post("/mcp/call")
+def call_mcp_tool_test(req: MCPToolCallRequest):
+    """Directly invokes an MCP tool for testing and verification."""
+    from backend.core.mcp_client import get_mcp_manager
+    mgr = get_mcp_manager()
+    context = {"project_name": req.project_name or "default_project"}
+    result = mgr.dispatch_tool(req.tool, req.arguments, context)
+    return result

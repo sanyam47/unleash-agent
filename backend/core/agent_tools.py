@@ -801,4 +801,24 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         return validate_workspace(project_name)
 
     else:
-        return {"status": "error", "error": f"Unknown tool '{tool_name}'. Available: {[t['name'] for t in AGENT_TOOLS_SCHEMA]}"}
+        # Check dynamic MCP (Model Context Protocol) tools
+        try:
+            from backend.core.mcp_client import get_mcp_manager
+            mgr = get_mcp_manager()
+            if mgr.is_mcp_tool(tool_name) or "__" in tool_name:
+                return mgr.dispatch_tool(tool_name, args, context)
+        except Exception as e:
+            pass
+        return {"status": "error", "error": f"Unknown tool '{tool_name}'. Available: {[t['name'] for t in get_all_tool_schemas()]}"}
+
+
+def get_all_tool_schemas() -> List[Dict[str, Any]]:
+    """Returns combined list of native agent tools and dynamically discovered MCP server tools."""
+    schemas = list(AGENT_TOOLS_SCHEMA)
+    try:
+        from backend.core.mcp_client import get_mcp_manager
+        mcp_tools = get_mcp_manager().get_all_tool_schemas()
+        schemas.extend(mcp_tools)
+    except Exception:
+        pass
+    return schemas

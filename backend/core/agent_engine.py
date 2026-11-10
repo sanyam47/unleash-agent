@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 
 
-from backend.core.agent_tools import AGENT_TOOLS_SCHEMA, dispatch_tool, sanitize_project_name
+from backend.core.agent_tools import AGENT_TOOLS_SCHEMA, get_all_tool_schemas, dispatch_tool, sanitize_project_name
 
 
 
@@ -44,7 +44,7 @@ def format_agentic_system_prompt(base_system: str, project_name: str, skills_pro
 
     tools_formatted = []
 
-    for t in AGENT_TOOLS_SCHEMA:
+    for t in get_all_tool_schemas():
 
         param_desc = ", ".join([f'"{k}": <{v}>' for k, v in t.get("parameters", {}).items()])
 

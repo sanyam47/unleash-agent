@@ -644,6 +644,13 @@ def run_agentic_react_loop(
 
     clean_proj = sanitize_project_name(project_name or f"project_{int(time.time())}")
 
+    # Register start with Execution Controller
+    try:
+        from backend.core.execution_controller import AgentExecutionController
+        AgentExecutionController.register_start(clean_proj, model=model)
+    except Exception:
+        pass
+
 
 
     # Dynamic Compute Tiering Probe (Lite Edge vs Cloud Balanced vs Frontier Ultra)
@@ -1006,28 +1013,143 @@ def run_agentic_react_loop(
     with DockerEphemeralSession(enabled=os.getenv("UNLEASH_DOCKER_ENABLED", "0") == "1"):
 
         for step_num in range(1, max_steps + 1):
+            # Check execution controls: Cancellation
+            if AgentExecutionController.is_cancel_requested(clean_proj):
+                set_project_progress(clean_proj, phase="cancelled", headline="Execution cancelled by user", detail="Halted active turn", step=step_num)
+                AgentExecutionController.set_state(clean_proj, "cancelled", "Execution cancelled by user")
+                return {
+                    "reply": "Execution was **cancelled** by user request. Your workspace files are preserved, or you can click **1-Click Rollback** to revert all changes made during this run.",
+                    "agentic": True,
+                    "status": "cancelled",
+                    "project_name": clean_proj,
+                    "created_files": created_files,
+                    "steps": steps,
+                    "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                    "rollback_available": True
+                }
+
+            # Check execution controls: Pause
+            if AgentExecutionController.is_pause_requested(clean_proj):
+                chk_data = {
+                    "step": step_num,
+                    "project_name": clean_proj,
+                    "model": model,
+                    "user_prompt": user_prompt,
+                    "messages": messages,
+                    "goals": goals,
+                    "created_files": created_files,
+                    "files_written": files_written_this_run,
+                    "steps": steps,
+                    "context_window": context_window,
+                    "temperature": temperature
+                }
+                AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                set_project_progress(clean_proj, phase="paused", headline=f"Execution paused at step {step_num}", detail="Frozen safely. Ready to resume.", step=step_num)
+                return {
+                    "reply": f"Execution safely **paused** at step {step_num}. Workspace files and verified goals have been saved to disk. Click **Resume** when you are ready to continue.",
+                    "agentic": True,
+                    "status": "paused",
+                    "project_name": clean_proj,
+                    "created_files": created_files,
+                    "steps": steps,
+                    "telemetry": {"tokens_per_second": round(total_eval_tokens / max(total_time_sec, 0.001), 1), "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                    "checkpoint_saved": True
+                }
 
             step_record = {
-
                 "step": step_num + 1,
-
                 "thought": "",
-
                 "action": None,
-
                 "args": None,
-
                 "observation": None,
-
                 "status": "pending"
-
             }
 
+            # Query model with Cloud GPU Waterfall & resilience handling
+            active_model = model
+            try:
+                resp = call_ollama_chat(active_model, messages, temperature=temperature, context_window=context_window)
+            except Exception as call_err:
+                from backend.core.cloud_gpu_bridge import CloudGpuBridge
+                cascade_check = CloudGpuBridge.check_waterfall_cascade()
+                action = cascade_check.get("action_required")
 
-
-            # Query model with 4096 output token capability
-
-            resp = call_ollama_chat(model, messages, temperature=temperature, context_window=context_window)
+                if action == "auto_cascade" and cascade_check.get("next_tier"):
+                    next_tier = cascade_check["next_tier"]
+                    print(f"[WATERFALL CASCADE]: Tier failed ({call_err}). Auto-cascading to '{next_tier}'")
+                    CloudGpuBridge.switch_provider(next_tier)
+                    active_model = CloudGpuBridge.get_cascaded_model(next_tier, active_model)
+                    messages = AgentExecutionController.compress_context_for_relay(
+                        user_prompt=user_prompt,
+                        messages=messages,
+                        goals=goals,
+                        existing_files=created_files or existing_files,
+                        last_error=str(call_err)
+                    )
+                    try:
+                        from backend.core.decision_tracer import record_decision_event
+                        record_decision_event(
+                            clean_proj,
+                            "waterfall_cascade",
+                            f"Auto-Cascaded to {next_tier}",
+                            f"Previous tier dropped: {call_err}. Switched to {next_tier} with compressed context relay (<3.5k tokens). Model: {active_model}",
+                            {"next_tier": next_tier, "model": active_model}
+                        )
+                    except Exception:
+                        pass
+                    # Retry inference on cascaded tier
+                    resp = call_ollama_chat(active_model, messages, temperature=temperature, context_window=min(context_window, 8192))
+                elif action == "auto_resume":
+                    chk_data = {
+                        "step": step_num,
+                        "project_name": clean_proj,
+                        "model": active_model,
+                        "user_prompt": user_prompt,
+                        "messages": messages,
+                        "goals": goals,
+                        "created_files": created_files,
+                        "files_written": files_written_this_run,
+                        "steps": steps
+                    }
+                    AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                    AgentExecutionController.set_state(clean_proj, "waiting_quota_recovery", "Execution frozen. Waiting for free cloud quota or tunnel reconnection.")
+                    set_project_progress(clean_proj, phase="waiting_quota", headline="Auto-Resume: Waiting for quota refill", detail="State frozen safely", step=step_num)
+                    return {
+                        "reply": "Free cloud tier quota exhausted or tunnel disconnected. Execution has been frozen in **Auto-Resume** mode. Progress and files on disk are safe and will resume when the endpoint recovers.",
+                        "agentic": True,
+                        "status": "waiting_quota_recovery",
+                        "project_name": clean_proj,
+                        "created_files": created_files,
+                        "steps": steps,
+                        "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                        "checkpoint_saved": True
+                    }
+                else:  # prompt_user
+                    chk_data = {
+                        "step": step_num,
+                        "project_name": clean_proj,
+                        "model": active_model,
+                        "user_prompt": user_prompt,
+                        "messages": messages,
+                        "goals": goals,
+                        "created_files": created_files,
+                        "files_written": files_written_this_run,
+                        "steps": steps
+                    }
+                    AgentExecutionController.save_checkpoint(clean_proj, chk_data)
+                    AgentExecutionController.set_state(clean_proj, "boundary_reached", f"Cloud GPU boundary reached: {str(call_err)[:80]}")
+                    set_project_progress(clean_proj, phase="boundary_reached", headline="Compute Boundary Reached", detail="Paused for user choice", step=step_num)
+                    return {
+                        "reply": f"[COMPUTE_BOUNDARY_REACHED:{cascade_check.get('next_tier', 'local')}]\n\n**Compute Boundary Reached**: Cloud GPU endpoint is unreachable or quota has expired.\n\nExecution is paused with all progress saved. Please choose how to proceed:\n- **Cascade to Local RTX 3050** (with compressed context relay)\n- **Switch to CPU Safe Mode** (0% VRAM)\n- **Pause & Wait** for cloud quota/tunnel recovery",
+                        "agentic": True,
+                        "status": "boundary_reached",
+                        "boundary_data": cascade_check,
+                        "project_name": clean_proj,
+                        "created_files": created_files,
+                        "steps": steps,
+                        "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
+                        "checkpoint_saved": True
+                    }
 
             content = resp["content"]
 
@@ -1601,9 +1723,15 @@ def run_agentic_react_loop(
     except Exception:
         pass
 
+    # Clear checkpoint and mark completed in ExecutionController
+    try:
+        from backend.core.execution_controller import AgentExecutionController
+        AgentExecutionController.register_completion(clean_proj)
+        AgentExecutionController.clear_checkpoint(clean_proj)
+    except Exception:
+        pass
+
     set_project_progress(clean_proj, phase="completed", headline="Project build completed", detail="Interactive preview ready", step=len(steps))
-
-
 
     return {
 
@@ -1644,4 +1772,40 @@ def run_agentic_react_loop(
         }
 
     }
+
+
+def resume_agentic_loop(
+    project_name: str,
+    new_tier: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Resumes an agentic task from its saved pause checkpoint.
+    Optionally switches to a new compute tier (e.g. from Cloud to Local/CPU).
+    """
+    from backend.core.agent_tools import sanitize_project_name
+    from backend.core.execution_controller import AgentExecutionController
+    from backend.core.cloud_gpu_bridge import CloudGpuBridge
+
+    clean_proj = sanitize_project_name(project_name)
+    chk = AgentExecutionController.get_checkpoint(clean_proj)
+    if not chk:
+        raise ValueError(f"No checkpoint found for project '{clean_proj}'")
+
+    model = chk.get("model", "dolphin3:latest")
+    if new_tier:
+        CloudGpuBridge.set_compute_mode(new_tier)
+        model = CloudGpuBridge.get_cascaded_model(new_tier, model)
+
+    AgentExecutionController.request_resume(clean_proj, new_tier=new_tier)
+
+    # Resume the loop using the saved prompt and context
+    user_prompt = chk.get("user_prompt", f"Resume and finish goals for {clean_proj}")
+    return run_agentic_react_loop(
+        model=model,
+        user_prompt=user_prompt,
+        project_name=clean_proj,
+        context_window=chk.get("context_window", 8192),
+        temperature=chk.get("temperature", 0.35)
+    )
+
 

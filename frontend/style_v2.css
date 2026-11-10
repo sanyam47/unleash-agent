@@ -2034,3 +2034,24 @@ button:active:not(:disabled) {
 
 .chat-link { color: #3b82f6 !important; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; cursor: pointer; }
 .chat-link:hover { color: #60a5fa !important; }
+
+
+/* Compute & Fallback Policy Waterfall Popover */
+.compute-policy-popover {
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--border-medium);
+    animation: popoverFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popoverFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.compute-option-row:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+#btnTurboPill:hover {
+    border-color: var(--border-strong) !important;
+    background: var(--bg-surface) !important;
+}

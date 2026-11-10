@@ -467,77 +467,6 @@ def get_available_models():
         raise HTTPException(status_code=500, detail=f"Error reading Ollama models: {str(e)}")
 
 
-@router.post("/send")
-def send_chat_message(req: ChatRequest):
-    """
-    Sends message history to local Ollama model and returns assistant response with token speed telemetry.
-    """
-    if not check_ollama_alive():
-        raise HTTPException(status_code=503, detail="Ollama local server is not running. Please start Ollama first.")
-
-    # Prepare message payload
-    payload_messages = []
-    if req.system_prompt and req.system_prompt.strip():
-        payload_messages.append({"role": "system", "content": req.system_prompt.strip()})
-
-    for m in req.messages:
-        payload_messages.append({"role": m.role, "content": m.content})
-
-    ollama_payload = {
-        "model": req.model,
-        "messages": payload_messages,
-        "stream": False,
-        "options": {
-            "temperature": req.temperature,
-            "top_p": req.top_p,
-            "num_predict": req.max_tokens,
-            "num_ctx": req.context_window
-        }
-    }
-
-    try:
-        post_data = json.dumps(ollama_payload).encode("utf-8")
-        api_req = urllib.request.Request(
-            f"{get_ollama_base_url()}/api/chat",
-            data=post_data,
-            headers={"Content-Type": "application/json"}
-        )
-
-        start_time = time.time()
-        with urllib.request.urlopen(api_req, timeout=120) as resp:
-            res_data = json.loads(resp.read().decode("utf-8"))
-        elapsed = time.time() - start_time
-
-        msg = res_data.get("message", {})
-        eval_count = res_data.get("eval_count", 0)
-        eval_duration_ns = res_data.get("eval_duration", 0)
-        
-        # Calculate tokens/second
-        tok_per_sec = 0.0
-        if eval_duration_ns > 0:
-            tok_per_sec = round(eval_count / (eval_duration_ns / 1e9), 2)
-        elif elapsed > 0 and eval_count > 0:
-            tok_per_sec = round(eval_count / elapsed, 2)
-
-        return {
-            "status": "success",
-            "model": req.model,
-            "reply": msg.get("content", ""),
-            "role": msg.get("role", "assistant"),
-            "telemetry": {
-                "eval_tokens": eval_count,
-                "tokens_per_second": tok_per_sec,
-                "total_duration_sec": round(elapsed, 2),
-                "eval_duration_sec": round(eval_duration_ns / 1e9, 2)
-            }
-        }
-    except urllib.error.HTTPError as e:
-        err_msg = e.read().decode()
-        raise HTTPException(status_code=e.code, detail=f"Ollama Error: {err_msg}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Inference failure: {str(e)}")
-
-
 @router.post("/import_model")
 def import_model(req: ImportModelRequest):
     """Executes 'ollama create <name> -f <modelfile>' to register a custom model."""
@@ -1739,6 +1668,99 @@ def get_one_click_cloud_script(provider: str):
     from backend.core.cloud_gpu_bridge import CloudGpuBridge
     script = CloudGpuBridge.get_cloud_one_click_script(provider)
     return {"provider": provider, "script": script}
+
+
+# ========================================================
+# COMPUTE WATERFALL & EXECUTION CONTROL APIS
+# ========================================================
+
+class ComputePolicyUpdateRequest(BaseModel):
+    compute_mode: Optional[str] = Field(None, description="'turbo', 'balanced', or 'cpu_safe'")
+    fallback_policy: Optional[str] = Field(None, description="'prompt_first', 'auto_cascade', or 'auto_resume'")
+
+class ExecutionControlRequest(BaseModel):
+    project_name: str = Field(..., description="Project workspace name")
+    new_tier: Optional[str] = Field(None, description="Optional new tier when resuming: 'turbo', 'balanced', or 'cpu_safe'")
+    rollback: Optional[bool] = Field(False, description="Whether to revert to pre-turn snapshot on cancellation")
+
+
+@router.get("/compute/policy")
+def get_compute_policy_endpoint():
+    """Returns the active compute mode, fallback policy, and waterfall status across tiers."""
+    from backend.core.cloud_gpu_bridge import CloudGpuBridge
+    return CloudGpuBridge.get_waterfall_status()
+
+
+@router.post("/compute/policy")
+def update_compute_policy_endpoint(req: ComputePolicyUpdateRequest):
+    """Updates compute mode ('turbo', 'balanced', 'cpu_safe') and/or fallback policy."""
+    from backend.core.cloud_gpu_bridge import CloudGpuBridge
+    res = {}
+    if req.compute_mode:
+        res = CloudGpuBridge.set_compute_mode(req.compute_mode)
+    if req.fallback_policy:
+        res = CloudGpuBridge.set_fallback_policy(req.fallback_policy)
+    return CloudGpuBridge.get_waterfall_status()
+
+
+@router.post("/compute/waterfall/check")
+def check_waterfall_health_endpoint():
+    """Performs live health check across cloud GPU and local waterfall tiers."""
+    from backend.core.cloud_gpu_bridge import CloudGpuBridge
+    cascade_eval = CloudGpuBridge.check_waterfall_cascade()
+    waterfall_status = CloudGpuBridge.get_waterfall_status()
+    return {
+        "cascade_eval": cascade_eval,
+        "waterfall": waterfall_status
+    }
+
+
+@router.post("/execution/pause")
+def pause_execution_endpoint(req: ExecutionControlRequest):
+    """Signals active agent execution loop to pause safely after the current atomic step."""
+    from backend.core.execution_controller import AgentExecutionController
+    return AgentExecutionController.request_pause(req.project_name)
+
+
+@router.post("/execution/resume")
+def resume_execution_endpoint(req: ExecutionControlRequest):
+    """Resumes paused execution from saved checkpoint, optionally switching compute tier."""
+    from backend.core.agent_engine import resume_agentic_loop
+    try:
+        result = resume_agentic_loop(req.project_name, new_tier=req.new_tier)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resume execution: {str(e)}")
+
+
+@router.post("/execution/cancel")
+def cancel_execution_endpoint(req: ExecutionControlRequest):
+    """Cancels active execution run and optionally rolls back workspace files."""
+    from backend.core.execution_controller import AgentExecutionController
+    cancel_res = AgentExecutionController.request_cancel(req.project_name)
+
+    rollback_res = None
+    if req.rollback:
+        try:
+            from backend.core.workspace_snapshot import undo_last_step
+            rollback_res = undo_last_step(req.project_name)
+        except Exception as e:
+            rollback_res = {"status": "error", "message": str(e)}
+
+    return {
+        "status": "cancelled",
+        "cancel_data": cancel_res,
+        "rollback_executed": req.rollback,
+        "rollback_result": rollback_res
+    }
+
+
+@router.get("/execution/status/{project_name}")
+def get_execution_status_endpoint(project_name: str):
+    """Returns real-time execution state (running, paused, cancelled, boundary_reached)."""
+    from backend.core.execution_controller import AgentExecutionController
+    return AgentExecutionController.get_state(project_name)
+
 
 
 # ========================================================

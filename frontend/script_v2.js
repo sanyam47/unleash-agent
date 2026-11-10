@@ -4082,10 +4082,22 @@ window.sendChatArenaMessage = async function() {
     const typingId = appendTypingIndicator(model, isAgentic ? projectName : null);
 
     window.isChatGenerating = true;
+    window.activeGeneratingProject = projectName;
     const sendBtn = document.getElementById('btnSendChat');
-    if (sendBtn) {
-        sendBtn.disabled = true;
-        sendBtn.innerHTML = '<span>Thinking...</span>';
+    const execControls = document.getElementById('activeExecutionControls');
+    if (sendBtn) sendBtn.style.display = 'none';
+    if (execControls) {
+        execControls.style.display = 'inline-flex';
+        const pauseLbl = document.getElementById('btnPauseExecutionLabel');
+        const pauseIcon = document.getElementById('btnPauseExecutionIcon');
+        const pauseBtn = document.getElementById('btnPauseExecution');
+        if (pauseLbl) pauseLbl.textContent = 'Pause';
+        if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+        if (pauseBtn) {
+            pauseBtn.style.color = '#f59e0b';
+            pauseBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+            pauseBtn.style.background = 'rgba(245, 158, 11, 0.1)';
+        }
     }
 
     try {
@@ -4161,12 +4173,22 @@ window.sendChatArenaMessage = async function() {
         if (telSpan && data.telemetry) {
             telSpan.textContent = `${data.telemetry.tokens_per_second} tok/s (${data.telemetry.eval_tokens} tokens in ${data.telemetry.eval_duration_sec}s)`;
         }
+
+        // Check for Compute Boundary Reached or Pause checkpoint
+        if (data.status === 'boundary_reached' || (data.reply && data.reply.includes('[COMPUTE_BOUNDARY_REACHED:'))) {
+            if (window.openComputeBoundaryModal) window.openComputeBoundaryModal(data.boundary_data);
+        }
     } catch (err) {
         removeTypingIndicator(typingId);
         appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
     } finally {
         window.isChatGenerating = false;
+        window.activeGeneratingProject = null;
+        const sendBtn = document.getElementById('btnSendChat');
+        const execControls = document.getElementById('activeExecutionControls');
+        if (execControls) execControls.style.display = 'none';
         if (sendBtn) {
+            sendBtn.style.display = 'inline-flex';
             sendBtn.disabled = false;
             sendBtn.innerHTML = '<span>Send</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
         }
@@ -7888,7 +7910,249 @@ window.savePurchasedCredits = async function() {
 
 // Auto-refresh Cloud GPU pill on load
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => window.refreshCloudGpuStatus());
+    document.addEventListener('DOMContentLoaded', () => {
+        window.refreshCloudGpuStatus();
+        window.refreshComputePolicyStatus();
+    });
 } else {
     window.refreshCloudGpuStatus();
+    window.refreshComputePolicyStatus();
 }
+
+// ========================================================
+// FREE CLOUD GPU WATERFALL & LIVE EXECUTION CONTROLS
+// ========================================================
+
+window.toggleComputePolicyPopover = function(forceState) {
+    const pop = document.getElementById('computePolicyPopover');
+    if (!pop) return;
+    if (typeof forceState === 'boolean') {
+        pop.style.display = forceState ? 'block' : 'none';
+    } else {
+        pop.style.display = pop.style.display === 'block' ? 'none' : 'block';
+    }
+    if (pop.style.display === 'block') {
+        window.refreshComputePolicyStatus();
+    }
+};
+
+// Close popover when clicking outside
+document.addEventListener('click', function(e) {
+    const pop = document.getElementById('computePolicyPopover');
+    const pill = document.getElementById('btnTurboPill');
+    if (pop && pop.style.display === 'block') {
+        if (!pop.contains(e.target) && pill && !pill.contains(e.target)) {
+            pop.style.display = 'none';
+        }
+    }
+});
+
+window.selectComputeModeUI = async function(mode) {
+    try {
+        const res = await fetch('/api/chat/compute/policy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ compute_mode: mode })
+        });
+        if (res.ok) {
+            await window.refreshComputePolicyStatus();
+        }
+    } catch (e) {
+        console.error("Failed to update compute mode:", e);
+    }
+};
+
+window.selectFallbackPolicyUI = async function(policy) {
+    try {
+        const res = await fetch('/api/chat/compute/policy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fallback_policy: policy })
+        });
+        if (res.ok) {
+            await window.refreshComputePolicyStatus();
+        }
+    } catch (e) {
+        console.error("Failed to update fallback policy:", e);
+    }
+};
+
+window.refreshComputePolicyStatus = async function() {
+    try {
+        const res = await fetch('/api/chat/compute/policy');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const mode = data.compute_mode || 'turbo';
+        const policy = data.fallback_policy || 'prompt_first';
+
+        // Update Pill appearance
+        const pillLbl = document.getElementById('turboPillLabel');
+        const pillIcon = document.getElementById('turboPillIcon');
+        const pillBtn = document.getElementById('btnTurboPill');
+
+        if (pillLbl && pillIcon) {
+            if (mode === 'turbo') {
+                pillLbl.textContent = 'Turbo';
+                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+                pillIcon.style.color = '#38bdf8';
+                if (pillBtn) pillBtn.title = 'Turbo Mode (Cloud GPU: Kaggle/Colab Dual T4)';
+            } else if (mode === 'balanced') {
+                pillLbl.textContent = 'Balanced';
+                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+                pillIcon.style.color = '#10b981';
+                if (pillBtn) pillBtn.title = 'Balanced Edge (Local GPU: RTX 3050 6GB)';
+            } else {
+                pillLbl.textContent = 'CPU Safe';
+                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>';
+                pillIcon.style.color = '#a3e635';
+                if (pillBtn) pillBtn.title = 'CPU Safe Mode (0% VRAM / Zero-Crash RAM)';
+            }
+        }
+
+        // Sync Radio Buttons
+        const rTurbo = document.getElementById('radioTierTurbo');
+        const rBal = document.getElementById('radioTierBalanced');
+        const rCpu = document.getElementById('radioTierCpuSafe');
+        if (rTurbo) rTurbo.checked = (mode === 'turbo');
+        if (rBal) rBal.checked = (mode === 'balanced');
+        if (rCpu) rCpu.checked = (mode === 'cpu_safe');
+
+        const rPrompt = document.getElementById('radioPolicyPrompt');
+        const rCascade = document.getElementById('radioPolicyCascade');
+        const rResume = document.getElementById('radioPolicyResume');
+        if (rPrompt) rPrompt.checked = (policy === 'prompt_first');
+        if (rCascade) rCascade.checked = (policy === 'auto_cascade');
+        if (rResume) rResume.checked = (policy === 'auto_resume');
+    } catch (e) {
+        console.error("Error refreshing compute policy:", e);
+    }
+};
+
+window.handlePauseExecutionClick = async function() {
+    const session = getActiveSession();
+    const projName = window.activeGeneratingProject || (session ? session.projectName : 'default_project');
+    const pauseLbl = document.getElementById('btnPauseExecutionLabel');
+    const pauseIcon = document.getElementById('btnPauseExecutionIcon');
+    const pauseBtn = document.getElementById('btnPauseExecution');
+
+    const isCurrentlyPaused = pauseLbl && pauseLbl.textContent.trim().toLowerCase() === 'resume';
+
+    if (isCurrentlyPaused) {
+        // RESUME ACTION
+        if (pauseLbl) pauseLbl.textContent = 'Resuming...';
+        try {
+            const res = await fetch('/api/chat/execution/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_name: projName })
+            });
+            const data = await res.json();
+            if (pauseLbl) pauseLbl.textContent = 'Pause';
+            if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+            if (pauseBtn) {
+                pauseBtn.style.color = '#f59e0b';
+                pauseBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+                pauseBtn.style.background = 'rgba(245, 158, 11, 0.1)';
+            }
+        } catch (e) {
+            alert("Error resuming: " + e.message);
+        }
+    } else {
+        // PAUSE ACTION
+        if (pauseLbl) pauseLbl.textContent = 'Pausing...';
+        try {
+            const res = await fetch('/api/chat/execution/pause', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_name: projName })
+            });
+            const data = await res.json();
+            if (pauseLbl) pauseLbl.textContent = 'Resume';
+            if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+            if (pauseBtn) {
+                pauseBtn.style.color = '#10b981';
+                pauseBtn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                pauseBtn.style.background = 'rgba(16, 185, 129, 0.1)';
+            }
+        } catch (e) {
+            console.error("Pause request error:", e);
+        }
+    }
+};
+
+window.handleCancelExecutionClick = async function() {
+    const session = getActiveSession();
+    const projName = window.activeGeneratingProject || (session ? session.projectName : 'default_project');
+    const confirmed = confirm("Are you sure you want to stop execution? Your workspace files are preserved.");
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch('/api/chat/execution/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_name: projName, rollback: false })
+        });
+        const data = await res.json();
+        const execControls = document.getElementById('activeExecutionControls');
+        const sendBtn = document.getElementById('btnSendChat');
+        if (execControls) execControls.style.display = 'none';
+        if (sendBtn) {
+            sendBtn.style.display = 'inline-flex';
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = '<span>Send</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+        }
+        window.isChatGenerating = false;
+        alert("Execution cancelled by user. You can start a new prompt or click Undo to revert workspace files.");
+    } catch (e) {
+        console.error("Cancel request error:", e);
+    }
+};
+
+window.openComputeBoundaryModal = function(boundaryData) {
+    const modal = document.getElementById('computeBoundaryModal');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.closeComputeBoundaryModal = function() {
+    const modal = document.getElementById('computeBoundaryModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.resolveComputeBoundaryChoice = async function(choice) {
+    const session = getActiveSession();
+    const projName = window.activeGeneratingProject || (session ? session.projectName : 'default_project');
+    window.closeComputeBoundaryModal();
+
+    if (choice === 'cancel') {
+        try {
+            await fetch('/api/chat/execution/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_name: projName, rollback: true })
+            });
+            alert("Cancelled execution and rolled back workspace to pre-turn snapshot.");
+        } catch (e) {
+            alert("Error: " + e.message);
+        }
+        return;
+    }
+
+    // Cascade to balanced or cpu_safe
+    try {
+        const res = await fetch('/api/chat/execution/resume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_name: projName,
+                new_tier: choice
+            })
+        });
+        const data = await res.json();
+        alert(`Cascaded execution to ${choice === 'balanced' ? 'Local RTX 3050' : 'CPU Safe Mode'}! Continuing task...`);
+        await window.refreshComputePolicyStatus();
+    } catch (e) {
+        alert("Failed to cascade execution: " + e.message);
+    }
+};
+

@@ -1374,6 +1374,16 @@
                                     <svg class="nav-icon-svg" style="width:15px;height:15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
                                 </button>
                                 <textarea id="chatInputMessage" placeholder="Ask your local models anything or paste a screenshot (Shift+Enter for newline, Enter to send)..." rows="2" style="border: none; background: transparent; padding: 4px; resize: none; font-size: 0.92rem; flex: 1; min-height: 48px;"></textarea>
+                                <div id="activeExecutionControls" style="display: none; align-items: center; gap: 6px;">
+                                    <button type="button" id="btnPauseExecution" onclick="handlePauseExecutionClick()" class="btn-quiet" style="padding: 8px 12px; font-size: 0.8rem; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 5px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.1); cursor: pointer;" title="Pause execution safely after current step">
+                                        <span id="btnPauseExecutionIcon"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></span>
+                                        <span id="btnPauseExecutionLabel">Pause</span>
+                                    </button>
+                                    <button type="button" id="btnCancelExecution" onclick="handleCancelExecutionClick()" class="btn-quiet" style="padding: 8px 12px; font-size: 0.8rem; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 5px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4); background: rgba(239, 68, 68, 0.1); cursor: pointer;" title="Cancel execution & halt">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                                        <span>Cancel</span>
+                                    </button>
+                                </div>
                                 <button id="btnSendChat" onclick="sendChatArenaMessage()" class="btn-primary-quiet" style="padding: 8px 16px; border-radius: var(--radius-sm); display: flex; align-items: center; gap: 6px; font-weight: 600;">
                                     <span>Send</span>
                                     <svg class="nav-icon-svg" style="width:13px;height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1421,12 +1431,96 @@
                                         <span>Knowledge</span>
                                     </button>
 
-                                    <!-- 1-Click Cloud GPU Bridge Pill -->
-                                    <button type="button" id="btnCloudGpuModal" onclick="openCloudGpuModal()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-primary); border: 1px solid var(--border-medium); background: var(--bg-surface-elevated);" title="1-Click Free Cloud GPU (Kaggle/Colab) & Credit Tracker">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
-                                        <span>GPU: <strong id="activeGpuPillLabel" style="color: #38bdf8;">Local (RTX 3050)</strong></span>
-                                        <span id="activeGpuQuotaBadge" style="font-size: 0.65rem; padding: 1px 5px; background: rgba(56, 189, 248, 0.15); border-radius: 4px; color: #38bdf8;">Free Unlimited</span>
-                                    </button>
+                                    <!-- 🛡️ Turbo Execution Control & Fallback Waterfall Pill -->
+                                    <div style="position: relative; display: inline-block;">
+                                        <button type="button" id="btnTurboPill" onclick="toggleComputePolicyPopover()" class="btn-quiet" style="padding: 3px 10px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; color: var(--text-primary); border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); cursor: pointer;" title="Compute Tier & Fallback Policy (Turbo / Balanced / CPU Safe)">
+                                            <span id="turboPillIcon" style="display: inline-flex; align-items: center; color: #38bdf8;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                            </span>
+                                            <span id="turboPillLabel" style="font-weight: 600;">Turbo</span>
+                                            <svg id="turboPillChevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 15-6-6-6 6"/></svg>
+                                        </button>
+
+                                        <!-- Compute & Fallback Policy Popover Dropdown -->
+                                        <div id="computePolicyPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 320px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.65); z-index: 1050; padding: 10px 12px; font-size: 0.78rem;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                                <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Compute &amp; Fallback Policy</span>
+                                                <button type="button" onclick="openCloudGpuModal(); toggleComputePolicyPopover(false);" class="btn-quiet" style="padding: 1px 6px; font-size: 0.65rem;">Config Tunnels</button>
+                                            </div>
+
+                                            <!-- 3 Compute Tiers -->
+                                            <div style="display: flex; flex-direction: column; gap: 5px;">
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle);" onclick="selectComputeModeUI('turbo')">
+                                                    <input type="radio" name="computeTierRadio" id="radioTierTurbo" value="turbo" checked style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <span style="font-weight: 600; color: #38bdf8;">🛡️ Turbo Mode</span>
+                                                            <span id="popoverTurboBadge" style="font-size: 0.65rem; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 1px 5px; border-radius: 4px;">Dual T4 (30GB)</span>
+                                                        </div>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Cloud GPU: Kaggle / Colab (Fastest 14B-32B)</span>
+                                                    </div>
+                                                </label>
+
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle);" onclick="selectComputeModeUI('balanced')">
+                                                    <input type="radio" name="computeTierRadio" id="radioTierBalanced" value="balanced" style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <span style="font-weight: 600; color: #10b981;">⚡ Balanced Edge</span>
+                                                            <span style="font-size: 0.65rem; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 1px 5px; border-radius: 4px;">RTX 3050 6GB</span>
+                                                        </div>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Local GPU: Offline, unlimited, zero latency</span>
+                                                    </div>
+                                                </label>
+
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle);" onclick="selectComputeModeUI('cpu_safe')">
+                                                    <input type="radio" name="computeTierRadio" id="radioTierCpuSafe" value="cpu_safe" style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <span style="font-weight: 600; color: #a3e635;">🌿 CPU Safe Mode</span>
+                                                            <span style="font-size: 0.65rem; color: #a3e635; background: rgba(163, 230, 53, 0.15); padding: 1px 5px; border-radius: 4px;">0% VRAM</span>
+                                                        </div>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Zero-crash execution using system RAM</span>
+                                                    </div>
+                                                </label>
+                                            </div>
+
+                                            <div style="height: 1px; background: var(--border-subtle); margin: 8px 0;"></div>
+
+                                            <!-- 3 Fallback Policies -->
+                                            <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;">
+                                                ON CLOUD QUOTA EXHAUSTION / TIMEOUT:
+                                            </div>
+
+                                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer;" onclick="selectFallbackPolicyUI('prompt_first')">
+                                                    <input type="radio" name="fallbackRadio" id="radioPolicyPrompt" value="prompt_first" checked style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                                                            <span style="font-weight: 600; color: var(--text-primary);">Ask Me First</span>
+                                                            <span style="font-size: 0.65rem; color: var(--accent-text); font-weight: 600;">[Recommended]</span>
+                                                        </div>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Pause &amp; show choice modal with saved state</span>
+                                                    </div>
+                                                </label>
+
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer;" onclick="selectFallbackPolicyUI('auto_cascade')">
+                                                    <input type="radio" name="fallbackRadio" id="radioPolicyCascade" value="auto_cascade" style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <span style="font-weight: 600; color: var(--text-primary);">Auto-Cascade</span>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Colab &rarr; Local 8B &rarr; CPU Safe seamlessly</span>
+                                                    </div>
+                                                </label>
+
+                                                <label style="display: flex; align-items: flex-start; gap: 8px; padding: 4px 6px; border-radius: 4px; cursor: pointer;" onclick="selectFallbackPolicyUI('auto_resume')">
+                                                    <input type="radio" name="fallbackRadio" id="radioPolicyResume" value="auto_resume" style="margin-top: 2px;">
+                                                    <div style="display: flex; flex-direction: column; flex: 1;">
+                                                        <span style="font-weight: 600; color: var(--text-primary);">Auto-Resume</span>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Pause &amp; auto-resume when quota refills</span>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div style="color: var(--text-muted); font-size: 0.68rem; font-family: var(--font-mono);">
@@ -2275,6 +2369,56 @@
                 <input type="number" id="inputPaidCreditsRemaining" value="10.00" step="1.00" style="width: 70px; padding: 4px 6px; font-size: 0.75rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-primary);">
                 <button type="button" onclick="savePurchasedCredits()" class="btn-quiet" style="font-size: 0.72rem; padding: 4px 8px;">Update Balance</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: COMPUTE BOUNDARY REACHED (FALLBACK CHOICES) -->
+<!-- =================================================== -->
+<div id="computeBoundaryModal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.82); backdrop-filter: blur(8px); z-index: 10002; justify-content: center; align-items: center; padding: 16px;">
+    <div class="modal-card" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 14px; max-width: 580px; width: 100%; display: flex; flex-direction: column; padding: 22px; box-shadow: var(--shadow-xl); gap: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 9px;">
+                <span style="font-size: 1.2rem;">🛡️</span>
+                <h3 style="margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">Compute Boundary Reached</h3>
+            </div>
+            <button onclick="closeComputeBoundaryModal()" style="background: transparent; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted); line-height: 1;" title="Close">&times;</button>
+        </div>
+
+        <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5;">
+            The active Cloud GPU tier reached its quota limit or disconnected. Execution has been cleanly paused with workspace files preserved. How would you like to proceed?
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Choice 1: Cascade to Local GPU -->
+            <button type="button" onclick="resolveComputeBoundaryChoice('balanced')" class="btn-quiet" style="text-align: left; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05); cursor: pointer; display: flex; flex-direction: column; gap: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 0.85rem; color: #10b981;">⚡ Cascade to Local RTX 3050 (Recommended)</strong>
+                    <span style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 1px 6px; border-radius: 4px;">6GB VRAM</span>
+                </div>
+                <span style="font-size: 0.72rem; color: var(--text-muted);">Transfers task using compressed context relay (&lt;3,500 tokens) to finish remaining goals offline.</span>
+            </button>
+
+            <!-- Choice 2: Switch to CPU Safe Mode -->
+            <button type="button" onclick="resolveComputeBoundaryChoice('cpu_safe')" class="btn-quiet" style="text-align: left; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(163, 230, 53, 0.3); background: rgba(163, 230, 53, 0.05); cursor: pointer; display: flex; flex-direction: column; gap: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="font-size: 0.85rem; color: #a3e635;">🌿 Switch to CPU Safe Mode</strong>
+                    <span style="font-size: 0.65rem; background: rgba(163, 230, 53, 0.2); color: #a3e635; padding: 1px 6px; border-radius: 4px;">0% VRAM</span>
+                </div>
+                <span style="font-size: 0.72rem; color: var(--text-muted);">Runs in pure system RAM with zero GPU load or crash risk.</span>
+            </button>
+
+            <!-- Choice 3: Keep Paused -->
+            <button type="button" onclick="closeComputeBoundaryModal()" class="btn-quiet" style="text-align: left; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-medium); cursor: pointer; display: flex; flex-direction: column; gap: 2px;">
+                <strong style="font-size: 0.82rem; color: var(--text-primary);">⏸ Leave Execution Paused</strong>
+                <span style="font-size: 0.70rem; color: var(--text-muted);">Keep state frozen on disk. You can restart your cloud notebook and resume later.</span>
+            </button>
+
+            <!-- Choice 4: Cancel & Rollback -->
+            <button type="button" onclick="resolveComputeBoundaryChoice('cancel')" class="btn-quiet" style="text-align: left; padding: 10px 14px; border-radius: 8px; border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); cursor: pointer; display: flex; flex-direction: column; gap: 2px;">
+                <strong style="font-size: 0.82rem; color: #ef4444;">⏹ Cancel &amp; Rollback Workspace</strong>
+                <span style="font-size: 0.70rem; color: var(--text-muted);">Aborts this run and rolls back workspace files to the pre-turn snapshot.</span>
+            </button>
         </div>
     </div>
 </div>

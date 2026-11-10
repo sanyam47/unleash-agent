@@ -4551,6 +4551,38 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
     textSpan.innerHTML = formatMarkdown(cleanText);
     bubble.appendChild(textSpan);
 
+    // 1.5. Render Antigravity Action Approval Card if HITL approval required
+    if (!isUser && cleanText.includes('[ACTION_APPROVAL_REQUIRED:')) {
+        const match = cleanText.match(/\[ACTION_APPROVAL_REQUIRED:([^:]+):([^\]]*)\]/);
+        const actionName = match ? match[1] : 'Operation';
+        const targetFile = match ? match[2] : '';
+        const projName = (agenticData && agenticData.project_name) || window.activeGeneratingProject || (getActiveSession() ? getActiveSession().projectName : 'default_project');
+
+        const card = document.createElement('div');
+        card.className = 'hitl-approval-card';
+        card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-weight:600;font-size:0.78rem;color:#f4f4f5;display:inline-flex;align-items:center;gap:6px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Action Proposed: <code>${escapeHtml(actionName)}</code>
+                </span>
+                <span style="font-size:0.65rem;color:#a78bfa;background:rgba(167,139,250,0.15);padding:1px 6px;border-radius:4px;font-weight:600;">Approval Required</span>
+            </div>
+            <div style="font-size:0.74rem;color:var(--text-secondary);margin-bottom:10px;">
+                Target: <strong>${escapeHtml(targetFile || 'Workspace')}</strong>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button type="button" onclick="resolveActionApprovalUI('${escapeHtml(projName)}', true, this)" class="btn-primary" style="padding:4px 14px;font-size:0.75rem;font-weight:600;border-radius:5px;background:#3b82f6;border:none;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
+                    <span>✓ Approve &amp; Run</span>
+                </button>
+                <button type="button" onclick="resolveActionApprovalUI('${escapeHtml(projName)}', false, this)" class="btn-quiet" style="padding:4px 12px;font-size:0.75rem;border-radius:5px;color:#ef4444;border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.08);cursor:pointer;">
+                    <span>✕ Reject</span>
+                </button>
+            </div>
+        `;
+        bubble.appendChild(card);
+    }
+
     // 2. Render Created Project Files Artifact Card directly beneath message
     if (!isUser && agenticData && agenticData.project_name) {
         let files = (agenticData.created_files && agenticData.created_files.length > 0) ? agenticData.created_files : ['index.html', 'styles.css', 'app.js'];
@@ -7950,10 +7982,12 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         window.refreshCloudGpuStatus();
         window.refreshComputePolicyStatus();
+        if (window.refreshPermissionsMode) window.refreshPermissionsMode();
     });
 } else {
     window.refreshCloudGpuStatus();
     window.refreshComputePolicyStatus();
+    if (window.refreshPermissionsMode) window.refreshPermissionsMode();
 }
 
 // ========================================================
@@ -8063,6 +8097,144 @@ window.refreshComputePolicyStatus = async function() {
         if (rResume) rResume.checked = (policy === 'auto_resume');
     } catch (e) {
         console.error("Error refreshing compute policy:", e);
+    }
+};
+
+// ========================================================
+// ANTIGRAVITY LOCAL PERMISSIONS CONTROLLER UI
+// ========================================================
+
+window.togglePermissionsPopover = function(forceState) {
+    const pop = document.getElementById('permissionsPopover');
+    if (!pop) return;
+    if (typeof forceState === 'boolean') {
+        pop.style.display = forceState ? 'block' : 'none';
+    } else {
+        pop.style.display = pop.style.display === 'block' ? 'none' : 'block';
+    }
+    if (pop.style.display === 'block') {
+        window.refreshPermissionsMode();
+    }
+};
+
+// Close permissions popover when clicking outside
+document.addEventListener('click', function(e) {
+    const pop = document.getElementById('permissionsPopover');
+    const pill = document.getElementById('btnPermissionsPill');
+    if (pop && pop.style.display === 'block') {
+        if (!pop.contains(e.target) && pill && !pill.contains(e.target)) {
+            pop.style.display = 'none';
+        }
+    }
+});
+
+window.selectPermissionModeUI = async function(mode) {
+    try {
+        const res = await fetch('/api/chat/permissions/mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        });
+        if (res.ok) {
+            await window.refreshPermissionsMode();
+            window.togglePermissionsPopover(false);
+        }
+    } catch (e) {
+        console.error("Failed to update permission mode:", e);
+    }
+};
+
+window.refreshPermissionsMode = async function() {
+    try {
+        const res = await fetch('/api/chat/permissions/mode');
+        if (!res.ok) return;
+        const data = await res.json();
+        const mode = data.mode || 'default';
+
+        const lbl = document.getElementById('permPillLabel');
+        const icon = document.getElementById('permPillIcon');
+        if (lbl) {
+            const displays = {
+                'review': 'Review',
+                'default': 'Default',
+                'auto': 'Auto',
+                'turbo': 'Turbo'
+            };
+            lbl.textContent = displays[mode] || 'Default';
+        }
+        if (icon) {
+            if (mode === 'review') {
+                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+                icon.style.color = '#94a3b8';
+            } else if (mode === 'default') {
+                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+                icon.style.color = '#a78bfa';
+            } else if (mode === 'auto') {
+                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+                icon.style.color = '#38bdf8';
+            } else {
+                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+                icon.style.color = '#f59e0b';
+            }
+        }
+
+        // Update active checkmarks in popover
+        ['Review', 'Default', 'Auto', 'Turbo'].forEach(m => {
+            const el = document.getElementById('check' + m);
+            const opt = document.getElementById('permOpt' + m);
+            const isMatch = m.toLowerCase() === mode;
+            if (el) el.style.display = isMatch ? 'inline' : 'none';
+            if (opt) {
+                if (isMatch) opt.classList.add('active');
+                else opt.classList.remove('active');
+            }
+        });
+    } catch (e) {
+        console.error("Error refreshing permissions:", e);
+    }
+};
+
+window.resolveActionApprovalUI = async function(projectName, approved, btnElement) {
+    if (btnElement) {
+        const card = btnElement.closest('.hitl-approval-card');
+        if (card) {
+            card.innerHTML = `<span style="font-size:0.74rem;color:${approved ? '#10b981' : '#ef4444'};font-weight:600;">${approved ? '✓ Approved by user. Executing...' : '✕ Rejected by user.'}</span>`;
+        }
+    }
+    const typingId = appendTypingIndicator('Agent Execution', projectName);
+    try {
+        const res = await fetch('/api/chat/execution/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_name: projectName, approved: approved })
+        });
+        const data = await res.json();
+        removeTypingIndicator(typingId);
+
+        if (data && data.reply) {
+            const agenticData = data.agentic ? {
+                steps: data.steps,
+                created_files: data.created_files,
+                project_name: data.project_name
+            } : null;
+            const assistantMsg = {
+                role: 'assistant',
+                content: data.reply,
+                model_used: data.model || 'Local Model',
+                telemetry: data.telemetry,
+                agentic_data: agenticData
+            };
+            const session = getActiveSession();
+            if (session && session.messages) {
+                session.messages.push(assistantMsg);
+                saveChatSessions();
+                renderChatSessionsSidebar();
+            }
+            appendMessageElement('assistant', data.reply, data.telemetry, true, null, null, null, agenticData, data.model);
+        }
+    } catch (e) {
+        removeTypingIndicator(typingId);
+        alert("Action approval error: " + e.message);
     }
 };
 

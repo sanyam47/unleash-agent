@@ -147,7 +147,19 @@ class BenchmarkEvaluator:
 
     @staticmethod
     def _call_local_ollama(model_name: str, prompt: str, system_prompt: str = "") -> Optional[str]:
-        """Calls local Ollama instance for automated evaluation."""
+        """Calls local Ollama or configured Cloud LLM (Groq, OpenRouter, Claude, GPT-4o) for automated evaluation."""
+        try:
+            from backend.core.cloud_llm_client import is_cloud_model, call_cloud_llm_chat
+            if is_cloud_model(model_name):
+                messages = [
+                    {"role": "system", "content": system_prompt or "You are a helpful expert assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+                res = call_cloud_llm_chat(model_name, messages, temperature=0.3, max_tokens=1024)
+                return res.get("content", "").strip()
+        except Exception as e:
+            print(f"[BenchmarkEvaluator] Cloud LLM evaluation error: {e}")
+
         try:
             payload = {
                 "model": model_name,

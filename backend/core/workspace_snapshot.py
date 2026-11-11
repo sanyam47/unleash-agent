@@ -45,8 +45,9 @@ def create_snapshot(project_name: str, step_label: str = "checkpoint", descripti
     copied_files = []
     total_bytes = 0
 
+    IGNORED_SNAP_DIRS = {".snapshots", "venv", ".venv", "node_modules", "__pycache__", "dist", "build", ".git"}
     for item in proj_dir.iterdir():
-        if item.name.startswith(".") or item.name == ".snapshots":
+        if item.name.startswith(".") or item.name in IGNORED_SNAP_DIRS:
             continue
         if item.is_file():
             dest = target_snap_dir / item.name
@@ -56,7 +57,7 @@ def create_snapshot(project_name: str, step_label: str = "checkpoint", descripti
             total_bytes += size
         elif item.is_dir():
             dest = target_snap_dir / item.name
-            shutil.copytree(item, dest, ignore=shutil.ignore_patterns(".*"))
+            shutil.copytree(item, dest, ignore=shutil.ignore_patterns(".*", "venv", ".venv", "node_modules", "__pycache__", "dist", "build"))
             copied_files.append({"name": f"{item.name}/", "bytes": 0})
 
     meta = {
@@ -226,3 +227,8 @@ def _prune_old_snapshots(clean_proj: str):
             dir_to_remove = s_dir / s["snapshot_id"]
             if dir_to_remove.exists():
                 shutil.rmtree(dir_to_remove, ignore_errors=True)
+
+# Aliases for parity consistency
+create_shadow_checkpoint = create_snapshot
+create_workspace_snapshot = create_snapshot
+list_workspace_snapshots = list_snapshots

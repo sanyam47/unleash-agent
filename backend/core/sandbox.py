@@ -188,6 +188,45 @@ def is_docker_available() -> bool:
         return False
 
 
+def ensure_docker_daemon_async() -> Dict[str, Any]:
+    """
+    Non-blocking check: If Docker daemon is offline, automatically launches
+    Docker Desktop in background on Windows so the isolated container runtime is ready.
+    """
+    if is_docker_available():
+        return {"status": "ready", "message": "Docker daemon is already active."}
+
+    standard_paths = [
+        r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+        r"C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Docker\Docker Desktop.exe"),
+        os.path.expandvars(r"%ProgramW6432%\Docker\Docker\Docker Desktop.exe")
+    ]
+    docker_exe = None
+    for p in standard_paths:
+        if p and os.path.exists(p):
+            docker_exe = p
+            break
+
+    if not docker_exe:
+        return {"status": "not_installed", "message": "Docker Desktop executable not found in standard paths."}
+
+    try:
+        flags = subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
+        subprocess.Popen(
+            [docker_exe],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags
+        )
+        return {
+            "status": "warming_up",
+            "message": "Docker Desktop launched in background. Initializing Linux virtualization engine."
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Could not launch Docker Desktop: {e}"}
+
+
 def is_cyber_image_available() -> bool:
     """Checks if the customized cyber-sandbox:latest image has been built locally."""
     try:

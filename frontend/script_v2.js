@@ -2674,6 +2674,9 @@ window.initChatArena = async function() {
     if (typeof updateAgenticModeUI === 'function') {
         updateAgenticModeUI();
     }
+    if (typeof updateSwarmModeUI === 'function') {
+        updateSwarmModeUI();
+    }
 
     // Refresh model status and catalog in background
     refreshChatStatus();
@@ -3480,7 +3483,7 @@ window.closeDockerSetupModal = function() {
 let addModelPollInterval = null;
 
 window.switchAddModelTab = function(tabName) {
-    const tabs = ['tab-existing', 'tab-gguf', 'tab-download'];
+    const tabs = ['tab-existing', 'tab-gguf', 'tab-download', 'tab-cloud'];
     tabs.forEach(t => {
         const el = document.getElementById('add-modal-' + t);
         const btn = document.getElementById('btn-modal-' + t);
@@ -3500,6 +3503,8 @@ window.switchAddModelTab = function(tabName) {
 
     if (tabName === 'tab-gguf') {
         window.scanLocalGgufs();
+    } else if (tabName === 'tab-cloud') {
+        window.loadCloudLlmConfigUI();
     }
 };
 
@@ -3952,32 +3957,297 @@ window.submitAddLocalModel = async function() {
     }
 };
 
+// ========================================================
+// CLOUD LLM (BYOK) CONTROLLERS
+// ========================================================
+
+window.cloudLlmProvidersState = null;
+
+window.loadCloudLlmConfigUI = async function() {
+    try {
+        const res = await fetch('/api/chat/cloud-llm/config');
+        const data = await res.json();
+        window.cloudLlmProvidersState = data;
+
+        const providerSelect = document.getElementById('cloudLlmProviderSelect');
+        if (!providerSelect) return;
+
+        // If active provider exists, select it
+        if (data.active_provider) {
+            providerSelect.value = data.active_provider;
+        }
+
+        window.onCloudLlmProviderChange();
+    } catch (err) {
+        console.error("Failed to load Cloud LLM config:", err);
+    }
+};
+
+window.onCloudLlmProviderChange = function() {
+    const providerSelect = document.getElementById('cloudLlmProviderSelect');
+    const modelSelect = document.getElementById('cloudLlmModelSelect');
+    const customUrlContainer = document.getElementById('cloudLlmCustomUrlContainer');
+    const customUrlInput = document.getElementById('cloudLlmCustomUrlInput');
+    const keyInput = document.getElementById('cloudLlmApiKeyInput');
+    const keyStatusText = document.getElementById('cloudLlmKeyStatusText');
+    const docLink = document.getElementById('cloudLlmDocLink');
+    const disconnectBtn = document.getElementById('btnCloudLlmDisconnect');
+    const banner = document.getElementById('cloudLlmTestResultBanner');
+    if (banner) banner.style.display = 'none';
+
+    if (!providerSelect || !modelSelect) return;
+
+    const pid = providerSelect.value;
+    const state = window.cloudLlmProvidersState || { providers: [] };
+    const prov = (state.providers || []).find(p => p.id === pid);
+
+    if (customUrlContainer) {
+        customUrlContainer.style.display = (pid === 'custom') ? 'block' : 'none';
+        if (prov && prov.custom_url) customUrlInput.value = prov.custom_url;
+    }
+
+    if (docLink) {
+        if (prov && prov.doc_url) {
+            docLink.style.display = 'inline';
+            docLink.href = prov.doc_url;
+            docLink.textContent = `Get ${prov.name} API Key`;
+        } else {
+            docLink.style.display = 'none';
+        }
+    }
+
+    // Populate popular models
+    modelSelect.innerHTML = '';
+    if (prov && prov.popular_models) {
+        prov.popular_models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = `${m.name} (${m.id})`;
+            if (prov.model === m.id) opt.selected = true;
+            modelSelect.appendChild(opt);
+        });
+        const customOpt = document.createElement('option');
+        customOpt.value = '__custom__';
+        customOpt.textContent = 'Custom model tag (enter below)...';
+        modelSelect.appendChild(customOpt);
+    }
+
+    // Check if configured
+    if (prov && prov.configured) {
+        keyInput.value = '';
+        keyInput.placeholder = `Stored: ${prov.masked_key}`;
+        if (disconnectBtn) disconnectBtn.style.display = 'block';
+        if (keyStatusText) {
+            keyStatusText.innerHTML = `<span style="color:#10b981;font-weight:600;">✓ Connected & Encrypted (AES-256-GCM)</span>. Enter a new key only to replace.`;
+        }
+    } else {
+        keyInput.value = '';
+        keyInput.placeholder = 'sk-...';
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+        if (keyStatusText) {
+            keyStatusText.textContent = 'Zero plaintext on disk. Encrypted via AES-256-GCM authenticated master vault.';
+        }
+    }
+};
+
+window.onCloudLlmModelSelectChange = function() {
+    const modelSelect = document.getElementById('cloudLlmModelSelect');
+    const customModelInput = document.getElementById('cloudLlmCustomModelInput');
+    if (!modelSelect || !customModelInput) return;
+    if (modelSelect.value === '__custom__') {
+        customModelInput.focus();
+    }
+};
+
+window.toggleCloudApiKeyVisibility = function() {
+    const keyInput = document.getElementById('cloudLlmApiKeyInput');
+    if (!keyInput) return;
+    keyInput.type = (keyInput.type === 'password') ? 'text' : 'password';
+};
+
+window.testCloudLlmKeyUI = async function() {
+    const providerSelect = document.getElementById('cloudLlmProviderSelect');
+    const modelSelect = document.getElementById('cloudLlmModelSelect');
+    const customModelInput = document.getElementById('cloudLlmCustomModelInput');
+    const keyInput = document.getElementById('cloudLlmApiKeyInput');
+    const customUrlInput = document.getElementById('cloudLlmCustomUrlInput');
+    const banner = document.getElementById('cloudLlmTestResultBanner');
+    const btn = document.getElementById('btnCloudLlmTest');
+
+    if (!providerSelect) return;
+    const provider = providerSelect.value;
+    let model = (modelSelect && modelSelect.value !== '__custom__') ? modelSelect.value : (customModelInput ? customModelInput.value.trim() : '');
+    const apiKey = keyInput ? keyInput.value.trim() : '';
+    const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+
+    if (banner) {
+        banner.style.display = 'block';
+        banner.style.background = 'rgba(56, 189, 248, 0.1)';
+        banner.style.border = '1px solid rgba(56, 189, 248, 0.3)';
+        banner.style.color = '#38bdf8';
+        banner.textContent = 'Testing connection & latency to provider API...';
+    }
+    if (btn) btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/chat/cloud-llm/test', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider: provider,
+                api_key: apiKey || null,
+                model: model || null,
+                custom_url: customUrl || null
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.message || 'Connection test failed');
+
+        if (banner) {
+            banner.style.background = 'rgba(16, 185, 129, 0.1)';
+            banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+            banner.style.color = '#10b981';
+            banner.textContent = `✓ Success! Connected in ${data.latency_ms}ms to ${data.model}. API key is valid.`;
+        }
+    } catch (err) {
+        if (banner) {
+            banner.style.background = 'rgba(239, 68, 68, 0.1)';
+            banner.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+            banner.style.color = '#ef4444';
+            banner.textContent = `✗ ${err.message}`;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
+
+window.saveCloudLlmKeyUI = async function() {
+    const providerSelect = document.getElementById('cloudLlmProviderSelect');
+    const modelSelect = document.getElementById('cloudLlmModelSelect');
+    const customModelInput = document.getElementById('cloudLlmCustomModelInput');
+    const keyInput = document.getElementById('cloudLlmApiKeyInput');
+    const customUrlInput = document.getElementById('cloudLlmCustomUrlInput');
+    const banner = document.getElementById('cloudLlmTestResultBanner');
+    const saveBtn = document.getElementById('btnCloudLlmSave');
+
+    if (!providerSelect) return;
+    const provider = providerSelect.value;
+    let model = (modelSelect && modelSelect.value !== '__custom__') ? modelSelect.value : (customModelInput ? customModelInput.value.trim() : '');
+    const apiKey = keyInput ? keyInput.value.trim() : '';
+    const customUrl = customUrlInput ? customUrlInput.value.trim() : '';
+
+    if (!apiKey) {
+        const state = window.cloudLlmProvidersState || { providers: [] };
+        const prov = (state.providers || []).find(p => p.id === provider);
+        if (!prov || !prov.configured) {
+            if (banner) {
+                banner.style.display = 'block';
+                banner.style.background = 'rgba(239, 68, 68, 0.1)';
+                banner.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                banner.style.color = '#ef4444';
+                banner.textContent = 'Please enter an API key.';
+            }
+            return;
+        }
+    }
+
+    if (saveBtn) saveBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/chat/cloud-llm/save-key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider: provider,
+                api_key: apiKey || 'KEEP_EXISTING',
+                model: model || null,
+                custom_url: customUrl || null,
+                set_active: true
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to save key');
+
+        closeAddModelModal();
+        await refreshChatModels(data.active_model);
+        alert(`Success! Connected to ${provider.toUpperCase()} (${data.model}) with AES-256-GCM encryption.`);
+    } catch (err) {
+        if (banner) {
+            banner.style.display = 'block';
+            banner.style.background = 'rgba(239, 68, 68, 0.1)';
+            banner.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+            banner.style.color = '#ef4444';
+            banner.textContent = `✗ ${err.message}`;
+        }
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+};
+
+window.disconnectCloudLlmKey = async function() {
+    const providerSelect = document.getElementById('cloudLlmProviderSelect');
+    if (!providerSelect) return;
+    const provider = providerSelect.value;
+    if (!confirm(`Are you sure you want to remove the stored API key for ${provider.toUpperCase()}?`)) return;
+
+    try {
+        const res = await fetch(`/api/chat/cloud-llm/remove/${provider}`, { method: 'DELETE' });
+        const data = await res.json();
+        await window.loadCloudLlmConfigUI();
+        await refreshChatModels();
+        alert(`Disconnected ${provider.toUpperCase()}.`);
+    } catch (err) {
+        alert("Error removing key: " + err.message);
+    }
+};
+
 window.refreshChatModels = async function(modelToSelect = null) {
     const select = document.getElementById('chatModelSelect');
     if (!select) return;
-    select.innerHTML = '<option value="">Scanning local models...</option>';
+    select.innerHTML = '<option value="">Scanning models...</option>';
     
     try {
         const res = await fetch('/api/chat/models');
         const data = await res.json();
         
-        if (data.status !== 'online' || !data.models || data.models.length === 0) {
-            select.innerHTML = '<option value="">No local models detected in Ollama</option>';
+        if (!data.models || data.models.length === 0) {
+            select.innerHTML = '<option value="">No models detected (Ollama offline & no Cloud API key)</option>';
             return;
         }
 
         window.chatModels = data.models;
         select.innerHTML = '';
         
-        let targetModel = modelToSelect || localStorage.getItem('chat_arena_last_model') || (data.models[0] && data.models[0].name) || 'dolphin3:latest';
+        let targetModel = modelToSelect || localStorage.getItem('chat_arena_last_model') || (data.models[0] && (data.models[0].id || data.models[0].name)) || 'dolphin3:latest';
         
-        data.models.forEach((m) => {
-            const opt = document.createElement('option');
-            opt.value = m.name;
-            opt.textContent = `${m.name} (${m.parameter_size} • ${m.size_gb} GB)`;
-            if (m.name === targetModel) opt.selected = true;
-            select.appendChild(opt);
-        });
+        const cloudModels = data.models.filter(m => m.is_cloud);
+        const localModels = data.models.filter(m => !m.is_cloud);
+
+        if (cloudModels.length > 0) {
+            const cloudGroup = document.createElement('optgroup');
+            cloudGroup.label = "⚡ Cloud Frontier Models (BYOK)";
+            cloudModels.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.id || m.name;
+                opt.textContent = `${m.name}`;
+                if (opt.value === targetModel || m.name === targetModel) opt.selected = true;
+                cloudGroup.appendChild(opt);
+            });
+            select.appendChild(cloudGroup);
+        }
+
+        if (localModels.length > 0) {
+            const localGroup = document.createElement('optgroup');
+            localGroup.label = "💻 Local Offline Models (RTX 3050)";
+            localModels.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.name;
+                opt.textContent = `${m.name} (${m.parameter_size} • ${m.size_gb} GB)`;
+                if (opt.value === targetModel) opt.selected = true;
+                localGroup.appendChild(opt);
+            });
+            select.appendChild(localGroup);
+        }
 
         selectPromptModel(targetModel);
         renderChatSessionsSidebar();
@@ -3994,9 +4264,13 @@ window.onChatModelChange = function(triggeredBySessionSwitch = false) {
 
     const selectedName = select.value;
 
-    const modelObj = (window.chatModels || []).find(m => m.name === selectedName);
+    const modelObj = (window.chatModels || []).find(m => (m.id === selectedName || m.name === selectedName));
     if (modelObj && badge) {
-        badge.textContent = `${modelObj.parameter_size} • ${modelObj.quantization} • ${modelObj.size_gb} GB`;
+        if (modelObj.is_cloud) {
+            badge.textContent = `Frontier Cloud • BYOK Encrypted`;
+        } else {
+            badge.textContent = `${modelObj.parameter_size} • ${modelObj.quantization} • ${modelObj.size_gb} GB`;
+        }
     }
 
     // If this change was caused by user clicking a session that had this model, just update sidebar count
@@ -4156,7 +4430,9 @@ window.sendChatArenaMessage = async function() {
                 use_rag: window.cyberRAGEnabled !== false,
                 skill_ids: activeSkillIds,
                 agentic: isAgentic,
-                project_name: projectName
+                use_swarm: window.swarmModeEnabled === true,
+                workspace_path: window.activeMountedWorkspacePath || undefined,
+                project_name: window.activeMountedProjectName || projectName
             })
         });
 
@@ -4173,7 +4449,10 @@ window.sendChatArenaMessage = async function() {
             steps: data.steps,
             created_files: data.created_files,
             project_name: data.project_name,
-            gateway_grounding: data.gateway_grounding
+            gateway_grounding: data.gateway_grounding,
+            swarm_mode: data.swarm_mode,
+            mode_label: data.mode_label,
+            health: data.health
         } : null;
 
         const assistantMsg = {
@@ -4627,6 +4906,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
 
     // 3. Render Antigravity ReAct Steps Trace as sleek, collapsed developer accordion at bottom
     if (!isUser && agenticData && agenticData.steps && agenticData.steps.length > 0) {
+        // ReAct Steps & Execution Trace
         const reactBox = document.createElement('details');
         reactBox.style.marginTop = '10px';
         reactBox.style.background = 'var(--bg-surface)';
@@ -4644,10 +4924,13 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
         summary.style.alignItems = 'center';
         summary.style.justifyContent = 'space-between';
         summary.style.userSelect = 'none';
+        const traceLabel = agenticData.swarm_mode
+            ? `🐝 Dynamic Swarm Trace (${agenticData.steps.length} Steps · ${escapeHtml(agenticData.mode_label || agenticData.swarm_mode)})`
+            : `ReAct Execution Trace (${agenticData.steps.length} Step${agenticData.steps.length === 1 ? '' : 's'})`;
         summary.innerHTML = `
             <span style="display:inline-flex;align-items:center;gap:6px;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                ReAct Execution Trace (${agenticData.steps.length} Step${agenticData.steps.length === 1 ? '' : 's'})
+                ${traceLabel}
             </span>
             <span style="font-size:0.66rem;color:var(--text-muted);font-family:var(--font-mono);">Workspace: ${agenticData.project_name || 'default'}</span>
         `;
@@ -4725,9 +5008,16 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
                 `;
             }
 
+            const stepHeading = st.worker
+                ? `🐝 [${escapeHtml(st.role || st.worker)}]`
+                : `Step ${st.step}:`;
+            const stepBody = st.worker
+                ? (st.observation || `Status: ${st.status}`)
+                : (st.thought || 'Executing step...');
+
             stepItem.innerHTML = `
                 <div style="color: var(--text-secondary); line-height: 1.4;">
-                    <strong style="color: var(--text-primary);">Step ${st.step}:</strong> ${escapeHtml(st.thought || 'Executing step...')}
+                    <strong style="color: var(--text-primary);">${stepHeading}</strong> ${escapeHtml(stepBody)}
                 </div>
                 ${actionHtml}
                 ${obsHtml}
@@ -7004,6 +7294,50 @@ window.toggleAgenticMode = function() {
     window.updateAgenticModeUI();
 };
 
+// Dynamic Multi-Agent Swarm Mode (Runs automatically in background for all code tasks)
+window.swarmModeEnabled = true;
+window.activeMountedWorkspacePath = null;
+window.activeMountedProjectName = null;
+window.updateSwarmModeUI = function() {};
+window.toggleSwarmMode = function() {};
+
+window.promptMountWorkspace = async function() {
+    const current = window.activeMountedWorkspacePath || '';
+    const hostPath = prompt("Mount Host Repository:\nEnter the absolute path of an existing directory on your machine to mount:\n(e.g. C:\\coding\\my-project)", current);
+    if (!hostPath || !hostPath.trim()) return;
+
+    try {
+        const res = await fetch('/api/chat/mount-workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workspace_path: hostPath.trim()
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.error || 'Failed to mount repository');
+
+        window.activeMountedWorkspacePath = data.workspace_path;
+        window.activeMountedProjectName = data.project_name;
+
+        const label = document.getElementById('mountWorkspaceLabel');
+        const pill = document.getElementById('btnMountWorkspacePill');
+        if (label) {
+            const shortName = hostPath.trim().split(/[\\/]/).filter(Boolean).pop();
+            label.textContent = `📁 ${shortName}`;
+            label.style.color = '#10b981';
+            if (pill) {
+                pill.style.borderColor = '#10b981';
+                pill.style.background = 'rgba(16, 185, 129, 0.1)';
+            }
+        }
+
+        alert(`✅ Repository Mounted Successfully!\nDirectory: ${data.workspace_path}\nFiles Indexed: ${data.files_count}\nGit Shadow & 1-Click Rollback Enabled.`);
+    } catch (err) {
+        alert("Mount Repository Failed: " + err.message);
+    }
+};
+
 window.openProjectInVSCode = async function(projectName) {
     try {
         const res = await fetch(`/api/chat/agent/projects/${encodeURIComponent(projectName)}/open_vscode`, { method: 'POST' });
@@ -7326,6 +7660,52 @@ window.rollbackProjectSnapshot = async function(projectName, snapshotId) {
     }
 };
 
+window.escalateRepairToCloud = async function(projectName, filePath) {
+    const btn = window.event ? window.event.target.closest('button') : null;
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⚡ Repairing with Cloud Frontier...';
+        btn.style.opacity = '0.8';
+    }
+
+    try {
+        const res = await fetch('/api/chat/escalate-repair', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_name: projectName,
+                file_path: filePath || 'app.js'
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || data.message || 'Escalation failed');
+
+        if (btn) {
+            btn.innerHTML = '✅ Cloud Fix Verified & Passing!';
+            btn.style.background = '#10b981';
+            btn.style.color = '#ffffff';
+        }
+
+        if (typeof showToast === 'function') {
+            showToast(`Cloud Model repaired and verified ${filePath}!`, 'success');
+        }
+
+        if (typeof window.refreshProjectFiles === 'function') {
+            window.refreshProjectFiles(projectName);
+        }
+        if (typeof window.refreshLivePreview === 'function') {
+            window.refreshLivePreview();
+        }
+    } catch (err) {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '⚠️ Retry Cloud Escalation';
+            btn.style.opacity = '1.0';
+        }
+        alert('Cloud Escalation Error: ' + err.message);
+    }
+};
+
 
 // Autonomous Knowledge Acquisition & Model Grounding Action
 window.executeKnowledgeAcquire = async function(btn, domainKey, dbName) {
@@ -7504,7 +7884,10 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
             steps: data.steps,
             created_files: data.created_files,
             project_name: data.project_name,
-            gateway_grounding: data.gateway_grounding
+            gateway_grounding: data.gateway_grounding,
+            swarm_mode: data.swarm_mode,
+            mode_label: data.mode_label,
+            health: data.health
         } : null;
 
         const assistantMsg = {
@@ -7833,7 +8216,7 @@ window.refreshCloudGpuStatus = async function() {
         if (pillLabel) pillLabel.textContent = data.active_name || 'Local RTX 3050';
         if (quotaBadge) {
             if (data.active_provider === 'local') {
-                quotaBadge.textContent = 'Free Unlimited';
+                quotaBadge.textContent = data.vram_free_gb !== undefined && data.vram_free_gb !== null ? `${data.vram_free_gb}GB Free` : 'Free Unlimited';
                 quotaBadge.style.background = 'rgba(56, 189, 248, 0.15)';
                 quotaBadge.style.color = '#38bdf8';
             } else if (data.active_provider === 'purchased') {

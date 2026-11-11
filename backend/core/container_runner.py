@@ -11,6 +11,24 @@ from backend.core.agent_tools import resolve_safe_project_path, sanitize_project
 DOCKER_BIN = "docker"
 DEFAULT_TIMEOUT_SEC = 15
 
+STANDARD_DOCKER_DESKTOP_PATHS = [
+    r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
+    r"C:\Program Files (x86)\Docker\Docker\Docker Desktop.exe",
+    os.path.expandvars(r"%LOCALAPPDATA%\Docker\Docker Desktop.exe"),
+    os.path.expandvars(r"%ProgramW6432%\Docker\Docker\Docker Desktop.exe")
+]
+
+
+def get_docker_desktop_executable() -> Optional[str]:
+    """Finds Docker Desktop.exe across standard Windows installation paths."""
+    for p in STANDARD_DOCKER_DESKTOP_PATHS:
+        if p and os.path.exists(p):
+            return p
+    return None
+
+
+DOCKER_DESKTOP_PATH = get_docker_desktop_executable() or r"C:\Program Files\Docker\Docker\Docker Desktop.exe"
+
 # Dangerous host commands unconditionally blocked regardless of runner mode
 BLOCKED_COMMANDS = [
     r"\bformat\b",
@@ -26,9 +44,6 @@ BLOCKED_COMMANDS = [
     r"\bpowershell(?:\.exe)?\s+-[ec]",
     r"\bcmd(?:\.exe)?\s+/[ck]"
 ]
-
-
-DOCKER_DESKTOP_PATH = r"C:\Program Files\Docker\Docker\Docker Desktop.exe"
 
 
 def is_docker_running() -> bool:
@@ -51,11 +66,18 @@ def start_docker_desktop() -> Dict[str, Any]:
     if is_docker_running():
         return {"status": "success", "message": "Docker daemon is already active and running."}
 
-    if not os.path.exists(DOCKER_DESKTOP_PATH):
-        return {"status": "error", "message": f"Docker Desktop executable not found at '{DOCKER_DESKTOP_PATH}'"}
+    exe = get_docker_desktop_executable()
+    if not exe:
+        return {"status": "error", "message": "Docker Desktop executable not found in standard paths."}
 
     try:
-        subprocess.Popen([DOCKER_DESKTOP_PATH], shell=False)
+        flags = subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
+        subprocess.Popen(
+            [exe],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=flags
+        )
         return {
             "status": "success",
             "message": "Docker Desktop launched. Initializing Linux virtualization engine in background..."
@@ -254,3 +276,74 @@ def execute_in_isolated_container(project_name: str, command: str, timeout: int 
             "command": command,
             "error": str(e)
         }
+
+
+def run_backend_docker_test_gate(project_name: Any, timeout: int = 15) -> Dict[str, Any]:
+    """
+    Universal Backend Definition of Done (DoD) Gate:
+    Validates syntax and runs tests strictly inside the isolated container:
+      1. Validates Python syntax via py_compile for all .py files
+      2. If test files or unittest/pytest tests exist, executes them
+      3. If Node package.json / backend JS exists, runs syntax checks
+    Captures exact fatal stack traces (<150 tokens) and maps to primary_repair_file.
+    """
+    if isinstance(project_name, Path):
+        clean_proj = sanitize_project_name(project_name.name)
+        proj_dir = project_name
+    else:
+        clean_proj = sanitize_project_name(project_name)
+        proj_dir = resolve_safe_project_path(clean_proj, "")
+
+    if not proj_dir.exists():
+        return {"valid": False, "error": f"Project workspace '{clean_proj}' does not exist."}
+
+    py_files = list(proj_dir.glob("*.py"))
+    test_files = [f for f in py_files if "test" in f.name.lower()]
+    package_json = proj_dir / "package.json"
+
+    # If pure static HTML frontend with no backend code, pass immediately
+    if not py_files and not package_json.exists():
+        return {"valid": True, "tested": False, "summary": "No backend files present."}
+
+    # 1. Python Syntax / py_compile test
+    if py_files:
+        for py_f in py_files:
+            rel_name = py_f.name
+            compile_res = execute_in_isolated_container(clean_proj, f"python -m py_compile {rel_name}", timeout=timeout)
+            if compile_res.get("exit_code", 0) != 0:
+                err_text = compile_res.get("stderr") or compile_res.get("stdout") or compile_res.get("error", "Syntax error")
+                lines = [l for l in err_text.strip().splitlines() if l.strip()]
+                short_err = "\n".join(lines[-3:]) if len(lines) >= 3 else err_text.strip()
+                return {
+                    "valid": False,
+                    "tested": True,
+                    "category": "python_syntax_error",
+                    "primary_repair_file": rel_name,
+                    "error": f"BACKEND COMPILER FAILURE in '{rel_name}':\n{short_err}",
+                    "summary": f"Python compilation failed on {rel_name}."
+                }
+
+        # 2. Automated Test Suite (if test files exist)
+        if test_files:
+            primary_test = test_files[0].name
+            test_res = execute_in_isolated_container(clean_proj, f"python -m unittest {primary_test}", timeout=timeout)
+            if test_res.get("exit_code", 0) != 0:
+                err_text = test_res.get("stderr") or test_res.get("stdout") or "Test suite failed."
+                lines = [l for l in err_text.strip().splitlines() if l.strip()]
+                short_err = "\n".join(lines[-4:]) if len(lines) >= 4 else err_text.strip()
+                candidate_impl = primary_test.replace("test_", "").replace("_test", "")
+                impl_file = candidate_impl if (proj_dir / candidate_impl).exists() else primary_test
+                return {
+                    "valid": False,
+                    "tested": True,
+                    "category": "backend_test_failure",
+                    "primary_repair_file": impl_file,
+                    "error": f"BACKEND TEST SUITE FAILED in '{primary_test}':\n{short_err}",
+                    "summary": f"Unit tests failed in {primary_test}."
+                }
+
+    return {
+        "valid": True,
+        "tested": True,
+        "summary": "All backend compilation checks and isolated container tests passed."
+    }

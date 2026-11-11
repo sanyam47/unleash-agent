@@ -33,6 +33,14 @@ app.include_router(chat_router.router, prefix="/api/chat")
 app.include_router(skills_router.router)
 
 
+@app.on_event("startup")
+def startup_event():
+    """Background startup warm-up: launches Docker Desktop asynchronously if installed so container sandbox is hot."""
+    import threading
+    from backend.core.sandbox import ensure_docker_daemon_async
+    threading.Thread(target=ensure_docker_daemon_async, daemon=True).start()
+
+
 @app.get("/debug/gemini")
 def debug_gemini():
     from backend.core.gemini_client import _call_gemini, gemini_available

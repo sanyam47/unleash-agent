@@ -47,6 +47,7 @@ backend/data/chat_sessions.json
 backend/data/workspace_registry.json
 backend/data/cloud_gpu_config.json
 backend/data/local_permissions_config.json
+backend/data/cloud_llm_config.json
 backend/data/restored_sessions_backup.json
 backend/data/.vault_master.key
 backend/data/vault.enc
@@ -87,3 +88,5 @@ test_model_upload.pkl
 # OS generated files
 .DS_Store
 Thumbs.db
+.snapshots/
+backend/data/execution_checkpoints/

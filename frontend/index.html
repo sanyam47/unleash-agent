@@ -1425,6 +1425,13 @@
                                         <span>Agentic: <strong id="agenticStatusLabel" style="color: var(--text-primary);">ON</strong></span>
                                     </button>
 
+
+                                    <!-- Mount Host Repository Pill -->
+                                    <button type="button" id="btnMountWorkspacePill" onclick="promptMountWorkspace()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary); border-color: var(--border-subtle); background: var(--bg-surface-elevated);" title="Mount an existing local code repository (with shadow Git checkpoints & rollback)">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                        <span id="mountWorkspaceLabel">Mount Repo</span>
+                                    </button>
+
                                     <!-- Shared Knowledge Base (RAG) Pill -->
                                     <button type="button" onclick="openKnowledgeBaseModal()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary);" title="Shared Knowledge Base & Datasets">
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
@@ -1687,6 +1694,9 @@
             <button type="button" id="btn-modal-tab-download" onclick="switchAddModelTab('tab-download')" style="flex: 1; padding: 8px 10px; font-size: 0.76rem; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-secondary); transition: all 0.2s;">
                 Download from Web
             </button>
+            <button type="button" id="btn-modal-tab-cloud" onclick="switchAddModelTab('tab-cloud')" style="flex: 1; padding: 8px 10px; font-size: 0.76rem; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--text-secondary); transition: all 0.2s;">
+                Connect Cloud (BYOK)
+            </button>
         </div>
 
         <!-- TAB 1: ALIAS / NAME ALREADY DOWNLOADED MODEL -->
@@ -1811,6 +1821,75 @@
                 <button type="button" id="btnAddModelSubmit" onclick="submitAddLocalModel()" class="primary" style="padding: 9px 20px; font-size: 0.84rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
                     <span>Download & Register</span>
                 </button>
+            </div>
+        </div>
+
+        <!-- TAB 4: CONNECT CLOUD LLM API (BYOK) -->
+        <div id="add-modal-tab-cloud" style="display: none; padding: 20px; flex-direction: column; gap: 14px; overflow-y: auto; max-height: calc(100vh - 160px);">
+            <div style="font-size: 0.76rem; color: #38bdf8; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 10px 14px; line-height: 1.4;">
+                <strong>Bring Your Own Key (BYOK):</strong> Connect Claude 3.5 Sonnet, DeepSeek-R1, GPT-4o, or any OpenAI-compatible API to run inside Unleash-Agent's automated browser testing, AST gates, and rollback harness. Keys are encrypted at rest with <strong>AES-256-GCM</strong>.
+            </div>
+
+            <!-- Provider Selection -->
+            <div>
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">1. Select Cloud Provider</label>
+                <select id="cloudLlmProviderSelect" onchange="onCloudLlmProviderChange()" style="width: 100%; font-size: 0.88rem; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); outline: none;">
+                    <option value="openrouter">OpenRouter (Claude 3.5, DeepSeek-R1, Llama 3.3, GPT-4o)</option>
+                    <option value="openai">OpenAI Direct (GPT-4o, o1, o3-mini)</option>
+                    <option value="anthropic">Anthropic Direct (Claude 3.5 Sonnet & Haiku)</option>
+                    <option value="deepseek">DeepSeek Direct (DeepSeek-V3 & Reasoner)</option>
+                    <option value="groq">Groq (Ultra-Fast 300+ tok/s Llama 3.3)</option>
+                    <option value="custom">Custom Base URL (vLLM / LM Studio / Together)</option>
+                </select>
+            </div>
+
+            <!-- Custom URL Input (hidden by default unless custom is selected) -->
+            <div id="cloudLlmCustomUrlContainer" style="display: none;">
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Custom Base Endpoint URL</label>
+                <input type="text" id="cloudLlmCustomUrlInput" placeholder="http://localhost:8000/v1/chat/completions" style="width: 100%; font-size: 0.88rem; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); outline: none;">
+            </div>
+
+            <!-- Model Selection -->
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin: 0;">2. Select or Enter Model</label>
+                    <a id="cloudLlmDocLink" href="https://openrouter.ai/keys" target="_blank" style="font-size: 0.72rem; color: var(--accent-text); text-decoration: underline;">Get API Key</a>
+                </div>
+                <select id="cloudLlmModelSelect" onchange="onCloudLlmModelSelectChange()" style="width: 100%; font-size: 0.88rem; padding: 10px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); outline: none; margin-bottom: 8px;">
+                    <!-- Populated dynamically based on provider -->
+                </select>
+                <input type="text" id="cloudLlmCustomModelInput" placeholder="Or enter exact custom model tag (e.g. anthropic/claude-3.5-sonnet)" style="width: 100%; font-size: 0.8rem; padding: 8px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); outline: none;">
+            </div>
+
+            <!-- API Key Input -->
+            <div>
+                <label style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">3. API Key</label>
+                <div style="position: relative; display: flex; align-items: center;">
+                    <input type="password" id="cloudLlmApiKeyInput" placeholder="sk-..." autocomplete="off" style="width: 100%; font-size: 0.88rem; padding: 10px 40px 10px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; color: var(--text-primary); outline: none; font-family: monospace;">
+                    <button type="button" onclick="toggleCloudApiKeyVisibility()" style="position: absolute; right: 10px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 4px;" title="Show/Hide">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                </div>
+                <div id="cloudLlmKeyStatusText" style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">Zero plaintext on disk. Encrypted via AES-256-GCM authenticated master vault.</div>
+            </div>
+
+            <!-- Test Feedback Banner -->
+            <div id="cloudLlmTestResultBanner" style="display: none; font-size: 0.76rem; border-radius: 8px; padding: 10px 14px;"></div>
+
+            <!-- Modal Actions -->
+            <div style="display: flex; gap: 10px; margin-top: 8px; align-items: center; justify-content: space-between;">
+                <button type="button" id="btnCloudLlmDisconnect" onclick="disconnectCloudLlmKey()" style="display: none; padding: 8px 14px; font-size: 0.8rem; background: transparent; border: 1px solid rgba(239, 68, 68, 0.4); color: #ef4444; border-radius: 8px; cursor: pointer;">
+                    Disconnect
+                </button>
+                <div style="display: flex; gap: 8px; margin-left: auto;">
+                    <button type="button" onclick="closeAddModelModal()" class="secondary" style="padding: 9px 16px; font-size: 0.82rem; border-radius: 8px;">Cancel</button>
+                    <button type="button" id="btnCloudLlmTest" onclick="testCloudLlmKeyUI()" style="padding: 9px 16px; font-size: 0.82rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 8px; cursor: pointer; font-weight: 600;">
+                        Test Connection
+                    </button>
+                    <button type="button" id="btnCloudLlmSave" onclick="saveCloudLlmKeyUI()" class="primary" style="padding: 9px 18px; font-size: 0.82rem; border-radius: 8px; font-weight: 600;">
+                        Save & Connect
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -2159,7 +2238,7 @@
     </div>
 </footer>
 
-<script src="/static/script_v2.js?v=v28_warm_amber_charcoal"></script>
+<script src="/static/script_v2.js?v=v31_silent_clean_ui"></script>
 
 
 <!-- ============================================== -->

@@ -157,7 +157,86 @@ def validate_javascript_syntax(content: str, filename: str = "app.js") -> Dict[s
     return {"valid": True, "file": filename}
 
 
+def validate_python_syntax(target: Any, filename: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Validates Python code syntax via ast.parse and compile.
+    Accepts raw code string, file path, or workspace directory path.
+    """
+    import ast
+    from pathlib import Path
 
+    # Check if target is a Path or existing file/dir path
+    p = None
+    if isinstance(target, Path):
+        p = target
+    elif isinstance(target, str) and (os.path.exists(target) or "/" in target or "\\" in target):
+        try:
+            p = Path(target)
+        except Exception:
+            p = None
+
+    if p and p.exists():
+        if p.is_dir():
+            py_files = [f for f in p.glob("*.py") if not any(x in f.parts for x in ["venv", ".venv", "__pycache__"])]
+            for pf in py_files:
+                try:
+                    code = pf.read_text(encoding="utf-8", errors="replace")
+                    ast.parse(code, filename=pf.name)
+                    compile(code, pf.name, 'exec')
+                except SyntaxError as e:
+                    line_preview = e.text.strip() if e.text else ""
+                    return {
+                        "valid": False,
+                        "error": f"Python SyntaxError in '{pf.name}' line {e.lineno}:{e.offset}: {e.msg} (around '{line_preview}')",
+                        "lineno": e.lineno,
+                        "offset": e.offset,
+                        "file": pf.name,
+                        "primary_repair_file": pf.name
+                    }
+                except Exception as e:
+                    return {"valid": False, "error": f"Python compilation failed in '{pf.name}': {str(e)}", "file": pf.name, "primary_repair_file": pf.name}
+            return {"valid": True, "error": None, "checked_files": [f.name for f in py_files]}
+        elif p.is_file():
+            fname = filename or p.name
+            try:
+                code = p.read_text(encoding="utf-8", errors="replace")
+                ast.parse(code, filename=fname)
+                compile(code, fname, 'exec')
+                return {"valid": True, "error": None, "file": fname}
+            except SyntaxError as e:
+                line_preview = e.text.strip() if e.text else ""
+                return {
+                    "valid": False,
+                    "error": f"Python SyntaxError in '{fname}' line {e.lineno}:{e.offset}: {e.msg} (around '{line_preview}')",
+                    "lineno": e.lineno,
+                    "offset": e.offset,
+                    "file": fname,
+                    "primary_repair_file": fname
+                }
+            except Exception as e:
+                return {"valid": False, "error": f"Python compilation failed in '{fname}': {str(e)}", "file": fname, "primary_repair_file": fname}
+
+    # Otherwise treat target as raw code string
+    content = str(target) if target is not None else ""
+    fname = filename or "main.py"
+    if not content or not content.strip():
+        return {"valid": False, "error": f"'{fname}' is completely empty.", "primary_repair_file": fname}
+    try:
+        ast.parse(content, filename=fname)
+        compile(content, fname, 'exec')
+        return {"valid": True, "error": None, "file": fname}
+    except SyntaxError as e:
+        line_preview = e.text.strip() if e.text else ""
+        return {
+            "valid": False,
+            "error": f"Python SyntaxError in '{fname}' line {e.lineno}:{e.offset}: {e.msg} (around '{line_preview}')",
+            "lineno": e.lineno,
+            "offset": e.offset,
+            "file": fname,
+            "primary_repair_file": fname
+        }
+    except Exception as e:
+        return {"valid": False, "error": f"Python compilation failed in '{fname}': {str(e)}", "file": fname, "primary_repair_file": fname}
 
 
 def extract_html_interactive_elements(html: str) -> Dict[str, List[str]]:
@@ -473,9 +552,9 @@ def validate_workspace(
     # LAYER 4: ANTI-PLACEHOLDER & ACTIVE IMPLEMENTATION AUDIT GATE
     # ==============================================================
     lazy_comment_rules = [
-        (r'<!--\s*(?:\.\.\.|no changes needed|rest of code|add your|todo|fill in|content here)', "HTML Comment Placeholder ('<!-- ... -->')"),
-        (r'//\s*(?:logic to handle|rest of code|todo|add your|fill in|implementation goes here|\.\.\.)', "JavaScript Placeholder Comment ('// Logic to handle...')"),
-        (r'/\*\s*(?:rest of code|add your|todo|fill in|styles here|\.\.\.)\s*\*/', "Block Comment Placeholder ('/* ... */')")
+        (r'<!--\s*(?:.*?(?:\.\.\.|no changes needed|rest of code|add your|todo|fill in|content here|goes here))', "HTML Comment Placeholder ('<!-- ... -->')"),
+        (r'//\s*(?:.*?(?:logic to handle|rest of code|todo|add your|fill in|implementation goes here|logic here|goes here|\.\.\.))', "JavaScript Placeholder Comment ('// Logic to handle...')"),
+        (r'/\*\s*(?:.*?(?:rest of code|add your|todo|fill in|styles here|goes here|\.\.\.))\s*\*/', "Block Comment Placeholder ('/* ... */')")
     ]
 
     # Check HTML for lazy comment stubs
@@ -544,6 +623,23 @@ def validate_workspace(
                         add_error("app.js", "browser_runtime", f"BROWSER RUNTIME DEFECT: {b_err}")
         except Exception:
             pass
+
+    # ==============================================================
+    # LAYER 5B: UNIVERSAL BACKEND DOCKER TEST GATE
+    # ==============================================================
+    if len(errors) == 0 and (py_files or (proj_dir / "package.json").exists()):
+        try:
+            from backend.core.container_runner import run_backend_docker_test_gate
+            backend_test_res = run_backend_docker_test_gate(clean_proj, timeout=8)
+            if not backend_test_res.get("valid"):
+                target_f = backend_test_res.get("primary_repair_file", py_files[0].name if py_files else "main.py")
+                add_error(
+                    target_f,
+                    backend_test_res.get("category", "backend_test_failure"),
+                    backend_test_res.get("error", "Backend compilation/test failure.")
+                )
+        except Exception as e:
+            print(f"[BACKEND GATE WARNING]: Could not run backend container gate: {e}")
 
     # ==============================================================
     # LAYER 6: APPSEC & SECRET LEAKAGE AUDIT GATE (Marcus Kane)

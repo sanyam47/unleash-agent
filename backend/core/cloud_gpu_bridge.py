@@ -202,17 +202,32 @@ class CloudGpuBridge:
         active_url = cls.get_active_inference_url()
         is_alive = cls._test_endpoint_ping(active_url)
 
+        active_name = active_provider["name"]
+        vram_display = active_provider["vram"]
+        vram_free_gb = None
+        if active_key == "local":
+            try:
+                from backend.core.adaptive_tier import probe_local_gpu_hardware
+                hw = probe_local_gpu_hardware()
+                if hw.get("pill_display"):
+                    active_name = hw["pill_display"]
+                vram_free_gb = hw.get("vram_free_gb")
+                vram_display = f"{hw.get('vram_gb', 6.0)}GB ({vram_free_gb}GB Free)"
+            except Exception:
+                pass
+
         return {
             "active_provider": active_key,
             "compute_mode": config.get("compute_mode", "turbo"),
             "fallback_policy": config.get("fallback_policy", "prompt_first"),
-            "active_name": active_provider["name"],
+            "active_name": active_name,
             "active_url": active_url,
             "is_online": is_alive,
             "tier": active_provider["tier"],
             "remaining_quota": active_provider.get("remaining_quota", active_provider.get("remaining_credits")),
             "unit": active_provider["unit"],
-            "vram": active_provider["vram"],
+            "vram": vram_display,
+            "vram_free_gb": vram_free_gb,
             "providers": config["providers"]
         }
 
@@ -369,6 +384,13 @@ class CloudGpuBridge:
         curr = (current_model or "").lower()
         installed = cls._get_installed_ollama_models()
 
+        is_cloud = False
+        try:
+            from backend.core.cloud_llm_client import is_cloud_model
+            is_cloud = is_cloud_model(current_model)
+        except Exception:
+            pass
+
         if tier in ("kaggle", "colab", "turbo"):
             # Can run 32B or 14B comfortably
             if any(k in curr for k in ["70b", "32b", "14b"]):
@@ -377,27 +399,27 @@ class CloudGpuBridge:
 
         elif tier in ("local", "balanced"):
             # RTX 3050 6GB: Run 7B or 8B
-            if any(k in curr for k in ["70b", "32b", "14b"]):
+            if is_cloud or any(k in curr for k in ["70b", "32b", "27b", "14b"]):
                 for m in installed:
                     m_lower = m.lower()
-                    if any(k in m_lower for k in ["dolphin3", "coder", "7b", "8b", "llama3", "mistral"]):
+                    if any(k in m_lower for k in ["cyber-specialist", "dolphin3", "coder", "7b", "8b", "llama3", "mistral"]):
                         return m
-                return installed[0] if installed else "dolphin3:latest"
-            return current_model or (installed[0] if installed else "dolphin3:latest")
+                return installed[0] if installed else "cyber-specialist:latest"
+            return current_model or (installed[0] if installed else "cyber-specialist:latest")
 
         elif tier in ("cpu_safe", "cpu"):
             # 0% VRAM: Run fast, low-parameter model
-            if any(k in curr for k in ["70b", "32b", "14b", "8b", "7b"]):
+            if is_cloud or any(k in curr for k in ["70b", "32b", "27b", "14b", "8b", "7b"]):
                 for m in installed:
                     m_lower = m.lower()
                     if any(k in m_lower for k in ["1.5b", "1b", "2b", "3b", "tiny"]):
                         return m
                 for m in installed:
                     m_lower = m.lower()
-                    if any(k in m_lower for k in ["dolphin3", "coder", "llama3", "mistral"]):
+                    if any(k in m_lower for k in ["cyber-specialist", "dolphin3", "coder", "llama3", "mistral"]):
                         return m
-                return installed[0] if installed else "qwen2.5-coder:1.5b"
-            return current_model or (installed[0] if installed else "qwen2.5-coder:1.5b")
+                return installed[0] if installed else "cyber-specialist:latest"
+            return current_model or (installed[0] if installed else "cyber-specialist:latest")
 
         return current_model
 

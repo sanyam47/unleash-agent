@@ -48,6 +48,74 @@ def register_custom_workspace(project_name: str, custom_dir: Path):
     except Exception as e:
         print(f"[Workspace Registry Error]: {e}")
 
+
+def register_mounted_workspace(project_name: str, host_path: str) -> Dict[str, Any]:
+    """
+    Mounts an existing host directory as the active workspace for a project.
+    - Validates path is safe (not OS root or Windows system folder)
+    - Automatically initializes Git tracking if not already present
+    - Creates pre-execution snapshot for 1-click rollback
+    - Indexes file count and directory layout
+    """
+    clean_proj = sanitize_project_name(project_name)
+    raw_path = Path(host_path).resolve()
+    safe_path = _validate_safe_os_path(raw_path)
+    if not safe_path:
+        return {
+            "status": "error",
+            "error": f"Security Alert: Directory '{host_path}' is a protected OS system root and cannot be mounted."
+        }
+    if not safe_path.exists():
+        return {
+            "status": "error",
+            "error": f"Directory '{host_path}' does not exist on disk."
+        }
+    if not safe_path.is_dir():
+        return {
+            "status": "error",
+            "error": f"Path '{host_path}' is a file, not a directory."
+        }
+
+    # Register in custom workspace registry
+    register_custom_workspace(clean_proj, safe_path)
+
+    # Git shadow initialization
+    git_tracked = False
+    git_dir = safe_path / ".git"
+    if git_dir.exists():
+        git_tracked = True
+    else:
+        try:
+            subprocess.run(["git", "init"], cwd=str(safe_path), capture_output=True, timeout=5, check=False)
+            git_tracked = True
+        except Exception:
+            git_tracked = False
+
+    # Create immutable pre-turn snapshot
+    from backend.core.workspace_snapshot import create_snapshot
+    snap_res = create_snapshot(clean_proj, step_label="mount_checkpoint", description=f"Pre-execution mount snapshot of {safe_path.name}")
+
+    # Index code files excluding virtualenvs and node_modules
+    IGNORED_PARTS = {"venv", ".venv", "node_modules", "__pycache__", "dist", "build"}
+    indexed_files = []
+    for root, dirs, filenames in os.walk(str(safe_path)):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in IGNORED_PARTS]
+        for fn in filenames:
+            if not fn.startswith("."):
+                indexed_files.append(os.path.join(root, fn))
+    file_count = len(indexed_files)
+
+    return {
+        "status": "mounted",
+        "project_name": clean_proj,
+        "workspace_path": str(safe_path),
+        "files_count": file_count,
+        "files_indexed": file_count,
+        "git_tracked": git_tracked,
+        "snapshot_id": snap_res.get("snapshot_id"),
+        "message": f"Successfully mounted '{safe_path.name}' ({file_count} files). Git shadow and atomic rollback enabled."
+    }
+
 def get_project_dir(project_name: str) -> Path:
     """Returns the effective directory for a project (custom directory if registered, else PROJECTS_ROOT)."""
     clean_proj = sanitize_project_name(project_name)
@@ -101,11 +169,16 @@ def _validate_safe_os_path(p: Path) -> Optional[Path]:
 MAX_READ_BYTES = 64 * 1024  # 64 KB safety limit for reading files
 
 
-def sanitize_project_name(name: Optional[str]) -> str:
+def sanitize_project_name(name: Any) -> str:
     """Sanitizes project name to prevent directory traversal and invalid characters."""
-    if not name or not name.strip():
+    if name is None:
         return "project_default"
-    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', name.strip())
+    if isinstance(name, Path):
+        name = name.name
+    name_str = str(name).strip()
+    if not name_str:
+        return "project_default"
+    cleaned = re.sub(r'[^a-zA-Z0-9_\-]', '_', name_str)
     return cleaned[:48] or "project_default"
 
 
@@ -536,44 +609,120 @@ def run_terminal_command(project_name: str, command: str) -> Dict[str, Any]:
 # TOOL REGISTRY & DISPATCHER
 # ============================================================================
 
-def edit_project_file(project_name: str, file_path: str, target: str, replacement: str) -> Dict[str, Any]:
-    """Surgically replaces a specific code snippet or block within an existing file without wiping the rest."""
+def edit_project_file(
+    project_name: str,
+    file_path: str,
+    target: str,
+    replacement: str,
+    replace_all: bool = False
+) -> Dict[str, Any]:
+    """
+    Surgically replaces a specific code snippet or block within an existing file.
+    Tier-1 Multi-Pass Matcher:
+      Pass 1: Exact byte match
+      Pass 2: Newline-normalized match (\r\n vs \n)
+      Pass 3: Whitespace-trimmed line-block anchor match (handles indentation drift)
+    Guarantees:
+      - Validates syntax post-edit (JS, Python, JSON)
+      - Returns line-diff stats (-X / +Y lines)
+      - Zero placeholder hazard
+    """
     try:
         target_path = resolve_safe_project_path(project_name, file_path)
         if not target_path.exists() or not target_path.is_file():
             return {"status": "error", "error": f"File '{file_path}' does not exist in project '{project_name}'. Cannot edit."}
 
         original_content = target_path.read_text(encoding="utf-8", errors="replace")
-        if target not in original_content:
+        new_content = None
+        occurrences = 0
+
+        # Pass 1: Exact substring match
+        if target in original_content:
+            occurrences = original_content.count(target)
+            count_to_rep = occurrences if replace_all else 1
+            new_content = original_content.replace(target, replacement, count_to_rep)
+
+        # Pass 2: Line-ending normalized match
+        if new_content is None:
             normalized_orig = original_content.replace("\r\n", "\n")
             normalized_target = target.replace("\r\n", "\n")
+            normalized_rep = replacement.replace("\r\n", "\n")
             if normalized_target in normalized_orig:
-                new_content = normalized_orig.replace(normalized_target, replacement.replace("\r\n", "\n"), 1)
-            else:
-                return {
-                    "status": "error",
-                    "error": f"Target string not found in '{file_path}'. Ensure 'target' matches exact existing characters and whitespace.",
-                    "hint": "Inspect the file first with 'read_project_file' to copy the exact lines to replace."
-                }
-        else:
-            new_content = original_content.replace(target, replacement, 1)
+                occurrences = normalized_orig.count(normalized_target)
+                count_to_rep = occurrences if replace_all else 1
+                new_content = normalized_orig.replace(normalized_target, normalized_rep, count_to_rep)
 
-        # Validate syntax if JS
-        if file_path.lower().endswith(".js"):
+        # Pass 3: Fuzzy / whitespace-trimmed contiguous line-block match
+        if new_content is None:
+            orig_lines = original_content.replace("\r\n", "\n").splitlines(keepends=True)
+            target_lines = [l.strip() for l in target.replace("\r\n", "\n").splitlines() if l.strip()]
+            
+            if target_lines and len(target_lines) <= len(orig_lines):
+                # Scan for contiguous block where stripped lines match
+                matched_start = -1
+                matched_end = -1
+                t_len = len(target_lines)
+
+                for i in range(len(orig_lines) - t_len + 1):
+                    window = [orig_lines[i + j].strip() for j in range(t_len)]
+                    if window == target_lines:
+                        matched_start = i
+                        matched_end = i + t_len
+                        occurrences = 1
+                        break
+
+                if matched_start != -1:
+                    rep_block = replacement if replacement.endswith("\n") else replacement + "\n"
+                    new_content = "".join(orig_lines[:matched_start]) + rep_block + "".join(orig_lines[matched_end:])
+
+        if new_content is None:
+            return {
+                "status": "error",
+                "error": f"Target string not found in '{file_path}'. Ensure 'target' matches existing characters and lines.",
+                "hint": "Inspect the file first with 'read_project_file' to copy the exact lines to replace."
+            }
+
+        # Multi-language Syntax Validation Gates
+        ext = target_path.suffix.lower()
+        if ext == ".js":
             from backend.core.workspace_validator import validate_javascript_syntax
             js_val = validate_javascript_syntax(new_content, file_path)
             if not js_val.get("valid"):
                 return {
                     "status": "error",
-                    "error": f"Syntax validation failed after edit in '{file_path}': {js_val.get('error')}"
+                    "error": f"JavaScript syntax validation failed after edit in '{file_path}': {js_val.get('error')}"
+                }
+        elif ext == ".py":
+            from backend.core.workspace_validator import validate_python_syntax
+            py_val = validate_python_syntax(new_content, file_path)
+            if not py_val.get("valid"):
+                return {
+                    "status": "error",
+                    "error": f"Python syntax validation failed after edit in '{file_path}': {py_val.get('error')}"
+                }
+        elif ext == ".json":
+            try:
+                import json
+                json.loads(new_content)
+            except Exception as je:
+                return {
+                    "status": "error",
+                    "error": f"JSON syntax validation failed after edit in '{file_path}': {je}"
                 }
 
+        # Commit edit to disk
         target_path.write_text(new_content, encoding="utf-8")
+        
+        orig_line_cnt = len(target.splitlines())
+        rep_line_cnt = len(replacement.splitlines())
         return {
             "status": "success",
             "file": file_path,
             "bytes_written": len(new_content),
-            "message": f"Successfully applied surgical edit to '{file_path}'"
+            "lines_removed": orig_line_cnt,
+            "lines_added": rep_line_cnt,
+            "occurrences_replaced": occurrences,
+            "message": f"Successfully applied surgical edit to '{file_path}' (-{orig_line_cnt}/+{rep_line_cnt} lines)"
         }
     except Exception as e:
         return {"status": "error", "error": f"Failed to edit file '{file_path}': {str(e)}"}
@@ -810,6 +959,41 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         except Exception as e:
             pass
         return {"status": "error", "error": f"Unknown tool '{tool_name}'. Available: {[t['name'] for t in get_all_tool_schemas()]}"}
+
+
+LEAN_TOOLS_SCHEMA = [
+    {
+        "name": "write_project_file",
+        "description": "Create or overwrite a file in the project workspace (e.g. index.html, styles.css, app.js).",
+        "parameters": {
+            "file_path": "Relative path to file (e.g. 'index.html', 'app.js', 'styles.css')",
+            "content": "Full content of the file to write"
+        }
+    },
+    {
+        "name": "edit_project_file",
+        "description": "Surgically edit an existing file by replacing an exact code snippet or function block.",
+        "parameters": {
+            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')",
+            "target": "Exact existing code string to be replaced (must match whitespace exactly)",
+            "replacement": "New code string to replace the target with"
+        }
+    },
+    {
+        "name": "read_project_file",
+        "description": "Read the text content of a file in the project workspace.",
+        "parameters": {
+            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')"
+        }
+    }
+]
+
+
+def get_tool_schemas(mode: str = "full") -> List[Dict[str, Any]]:
+    """Returns tool schemas according to compute tier: lean (3 tools) or full (all tools + MCP)."""
+    if mode == "lean":
+        return list(LEAN_TOOLS_SCHEMA)
+    return get_all_tool_schemas()
 
 
 def get_all_tool_schemas() -> List[Dict[str, Any]]:

@@ -58,6 +58,8 @@ class ChatRequest(BaseModel):
     skill_ids: Optional[List[str]] = Field(default=None, description="Optional active skill IDs to inject")
     agentic: bool = Field(default=False, description="Enable autonomous Antigravity ReAct agent loop")
     project_name: Optional[str] = Field(default=None, description="Workspace project name for autonomous file generation")
+    workspace_path: Optional[str] = Field(default=None, description="Optional existing host repository directory to mount directly")
+    use_swarm: bool = Field(default=False, description="Enable Dynamic Multi-Agent Swarm (Builder ➔ Verifier Relay)")
     skip_agentic_prompt: bool = Field(default=False, description="Skip agentic confirmation proposal and continue in pure text")
 
 
@@ -259,16 +261,41 @@ def send_chat_message(req: ChatRequest):
             prior_history = [m for m in payload_messages if m.get("role") in ("user", "assistant")][:-1]
             recent_history = prior_history[-6:] if len(prior_history) > 6 else prior_history
 
-            agent_res = run_agentic_react_loop(
-                model=req.model,
-                user_prompt=latest_prompt,
-                base_system_prompt=req.system_prompt or "",
-                project_name=req.project_name,
-                skills_prompt=skills_prompt_str,
-                temperature=req.temperature or 0.4,
-                context_window=req.context_window or 8192,
-                chat_history=recent_history
-            )
+            # If user specified existing host workspace path, mount it with Git shadow & rollback support
+            if req.workspace_path:
+                from backend.core.agent_tools import register_mounted_workspace
+                p_name = req.project_name or f"mounted_{Path(req.workspace_path).name}"
+                register_mounted_workspace(p_name, req.workspace_path)
+                req.project_name = p_name
+
+            # Dynamic Swarm Auto-Dispatch:
+            # Automatically activates the 3-Worker Swarm (Builder ➔ Verifier ➔ Auditor) for:
+            # 1. Explicit user request (req.use_swarm is True)
+            # 2. Swarm keywords (swarm, multi-agent, pair-program)
+            # 3. Any Agentic coding, building, refactoring, or repair task
+            is_code_task = bool(re.search(r'\b(build|create|implement|code|make|fix|refactor|debug|test|audit|develop|add|generate|mount)\b', latest_prompt, re.IGNORECASE))
+            use_swarm_mode = req.use_swarm is True or (req.use_swarm is not False and req.agentic and (is_code_task or bool(req.workspace_path or req.project_name))) or bool(re.search(r'\b(swarm|multi-agent|pair-program)\b', latest_prompt, re.IGNORECASE))
+            if use_swarm_mode:
+                from backend.core.agent_engine import run_dynamic_swarm_pipeline
+                agent_res = run_dynamic_swarm_pipeline(
+                    model=req.model,
+                    user_prompt=latest_prompt,
+                    project_name=req.project_name,
+                    base_system_prompt=req.system_prompt or "",
+                    temperature=req.temperature or 0.35,
+                    context_window=req.context_window or 8192
+                )
+            else:
+                agent_res = run_agentic_react_loop(
+                    model=req.model,
+                    user_prompt=latest_prompt,
+                    base_system_prompt=req.system_prompt or "",
+                    project_name=req.project_name,
+                    skills_prompt=skills_prompt_str,
+                    temperature=req.temperature or 0.4,
+                    context_window=req.context_window or 8192,
+                    chat_history=recent_history
+                )
 
             agent_reply = agent_res["reply"]
             if knowledge_proposal and "[KNOWLEDGE_ACQUIRE_PROPOSAL:" not in agent_reply:
@@ -277,11 +304,14 @@ def send_chat_message(req: ChatRequest):
             return {
                 "reply": agent_reply,
                 "agentic": True,
-                "project_name": agent_res["project_name"],
-                "created_files": agent_res["created_files"],
-                "steps": agent_res["steps"],
-                "telemetry": agent_res["telemetry"],
+                "project_name": agent_res.get("project_name", "project_default"),
+                "created_files": agent_res.get("created_files", []),
+                "steps": agent_res.get("steps", []),
+                "telemetry": agent_res.get("telemetry", {"tokens_per_second": 0, "eval_tokens": 0, "eval_duration_sec": 0}),
                 "compute_tier": agent_res.get("compute_tier"),
+                "swarm_mode": agent_res.get("swarm_mode"),
+                "mode_label": agent_res.get("mode_label"),
+                "health": agent_res.get("health"),
                 "rag_sources": rag_sources,
                 "active_skills": active_skills_names,
                 "bake_recommendation": bake_recommendation,
@@ -316,6 +346,44 @@ def send_chat_message(req: ChatRequest):
             "bake_recommendation": bake_recommendation,
             "knowledge_proposal": knowledge_proposal
         }
+
+    # Route to Cloud LLM if cloud model selected
+    try:
+        from backend.core.cloud_llm_client import is_cloud_model, call_cloud_llm_chat
+        if is_cloud_model(req.model):
+            cloud_res = call_cloud_llm_chat(
+                model=req.model,
+                messages=payload_messages,
+                temperature=req.temperature or 0.35,
+                max_tokens=req.max_tokens or 4096
+            )
+            reply_content = cloud_res["content"]
+            eval_count = cloud_res.get("eval_count", 0)
+            elapsed = cloud_res.get("duration_sec", 0.1)
+            tok_per_sec = round(eval_count / max(elapsed, 0.001), 1)
+
+            if knowledge_proposal and "[KNOWLEDGE_ACQUIRE_PROPOSAL:" not in reply_content:
+                reply_content += f"\n\n[KNOWLEDGE_ACQUIRE_PROPOSAL:{knowledge_proposal['domain_key']}:{knowledge_proposal['database_name']}:{knowledge_proposal['description']}:{knowledge_proposal['source_url']}]"
+
+            return {
+                "status": "success",
+                "model": req.model,
+                "reply": reply_content,
+                "role": "assistant",
+                "rag_sources": rag_sources,
+                "active_skills": active_skills_names,
+                "bake_recommendation": bake_recommendation,
+                "knowledge_proposal": knowledge_proposal,
+                "telemetry": {
+                    "eval_tokens": eval_count,
+                    "eval_duration_sec": round(elapsed, 2),
+                    "tokens_per_second": tok_per_sec
+                }
+            }
+    except Exception as e:
+        from backend.core.cloud_llm_client import is_cloud_model
+        if is_cloud_model(req.model):
+            raise HTTPException(status_code=500, detail=f"Cloud LLM API error: {str(e)}")
 
     ollama_payload = {
         "model": req.model,
@@ -431,12 +499,23 @@ def start_ollama_service():
 
 @router.get("/models")
 def get_available_models():
-    """Lists all models installed in local Ollama instance with parameter sizes."""
+    """Lists all models installed in local Ollama instance combined with configured Cloud LLM models."""
+    from backend.core.cloud_llm_client import CloudLlmManager
+    cloud_models = CloudLlmManager.get_configured_models()
+
     if not check_ollama_alive():
+        if cloud_models:
+            return {
+                "status": "online",
+                "models": cloud_models,
+                "count": len(cloud_models),
+                "ollama_status": "offline",
+                "message": "Local Ollama is offline. Using configured Cloud LLM models."
+            }
         return {
             "status": "offline",
             "models": [],
-            "message": "Ollama is offline. Start Ollama to load local models."
+            "message": "Ollama is offline. Start Ollama to load local models, or configure a Cloud LLM API key."
         }
 
     try:
@@ -455,15 +534,28 @@ def get_available_models():
                 "parameter_size": details.get("parameter_size", "Unknown"),
                 "quantization": details.get("quantization_level", "Unknown"),
                 "family": details.get("family", "Unknown"),
-                "modified_at": m.get("modified_at", "")[:10]
+                "modified_at": m.get("modified_at", "")[:10],
+                "is_cloud": False
             })
+
+        # Add configured cloud models
+        all_models = cloud_models + formatted
 
         return {
             "status": "online",
-            "models": formatted,
-            "count": len(formatted)
+            "models": all_models,
+            "count": len(all_models),
+            "cloud_count": len(cloud_models),
+            "local_count": len(formatted)
         }
     except Exception as e:
+        if cloud_models:
+            return {
+                "status": "online",
+                "models": cloud_models,
+                "count": len(cloud_models),
+                "ollama_status": "error"
+            }
         raise HTTPException(status_code=500, detail=f"Error reading Ollama models: {str(e)}")
 
 
@@ -2017,3 +2109,107 @@ def call_mcp_tool_test(req: MCPToolCallRequest):
     context = {"project_name": req.project_name or "default_project"}
     result = mgr.dispatch_tool(req.tool, req.arguments, context)
     return result
+
+
+# ========================================================
+# CLOUD LLM PROVIDER (BYOK) APIS
+# ========================================================
+
+class SaveCloudLlmKeyRequest(BaseModel):
+    provider: str = Field(..., description="Provider ID: 'openrouter', 'openai', 'anthropic', 'deepseek', 'groq', 'custom'")
+    api_key: str = Field(..., description="API key to encrypt and store at rest")
+    model: Optional[str] = Field(None, description="Default model ID for this provider")
+    custom_url: Optional[str] = Field(None, description="Custom base URL for custom OpenAI-compatible endpoint")
+    set_active: Optional[bool] = Field(True, description="Whether to make this the active cloud model")
+
+class TestCloudLlmRequest(BaseModel):
+    provider: str = Field(..., description="Provider ID to test")
+    api_key: Optional[str] = Field(None, description="Optional raw key to test before saving (otherwise uses stored key)")
+    model: Optional[str] = Field(None, description="Model ID to test")
+    custom_url: Optional[str] = Field(None, description="Custom endpoint URL")
+
+@router.get("/cloud-llm/config")
+def get_cloud_llm_config():
+    """Returns configured cloud LLM providers, active models, and masked keys."""
+    from backend.core.cloud_llm_client import CloudLlmManager
+    return CloudLlmManager.get_status()
+
+@router.post("/cloud-llm/save-key")
+def save_cloud_llm_key(req: SaveCloudLlmKeyRequest):
+    """Encrypts API key into AES-256 vault and registers the cloud model."""
+    from backend.core.cloud_llm_client import CloudLlmManager
+    try:
+        return CloudLlmManager.save_key(
+            provider=req.provider,
+            api_key=req.api_key,
+            model=req.model,
+            custom_url=req.custom_url,
+            set_active=req.set_active if req.set_active is not None else True
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/cloud-llm/test")
+def test_cloud_llm_connection(req: TestCloudLlmRequest):
+    """Sends a 1-token test prompt to verify credentials and connectivity."""
+    from backend.core.cloud_llm_client import CloudLlmManager
+    res = CloudLlmManager.test_connection(
+        provider=req.provider,
+        api_key=req.api_key,
+        model=req.model,
+        custom_url=req.custom_url
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "Test connection failed"))
+    return res
+
+@router.delete("/cloud-llm/remove/{provider}")
+def remove_cloud_llm_key(provider: str):
+    """Removes stored cloud API key from AES-256 vault."""
+    from backend.core.cloud_llm_client import CloudLlmManager
+    return CloudLlmManager.remove_key(provider)
+
+
+class EscalateRepairRequest(BaseModel):
+    project_name: str
+    file_path: Optional[str] = "app.js"
+    error_summary: Optional[str] = "Automated compiler/browser validation error"
+    cloud_model: Optional[str] = None
+
+
+@router.post("/escalate-repair")
+def escalate_repair_to_cloud_endpoint(req: EscalateRepairRequest):
+    """
+    Bidirectional Escalation API:
+    Escalates a stubborn file that failed local repair to Cloud Frontier reasoning.
+    Repairs the file, validates with AST & headless chromium gate, and returns the result.
+    """
+    from backend.core.agent_engine import execute_cloud_targeted_repair
+    res = execute_cloud_targeted_repair(
+        project_name=req.project_name,
+        file_path=req.file_path or "app.js",
+        error_summary=req.error_summary or "Compiler/Acceptance Gate Failure",
+        cloud_model=req.cloud_model
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("message", "Cloud repair failed"))
+    return res
+
+
+class MountWorkspaceRequest(BaseModel):
+    project_name: str
+    workspace_path: str
+
+
+@router.post("/mount-workspace")
+def mount_workspace_endpoint(req: MountWorkspaceRequest):
+    """
+    Mount Existing Repository API:
+    Mounts an existing host directory, initializes Git tracking, and creates a pre-execution snapshot.
+    """
+    from backend.core.agent_tools import register_mounted_workspace
+    res = register_mounted_workspace(req.project_name, req.workspace_path)
+    if res.get("status") == "error":
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to mount workspace"))
+    return res
+

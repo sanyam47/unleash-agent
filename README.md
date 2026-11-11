@@ -31,6 +31,20 @@ Most developers assume lightweight local models (like **Llama 3 8B**, **Qwen 2.5
 
 ---
 
+## ⚔️ How It Compares
+
+| Capability | Raw Local LLM (Ollama) | Cloud Subscriptions (Cursor / Claude Code) | **Unleash-Agent** |
+|:---|:---:|:---:|:---:|
+| **Cost & Freedom** | Free | \$20 – \$200+ / month | **100% Free & Self-Hosted** |
+| **Privacy & Air-Gap** | ✅ Local | ❌ Proprietary cloud logging | **✅ 100% Offline Capable** |
+| **Code Editing Precision** | ❌ Full-file rewrites (Truncation risk) | ⚠️ High token burn | **✅ 3-Pass Surgical Diff Editor** |
+| **Multi-Agent Architecture** | ❌ Single turn | ⚠️ Cloud parallel only | **✅ Dynamic Hardware-Aware Swarm** |
+| **Verification & Testing** | ❌ Hallucinates & stops | ⚠️ Basic linter / static check | **✅ 6-Layer Docker & Playwright Gate** |
+| **Hardware Resilience** | ❌ Driver crashes on 6GB GPUs | N/A (Cloud hosted) | **✅ 0-Crash VRAM Relay Guard** |
+| **Workspace Mounting** | ❌ Isolated playground | ⚠️ Manual Git commands | **✅ 1-Click Shadow Checkpoints & Rollback** |
+
+---
+
 ## 🐝 The Dynamic Swarm Engine (Builder ➔ Verifier ➔ Auditor)
 
 Unleash-Agent dynamically adapts its multi-agent architecture based on your active hardware:

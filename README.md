@@ -335,7 +335,13 @@ Found a bug or have a suggestion? Feel free to open an issue.
 
 
 
-## 📄 License
+## 📄 License & Commercial Rights
 
-This project is open-source under the [MIT License](LICENSE).
+Unleash-Agent is dual-licensed under the **Community Open-Source License** and the **Enterprise Commercial License**:
+
+* **Free for Individuals & Open Source:** Free forever to run, test, study, and use locally for personal projects, researchers, and hobbyists.
+* **Commercial & SaaS Use:** Any commercial deployment, hosting as a paid SaaS/API, white-labeling, or proprietary bundling requires a written **Commercial Enterprise License**.
+* **Inquiries:** Contact Sanyam at [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com).
+
+See full terms in the [LICENSE](LICENSE) file.
 

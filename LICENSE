@@ -1,21 +1,43 @@
-MIT License
+# Unleash-Agent Dual License Agreement
 
-Copyright (c) 2026 Sanyam (sanyam47)
+Copyright (c) 2026 Sanyam (sanyam4747@gmail.com / https://github.com/sanyam47)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+This software is dual-licensed under the **Community Open-Source License** and the **Enterprise Commercial License**.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+---
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+## 1. Community & Non-Commercial License (Free Forever)
+
+Permission is hereby granted, free of charge, to any individual, researcher, hobbyist, or non-commercial entity obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to:
+
+* Use, study, run, test, and execute the Software locally on personal hardware.
+* Modify, enhance, and create personal tools using the Software.
+* Fork, contribute, and share open-source modifications, provided that this copyright notice and permission notice are preserved in all copies.
+
+---
+
+## 2. Enterprise & Commercial License (Paid Agreement Required)
+
+Any **Commercial Use** of the Software requires a valid, written **Commercial Enterprise License** directly from the author (Sanyam).
+
+Commercial Use includes, but is not limited to:
+* Packaging, embedding, or bundling the Software into a closed-source product, commercial desktop app, or proprietary codebase.
+* Operating the Software as a hosted Software-as-a-Service (SaaS), API service, or paid cloud platform.
+* White-labeling or reselling the Software, its dynamic multi-agent swarm engine, or its execution environment to paying clients.
+* Enterprise internal deployments by commercial organizations with gross annual revenues or funding exceeding USD $50,000.
+
+---
+
+## 3. Commercial Licensing & Inquiries
+
+To obtain a Commercial Enterprise License, request white-labeling rights, or discuss custom enterprise engineering, please reach out:
+
+* **Author:** Sanyam
+* **Email:** [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com)
+* **GitHub:** [https://github.com/sanyam47/unleash-agent](https://github.com/sanyam47/unleash-agent)
+
+---
+
+## 4. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

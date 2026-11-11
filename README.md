@@ -33,7 +33,7 @@ Most developers assume lightweight local models (like **Llama 3 8B**, **Qwen 2.5
 
 ## ⚔️ How It Compares
 
-| Capability | Raw Local LLM (Ollama) | Cloud Subscriptions (Cursor / Claude Code) | **Unleash-Agent** |
+| Capability | Raw Local LLM (Ollama) | Cloud Subscriptions (Antigravity / Cursor / Claude Code) | **Unleash-Agent** |
 |:---|:---:|:---:|:---:|
 | **Cost & Freedom** | Free | \$20 – \$200+ / month | **100% Free & Self-Hosted** |
 | **Privacy & Air-Gap** | ✅ Local | ❌ Proprietary cloud logging | **✅ 100% Offline Capable** |

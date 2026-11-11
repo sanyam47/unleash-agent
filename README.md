@@ -1,347 +1,175 @@
 <div align="center">
 
-
-
 # ⚡ Unleash-Agent
 
-### The Autonomous Coding Agent Harness for Local & Cloud LLMs
+### Autonomous Local Code Studio & Multi-Agent Swarm Engine
 
-
-
-**Unleash modest 8B & 14B open-source models to build real, interactive, full-stack web applications completely offline.**
-
-
+**Empower modest 8B & 14B local models to build, audit, and refactor production software on your local machine with zero API costs, zero data leaks, and zero VRAM crashes.**
 
 [![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/unleash-agent)
-
-[![Local Inference](https://img.shields.io/badge/Local%20GPU-RTX%203050%2B-green?style=flat-square)](#)
-
+[![Local Inference](https://img.shields.io/badge/Local%20GPU-RTX%203050%2B%20(6GB)-green?style=flat-square)](#)
 [![Ollama Engine](https://img.shields.io/badge/Ollama-100%25%20Offline-black?style=flat-square&logo=ollama)](#)
-
-[![Free Cloud Bridge](https://img.shields.io/badge/Free%20Cloud-Kaggle%20(30h)%20%7C%20Colab-blue?style=flat-square)](#)
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square)](LICENSE)
-
-
+[![Docker Test Gate](https://img.shields.io/badge/Docker%20Sandbox---network%20none-blue?style=flat-square&logo=docker)](#)
+[![Dual License](https://img.shields.io/badge/License-Dual%20(Community%20%7C%20Enterprise)-purple.svg?style=flat-square)](LICENSE)
 
 <br/>
 
-
-
-*Zero API costs • Zero data leaks • Zero hallucinated DOM • Real OS Workspace persistence*
-
-
+*Zero API Costs • 100% Air-Gapped Privacy • 6-Layer Acceptance Gates • Dynamic Hardware-Aware Swarm*
 
 </div>
 
-
-
 ---
-
-
 
 ## 💡 Why Unleash-Agent?
 
+Most developers assume lightweight local models (like **Llama 3 8B**, **Qwen 2.5 Coder 7B**, or **Dolphin 3**) cannot write reliable, full-stack software. When prompted directly without a harness, smaller models inevitably fail:
+1. **Full-File Rewrite Fatigue:** Rewriting 200+ line files causes models to drop features, hallucinate APIs, or omit crucial logic.
+2. **Comment Stubs & Placeholders:** They cut corners with `// Logic goes here` or `<!-- ... (no changes needed) -->`.
+3. **Hardware Crashes (OOM):** Running multi-agent swarms concurrently on a 6GB laptop GPU (like an RTX 3050) immediately triggers display driver timeouts and out-of-memory crashes.
 
-
-Most developers assume lightweight local models (like **Llama 3 8B**, **Dolphin 3**, or **Qwen 2.5 Coder**) cannot write production software. Left to raw prompting, smaller models hit three walls:
-
-1. **DOM Hallucinations:** They guess random element IDs and non-existent CSS selectors.
-
-2. **Context Truncation:** Rewriting 200+ line files causes them to drop features or emit truncated snippets.
-
-3. **Lazy Comment Stubs:** They cut corners with `// Logic goes here` or `<!-- ... (no changes needed) -->`.
-
-
-
-**Unleash-Agent solves this through a deterministic agent harness.** Instead of trying to make the 8B model "smarter", we give it the spatial awareness, surgical tools, and compilation gates required to build working software reliably.
-
-
+**Unleash-Agent eliminates these failure modes through an intelligent harness.** Rather than expecting an 8B model to be an all-knowing frontier giant, Unleash-Agent provides spatial awareness, a multi-pass surgical diff editor, an isolated Docker test gate, and a hardware-aware sequential swarm relay.
 
 ---
 
+## 🐝 The Dynamic Swarm Engine (Builder ➔ Verifier ➔ Auditor)
 
-
-## 🛠️ The 6 Core Frontier Systems
-
-
+Unleash-Agent dynamically adapts its multi-agent architecture based on your active hardware:
 
 ```
-
-                      ┌────────────────────────────────────────┐
-
-                      │             User Prompt                │
-
-                      │ ("Build a Cyberpunk Pomodoro Station") │
-
-                      └───────────────────┬────────────────────┘
-
-                                          │
-
-                                          ▼
-
-                      ┌────────────────────────────────────────┐
-
-                      │    Autonomous Scout & Manifest Engine  │
-
-                      │  (Architecture Contract & Goal Memory) │
-
-                      └───────────────────┬────────────────────┘
-
-                                          │
-
-                                          ▼
-
-            ┌────────────────────────────────────────────────────────────┐
-
-            │            Antigravity Multi-Turn ReAct Loop               │
-
-            │                                                            │
-
-            │  1. Workspace Tree: Scans files & sizes before coding      │
-
-            │  2. AST Symbol Table: Extracts active HTML IDs & JS state  │
-
-            │  3. Surgical Patcher: Search & Replace (5-line diffs)      │
-
-            │  4. Real OS Jail: Saves to default or chosen Windows path  │
-
-            └─────────────────────────────┬──────────────────────────────┘
-
-                                          │
-
-                                          ▼
-
-                      ┌────────────────────────────────────────┐
-
-                      │  4-Layer Acceptance Gate (DoD Audit)   │
-
-                      │  - Node.js syntax & JS compilation     │
-
-                      │  - DOM listener & HTML ID contract     │
-
-                      │  - Anti-placeholder & stub interception│
-
-                      └───────────────────┬────────────────────┘
-
-                                    │           │
-
-                          [Errors Found]     [Passed 100%]
-
-                                    │           │
-
-                                    ▼           ▼
-
-                      Autonomous Self-Repair   Live Interactive
-
-                            Loop                 Browser App
-
+                              ┌─────────────────────────────┐
+                              │     User Prompt / Task      │
+                              └──────────────┬──────────────┘
+                                             │
+                       ┌─────────────────────┴─────────────────────┐
+                       ▼                                           ▼
+          [Local GPU (≤ 16GB VRAM)]                    [Cloud / High VRAM (≥ 16GB)]
+           Sequential GPU Relay Mode                     Concurrent Parallel Mode
+         (RTX 3050 / 6GB Zero-Crash)                     (Groq / OpenRouter / Cloud)
+                       │                                           │
+                       └─────────────────────┬─────────────────────┘
+                                             │
+                                             ▼
+                      ┌─────────────────────────────────────────────┐
+                      │          WORKER 1: THE BUILDER              │
+                      │  - Scans workspace tree & AST symbol table  │
+                      │  - Surgically generates modular code files  │
+                      └──────────────────────┬──────────────────────┘
+                                             │ (Reuses model in VRAM)
+                                             ▼
+                      ┌─────────────────────────────────────────────┐
+                      │      WORKER 2: ADVERSARIAL QA & VERIFIER    │
+                      │  - Executes Playwright headless browser     │
+                      │  - Runs Backend Docker Test Gate            │
+                      │  - Auto-triggers targeted self-repairs      │
+                      └──────────────────────┬──────────────────────┘
+                                             │ (Reuses model in VRAM)
+                                             ▼
+                      ┌─────────────────────────────────────────────┐
+                      │          WORKER 3: APPSEC AUDITOR           │
+                      │  - Secret leakage & credential scanning     │
+                      │  - Local air-gap & OWASP validation         │
+                      └─────────────────────────────────────────────┘
 ```
 
-
-
-### 1. 🌲 Interactive Workspace Tree Awareness
-
-Before the model writes or edits code, the engine scans the active directory and injects a clean directory tree (`|-- index.html (1.2KB)`, `|-- styles.css (800B)`, `|-- app.js (2.1KB)`). The model always knows what files already exist before taking action.
-
-
-
-### 2. 🧬 AST & DOM Symbol Table Injection
-
-An AST and regex parsing engine extracts all active HTML IDs, CSS variables, and JavaScript state variables. When you ask to "add a button" or "fix the search", the model hooks directly into existing functions without inventing random new names.
-
-
-
-### 3. 🎯 Surgical Code Patching (`edit_project_file`)
-
-Instead of rewriting 200–400 lines of code across turns (which causes token truncation), the agent surgically searches and replaces only the 5–10 lines needed, keeping 100% of the surrounding styling and logic intact.
-
-
-
-### 4. 🛡️ 5-Layer "Definition of Done" Acceptance Gate
-
-The model is not allowed to simply declare "Done". A deterministic background gate audits:
-
-* **Layer 1:** Node.js syntax & compilation check (`node -c`).
-
-* **Layer 2:** Semantic layout & entity parity (no 1-div stubs).
-
-* **Layer 3:** HTML-to-JS interactive contract (every button must have a listener).
-
-* **Layer 4:** **Anti-Placeholder Shield:** Catches lazy comment stubs like `// Logic to handle search` or empty event listener callbacks and triggers an autonomous self-repair loop until the app actually functions!
-* **Layer 5:** **Antigravity Headless Browser Runtime Gate:** Boots headless Chromium to execute the app live, traps unhandled exceptions/console crashes, dispatches synthetic user clicks to buttons, and verifies DOM state mutations before accepting the build!
-
-
-
-### 5. 💻 Real OS Workspace Target & Memory
-
-Unleash-Agent is not trapped in an isolated browser playground. You can target any real folder on your host machine:
-
-> *"Create a portfolio site at `C:\coding\my-portfolio`"*
-
-
-
-The engine safely validates OS paths (protecting system directories) and persists workspace bindings in `workspace_registry.json` across reboots.
-
-
-
-### 6. 🔁 Autonomous Goal-Completion Loop (Micro-Goal Stepper)
-
-Inspired by Devin and SWE-agent, Unleash-Agent never stops halfway. A dynamic goal decomposer breaks prompts into 2–4 atomic milestones (e.g. Layout & Theme, Feature Logic, Sound Feedback, Task Queue). A background stepper audits the workspace disk state after every turn, actively intercepting premature 'Final Answers' and driving autonomous continuation turns until all feature milestones are verified green.
-
-
+* **On Local RTX 3050 (6GB VRAM):** Executes in **Sequential GPU Relay**. Worker 1 completes code generation and releases its turn, allowing Worker 2 and Worker 3 to reuse the same resident VRAM model weights without memory thrashing, driver reboots, or OOM crashes.
+* **On Cloud / High VRAM:** Automatically scales to **Concurrent Parallel Workers** for blazing sub-second multi-agent throughput.
 
 ---
 
+## 🛡️ The 6-Layer Definition of Done (DoD) Gate
 
+No code is accepted or shown as "Complete" without passing 6 deterministic verification layers:
 
-## ⚡ 1-Click Free Cloud GPU Bridge (Kaggle & Colab)
-
-
-
-Don't have a high-end local GPU? Unleash-Agent includes an on-demand Cloud Bridge:
-
-
-
-| Provider | VRAM | Free Tier Limit | Runs Models |
-
-| :--- | :--- | :--- | :--- |
-
-| **Local Offline** | Your GPU (e.g. RTX 3050 6GB) | Unlimited / Free | 1.5B – 8B |
-
-| **Kaggle Cloud** | **Dual Tesla T4 (30 GB VRAM)** | **30 Hours / Week (Free)** | 14B – 32B (Qwen 2.5 Coder) |
-
-| **Google Colab** | **Tesla T4 (16 GB VRAM)** | **12 Hours / Session (Free)** | 14B (Qwen / DeepSeek) |
-
-| **Paid On-Demand** | A100 / H100 / RTX 4090 | Live Credit Tracking ($) | 70B+ Frontier Weights |
-
-
-
-Click **📋 Copy 1-Click Cloud Script** in the UI, run the 3-line notebook on Kaggle or Colab, paste your tunnel URL, and Unleash-Agent immediately begins streaming high-end 32B coding inference for free!
-
-
+1. **Layer 1: Syntax & Compilation Gate:** Validates AST tree integrity (`node -c` for JavaScript, `ast.parse` / `compile` for Python, `json.loads` for JSON).
+2. **Layer 2: Semantic Layout Parity:** Intercepts hollow, empty single-div HTML mockups.
+3. **Layer 3: DOM Event Contract:** Ensures every interactive HTML button and element is bound to real, working JavaScript listeners.
+4. **Layer 4: Anti-Placeholder Shield:** Catches lazy comment stubs like `// TODO: Implement` or empty function bodies and triggers an autonomous self-repair turn.
+5. **Layer 5A: Headless Browser Runtime Gate:** Spawns a real headless Chromium instance, executes client code, verifies DOM mutations, and traps unhandled console exceptions.
+6. **Layer 5B: Universal Backend Docker Test Gate (`--network none`):** Mounts generated Python/Node backends into an isolated, air-gapped Docker container to run `pytest` / `unittest` suites with zero network egress.
+7. **Layer 6: AppSec & Secret Leakage Gate:** Scans the active workspace for accidentally hardcoded API keys, private certificates, unhashed credentials, and unsafe OS execution.
 
 ---
 
+## 🎯 Key Frontier Systems
 
+### 📁 Mount Existing Repository Mode
+Mount any directory on your local filesystem (e.g. `C:\coding\my-app`):
+* **Instant Traversal Pruning:** Intelligently ignores `node_modules`, `venv`, `__pycache__`, and `.git` using optimized `os.walk` pruning, indexing 20,000+ file projects in sub-second time.
+* **Git Shadow Checkpoints & 1-Click Rollback:** Creates an immutable pre-execution snapshot before any file modification. If an edit fails, rollback instantly with a single click.
+
+### 🎯 3-Pass Surgical Diff Editor (`edit_project_file`)
+Say goodbye to entire-file rewrites that burn tokens and break working code:
+* **Pass 1:** Exact byte substring match.
+* **Pass 2:** Line-ending normalization (`\r\n` vs `\n`).
+* **Pass 3:** Whitespace-trimmed contiguous line-block anchor matching for indentation drift.
+* **Syntax Assurance:** Edits are immediately tested against Python AST and Node syntax parsers before writing to disk.
+
+### ☁️ Multi-Provider BYOK Cloud Engine
+Bring your own API keys for instant cloud frontier access alongside local Ollama:
+* **Direct Providers:** Groq, OpenRouter, Cerebras, DeepSeek, Cohere.
+* **Real-time Telemetry:** Tracks tokens/second, eval tokens, and duration across all providers.
+
+---
 
 ## 🚀 Quickstart
 
-
-
 ### Prerequisites
-
 * Python 3.10+
-
-* [Ollama](https://ollama.com/) (for offline local inference)
-
-
+* [Ollama](https://ollama.com/) (for offline local models)
+* [Docker Desktop](https://www.docker.com/) *(optional, for isolated backend container testing)*
 
 ### 1. Clone & Install
-
 ```bash
-
-git clone https://github.com/sanyam47/unleash-agent.git unleash-agent
-
+git clone https://github.com/sanyam47/unleash-agent.git
 cd unleash-agent
 
 python -m venv venv
-
 # Windows:
-
 venv\Scripts\activate
-
-# Mac/Linux:
-
+# Mac / Linux:
 source venv/bin/activate
 
-
-
 pip install -r requirements.txt
-
+playwright install chromium
 ```
-
-
 
 ### 2. Pull a Local Coding Model
-
 ```bash
-
-ollama pull dolphin3:latest
-
-# Or high-efficiency code specialist:
-
 ollama pull qwen2.5-coder:7b
-
+# Or lightweight reasoning:
+ollama pull dolphin3:latest
 ```
 
-
-
-### 3. Launch Unleash-Agent
-
+### 3. Start Unleash-Agent
 ```bash
+# Terminal 1: Start Ollama daemon
+ollama serve
 
-python scripts/run_server.py
-
+# Terminal 2: Start Unleash-Agent Studio
+python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8001
 ```
 
-Open your browser at **`http://127.0.0.1:8001/`** and start building!
-
-
+Open your browser at **`http://127.0.0.1:8001`**.
 
 ---
 
-
-
-## 🎮 Example Prompts to Try
-
-
-
-* **Cyberpunk Focus Station:**  
-
-  `"Build a modern Cyberpunk Focus & Pomodoro Station with a dark theme (#0d0f17, neon cyan #00f2fe and violet #8a2be2 accents). Include a 25-minute timer, controls, and task list with completion checkmarks."`
-
-
-
-* **Real OS Workspace Target:**  
-
-  `"Build a modern e-commerce storefront at C:\coding\my-store with shopping cart drawer and price calculations."`
-
-
-
-* **Surgical Edit on Existing App:**  
-
-  `"Add a sound effect toggle and filter tasks by completed status."`
-
-
+## 🔒 Security & Air-Gap Guarantee
+* **100% Offline Capable:** Runs entirely without internet access using local Ollama models.
+* **Docker Isolation:** Container test runners execute with `--network none` and `--read-only` root filesystems.
+* **OS Protection:** Built-in path validation blocks agents from touching OS system roots (`C:\Windows`, `/etc`, `/sys`).
 
 ---
-
-
-
-## ⭐ Community & Feedback
-
-
-
-If Unleash-Agent helps you run local agents without API costs, consider giving it a ⭐ on GitHub!
-
-
-
-Found a bug or have a suggestion? Feel free to open an issue.
-
-
-
----
-
-
 
 ## 📄 License & Commercial Rights
 
-Unleash-Agent is dual-licensed under the **Community Open-Source License** and the **Enterprise Commercial License**:
+Unleash-Agent is licensed under a **Dual-License Model**:
 
-* **Free for Individuals & Open Source:** Free forever to run, test, study, and use locally for personal projects, researchers, and hobbyists.
-* **Commercial & SaaS Use:** Any commercial deployment, hosting as a paid SaaS/API, white-labeling, or proprietary bundling requires a written **Commercial Enterprise License**.
-* **Inquiries:** Contact Sanyam at [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com).
+* **Community Open-Source License (Free Forever):** Free for individuals, students, researchers, hobbyists, and non-commercial developers to study, run, and modify.
+* **Commercial Enterprise License:** Any commercial deployment, hosting as a paid SaaS/API, white-labeling, or enterprise internal deployment requires a written Commercial Enterprise License.
+
+For commercial licensing and enterprise inquiries, contact:
+* **Author:** Sanyam
+* **Email:** [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com)
+* **GitHub:** [https://github.com/sanyam47/unleash-agent](https://github.com/sanyam47/unleash-agent)
 
 See full terms in the [LICENSE](LICENSE) file.
-

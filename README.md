@@ -7,7 +7,7 @@
 **Empower modest 8B & 14B local models to build, audit, and refactor production software on your local machine with zero API costs, zero data leaks, and zero VRAM crashes.**
 
 [![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/unleash-agent)
-[![Local Inference](https://img.shields.io/badge/Local%20GPU-RTX%203050%2B%20(6GB)-green?style=flat-square)](#)
+[![Hardware](https://img.shields.io/badge/Hardware-Any%20GPU%20%7C%20CPU%20Safe%20%7C%20Cloud-green?style=flat-square)](#)
 [![Ollama Engine](https://img.shields.io/badge/Ollama-100%25%20Offline-black?style=flat-square&logo=ollama)](#)
 [![Docker Test Gate](https://img.shields.io/badge/Docker%20Sandbox---network%20none-blue?style=flat-square&logo=docker)](#)
 [![Dual License](https://img.shields.io/badge/License-Dual%20(Community%20%7C%20Enterprise)-purple.svg?style=flat-square)](LICENSE)
@@ -85,8 +85,13 @@ Unleash-Agent dynamically adapts its multi-agent architecture based on your acti
                       └─────────────────────────────────────────────┘
 ```
 
-* **On Local RTX 3050 (6GB VRAM):** Executes in **Sequential GPU Relay**. Worker 1 completes code generation and releases its turn, allowing Worker 2 and Worker 3 to reuse the same resident VRAM model weights without memory thrashing, driver reboots, or OOM crashes.
-* **On Cloud / High VRAM:** Automatically scales to **Concurrent Parallel Workers** for blazing sub-second multi-agent throughput.
+### 🖥️ Universal Hardware Compatibility (All GPUs & CPU-Only Safe)
+
+Unleash-Agent is completely hardware-agnostic and dynamically adapts to your available compute:
+
+* **No Dedicated GPU (CPU-Only / Mac / Integrated Intel & AMD):** 100% functional. Runs lightweight quantized local models (e.g. `qwen2.5-coder:1.5b` or `3b` via Ollama) or connects directly to free cloud inference (Groq, OpenRouter) with **zero local GPU requirements**.
+* **Modest Laptop & Desktop GPUs (NVIDIA RTX 3050 / 3060 / 6GB–8GB VRAM, AMD, Apple Silicon):** Runs full 7B/8B coding models in **Sequential GPU Relay**. Worker 1 completes code generation and safely hands off execution to Worker 2 and Worker 3, which reuse the exact same resident VRAM weights—guaranteeing zero memory thrashing, zero display driver reboots, and zero OOM crashes.
+* **Workstation GPUs & Cloud Clusters (RTX 4090 / 24GB+ / Dual T4 / Cloud BYOK):** Automatically engages **Concurrent Parallel Workers** for blazing sub-second multi-agent throughput.
 
 ---
 

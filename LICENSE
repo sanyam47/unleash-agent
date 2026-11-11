@@ -1,36 +1,43 @@
-# Unleash-Agent Dual License Agreement
+# Unleash-Agent Community & Commercial License Agreement
 
 Copyright (c) 2026 Sanyam (sanyam4747@gmail.com / https://github.com/sanyam47)
 
-This software is dual-licensed under the **Community Open-Source License** and the **Enterprise Commercial License**.
+This software is licensed under the **PolyForm Noncommercial License 1.0.0** with an available **Commercial Enterprise License**. All intellectual property rights are exclusively owned and retained by the author (Sanyam).
 
 ---
 
-## 1. Community & Non-Commercial License (Free Forever)
+## 1. Permitted Non-Commercial Use (Free Forever)
 
-Permission is hereby granted, free of charge, to any individual, researcher, hobbyist, or non-commercial entity obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to:
-
-* Use, study, run, test, and execute the Software locally on personal hardware.
-* Modify, enhance, and create personal tools using the Software.
-* Fork, contribute, and share open-source modifications, provided that this copyright notice and permission notice are preserved in all copies.
-
----
-
-## 2. Enterprise & Commercial License (Paid Agreement Required)
-
-Any **Commercial Use** of the Software requires a valid, written **Commercial Enterprise License** directly from the author (Sanyam).
-
-Commercial Use includes, but is not limited to:
-* Packaging, embedding, or bundling the Software into a closed-source product, commercial desktop app, or proprietary codebase.
-* Operating the Software as a hosted Software-as-a-Service (SaaS), API service, or paid cloud platform.
-* White-labeling or reselling the Software, its dynamic multi-agent swarm engine, or its execution environment to paying clients.
-* Enterprise internal deployments by commercial organizations with gross annual revenues or funding exceeding USD $50,000.
+You may freely run, inspect, and use this Software on your local machine for **Non-Commercial Purposes** only:
+* **Personal & Hobbyist Use:** Developing personal tools, hacking on your local machine, and private experimentation.
+* **Educational & Research Use:** Academic study, university research, and educational learning.
+* **Private Modifications:** Modifying the code locally for your own personal, non-commercial use.
 
 ---
 
-## 3. Commercial Licensing & Inquiries
+## 2. Prohibited Commercial Use (Commercial License Required)
 
-To obtain a Commercial Enterprise License, request white-labeling rights, or discuss custom enterprise engineering, please reach out:
+You may **NOT** use, deploy, or distribute this Software for any Commercial Purpose without obtaining a written Commercial Enterprise License from the author.
+
+Commercial Purpose includes, but is not limited to:
+* **SaaS & Cloud Platforms:** Hosting, deploying, or offering the Software (or its multi-agent swarm architecture) as a paid service, API, or cloud platform.
+* **Product Embedding:** Bundling or packaging the Software into a commercial software product, closed-source desktop application, or proprietary codebase.
+* **Reselling & White-Labeling:** Reselling, white-labeling, or using the Software as a core service for paid commercial clients or enterprise operations.
+* **Internal Company Deployments:** Use within any for-profit commercial company or revenue-generating business operations.
+
+---
+
+## 3. Closed-Contribution Policy (Sole Ownership)
+
+This project is maintained exclusively by the author. **Outside code contributions, pull requests, and third-party code additions are not accepted.** 
+
+All intellectual property, architecture, and copyright remain 100% solely and exclusively owned by Sanyam.
+
+---
+
+## 4. Commercial Licensing & Inquiries
+
+To obtain a Commercial Enterprise License, request white-labeling rights, or negotiate enterprise deployment terms, contact:
 
 * **Author:** Sanyam
 * **Email:** [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com)
@@ -38,6 +45,6 @@ To obtain a Commercial Enterprise License, request white-labeling rights, or dis
 
 ---
 
-## 4. Disclaimer of Warranty
+## 5. Disclaimer of Warranty
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

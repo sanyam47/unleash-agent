@@ -181,14 +181,11 @@ Open your browser at **`http://127.0.0.1:8001`**.
 
 ## 📄 License & Commercial Rights
 
-Unleash-Agent is licensed under a **Dual-License Model**:
+Unleash-Agent is licensed under the **PolyForm Noncommercial License 1.0.0** with an available **Commercial Enterprise License**:
 
-* **Community Open-Source License (Free Forever):** Free for individuals, students, researchers, hobbyists, and non-commercial developers to study, run, and modify.
+* **Community Non-Commercial Use (Free Forever):** Free for individuals, students, researchers, and hobbyists to study, run, and experiment on their personal machines.
 * **Commercial Enterprise License:** Any commercial deployment, hosting as a paid SaaS/API, white-labeling, or enterprise internal deployment requires a written Commercial Enterprise License.
-
-For commercial licensing and enterprise inquiries, contact:
-* **Author:** Sanyam
-* **Email:** [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com)
-* **GitHub:** [https://github.com/sanyam47/unleash-agent](https://github.com/sanyam47/unleash-agent)
+* **Closed Contribution Policy:** Maintained exclusively by the author. Outside code contributions and pull requests are not accepted, guaranteeing 100% unencumbered, single-owner intellectual property.
+* **Commercial Inquiries:** Contact Sanyam directly at [sanyam4747@gmail.com](mailto:sanyam4747@gmail.com).
 
 See full terms in the [LICENSE](LICENSE) file.

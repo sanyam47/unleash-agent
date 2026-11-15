@@ -16,10 +16,12 @@ import os
 import re
 import json
 import time
+import hashlib
 import urllib.request
 import urllib.error
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
+import httpx
 
 from backend.core.credential_vault import store_secret, get_secret, has_secret, delete_secret
 
@@ -114,6 +116,106 @@ CLOUD_PROVIDERS: Dict[str, Dict[str, Any]] = {
         "doc_url": ""
     }
 }
+
+
+
+# ---------------------------------------------------------------------------
+# High-Performance Auth Status Cache & Dynamic Verification (Frontier Standard)
+# ---------------------------------------------------------------------------
+_AUTH_STATUS_CACHE: Dict[str, Dict[str, Any]] = {}
+AUTH_CACHE_TTL_SEC = 900  # 15 minutes TTL for validated keys
+
+def _get_key_hash(key: str) -> str:
+    return hashlib.sha256((key or "").strip().encode("utf-8")).hexdigest()[:16]
+
+def check_cached_auth(provider_id: str, api_key: str) -> Optional[Tuple[bool, str]]:
+    """Returns (is_valid, message) if cached and unexpired, else None."""
+    k_hash = _get_key_hash(api_key)
+    entry = _AUTH_STATUS_CACHE.get(f"{provider_id}:{k_hash}")
+    if entry and (time.time() - entry["timestamp"] < AUTH_CACHE_TTL_SEC):
+        return entry["valid"], entry["message"]
+    return None
+
+def set_cached_auth(provider_id: str, api_key: str, valid: bool, message: str) -> None:
+    """Stores key health verdict in memory."""
+    k_hash = _get_key_hash(api_key)
+    _AUTH_STATUS_CACHE[f"{provider_id}:{k_hash}"] = {
+        "valid": valid,
+        "message": message,
+        "timestamp": time.time()
+    }
+
+def fast_preflight_auth_check(provider_id: str, api_key: str, custom_url: Optional[str] = None) -> Tuple[bool, str]:
+    """
+    Sub-second credential verification probe.
+    Returns (True, message) if valid, or (False, error_detail) if definitively rejected.
+    Fails OPEN (returns True) on transient network issues so offline/flaky connections never get blocked.
+    """
+    if not api_key or not api_key.strip():
+        return False, "API key is empty."
+
+    cached = check_cached_auth(provider_id, api_key)
+    if cached is not None:
+        return cached
+
+    pid = provider_id.lower().strip()
+    headers = {"User-Agent": "Mozilla/5.0 UnleashAgent/1.0"}
+
+    # Probe configuration per provider
+    probe_url = None
+    if pid == "openrouter":
+        probe_url = "https://openrouter.ai/api/v1/auth/key"
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+        headers["HTTP-Referer"] = "https://github.com/sanyam47/unleash-agent"
+        headers["X-Title"] = "Unleash-Agent"
+    elif pid == "openai":
+        probe_url = "https://api.openai.com/v1/models"
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+    elif pid == "groq":
+        probe_url = "https://api.groq.com/openai/v1/models"
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+    elif pid == "anthropic":
+        probe_url = "https://api.anthropic.com/v1/models"
+        headers["x-api-key"] = api_key.strip()
+        headers["anthropic-version"] = "2023-06-01"
+    elif pid == "deepseek":
+        probe_url = "https://api.deepseek.com/models"
+        headers["Authorization"] = f"Bearer {api_key.strip()}"
+
+    if not probe_url:
+        # Custom or unsupported direct probe -> assume valid (fail-open)
+        return True, "Dynamic verification bypassed for custom endpoint."
+
+    try:
+        # Strict 3.5s timeout for pre-flight probe
+        probe_timeout = httpx.Timeout(connect=2.5, read=3.5, write=2.5, pool=2.5)
+        with httpx.Client(timeout=probe_timeout, follow_redirects=True) as client:
+            resp = client.get(probe_url, headers=headers)
+            
+            if resp.status_code == 200:
+                set_cached_auth(pid, api_key, True, "Authentication verified.")
+                return True, "Authentication verified."
+            elif resp.status_code in (401, 403):
+                err_text = ""
+                try:
+                    err_json = resp.json()
+                    err_text = err_json.get("error", {}).get("message") or resp.text
+                except Exception:
+                    err_text = resp.text
+                clean_err = f"API Key Invalid or Expired (HTTP {resp.status_code}): {err_text[:120]}"
+                set_cached_auth(pid, api_key, False, clean_err)
+                return False, clean_err
+            elif resp.status_code == 402:
+                err_text = "Insufficient credits / balance exhausted (HTTP 402)."
+                set_cached_auth(pid, api_key, False, err_text)
+                return False, err_text
+            else:
+                # 429, 500, etc. -> Fail OPEN so we don't block legitimate executions prematurely
+                return True, f"Probe returned HTTP {resp.status_code} (fail-open granted)."
+    except Exception as e:
+        # Transient connection/DNS glitch -> Fail OPEN
+        print(f"[CloudLLM Pre-Flight]: Auth probe notice for {pid}: {e}. Proceeding via fail-open.")
+        return True, "Fail-open on probe network variance."
 
 
 class CloudLlmManager:
@@ -282,15 +384,18 @@ class CloudLlmManager:
                     headers["HTTP-Referer"] = "https://github.com/sanyam47/unleash-agent"
                     headers["X-Title"] = "Unleash-Agent"
 
-            req = urllib.request.Request(
-                target_url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers=headers
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                res_body = json.loads(resp.read().decode("utf-8"))
+            # Granular frontier timeout: 5s connect, 15s read
+            test_timeout = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
+            with httpx.Client(timeout=test_timeout, follow_redirects=True) as client:
+                resp = client.post(target_url, json=payload, headers=headers)
+                if resp.status_code >= 400:
+                    resp.raise_for_status()
+                res_body = resp.json()
 
             dur_ms = round((time.perf_counter() - start_t) * 1000, 1)
+
+            # Record success in auth cache
+            set_cached_auth(pid, key_to_use, True, "Authentication verified.")
 
             # Extract greeting
             reply_text = ""
@@ -309,24 +414,29 @@ class CloudLlmManager:
                 "message": f"Connection verified in {dur_ms}ms! Authentication successful."
             }
 
-        except urllib.error.HTTPError as e:
-            err_msg = e.read().decode("utf-8", errors="ignore")
+        except httpx.HTTPStatusError as e:
+            code = e.response.status_code
+            err_msg = e.response.text
             try:
-                err_json = json.loads(err_msg)
+                err_json = e.response.json()
                 err_detail = err_json.get("error", {}).get("message") or err_msg
             except Exception:
                 err_detail = err_msg
 
-            if e.code in (401, 403):
-                msg = f"Authentication Failed (HTTP {e.code}): Invalid API Key."
-            elif e.code == 429:
-                msg = f"Rate Limit or Insufficient Quota (HTTP 429): Check your account balance."
-            elif e.code == 404:
+            if code in (401, 403):
+                set_cached_auth(pid, key_to_use, False, f"Invalid API Key (HTTP {code})")
+                msg = f"Authentication Failed (HTTP {code}): Invalid or Expired API Key."
+            elif code == 402:
+                set_cached_auth(pid, key_to_use, False, "Insufficient Credits")
+                msg = "Insufficient Credits / Account Balance Exhausted (HTTP 402)."
+            elif code == 429:
+                msg = "Rate Limit or Insufficient Quota (HTTP 429): Check your account balance."
+            elif code == 404:
                 msg = f"Model Not Found (HTTP 404): Model '{target_model}' may not be supported by your key."
             else:
-                msg = f"API Error (HTTP {e.code}): {err_detail[:120]}"
+                msg = f"API Error (HTTP {code}): {err_detail[:120]}"
 
-            return {"status": "error", "http_code": e.code, "message": msg}
+            return {"status": "error", "http_code": code, "message": msg}
 
         except Exception as e:
             return {"status": "error", "message": f"Connection Error: {str(e)}"}
@@ -491,13 +601,27 @@ def call_cloud_llm_chat(
             headers["HTTP-Referer"] = "https://github.com/sanyam47/unleash-agent"
             headers["X-Title"] = "Unleash-Agent"
 
-    req = urllib.request.Request(
-        target_url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers
+    # -----------------------------------------------------------------------
+    # Step A: Instant Pre-Flight Auth Verification (< 1s Fail-Fast)
+    # -----------------------------------------------------------------------
+    if provider_id != "custom":
+        is_valid, auth_msg = fast_preflight_auth_check(provider_id, api_key, target_url)
+        if not is_valid:
+            print(f"[CloudLLM Pre-Flight Rejection]: Provider '{provider_id}' rejected auth: {auth_msg}")
+            raise RuntimeError(f"Cloud LLM Authentication Failed: {auth_msg}. Please update key in Settings or switch to Ollama.")
+
+    # -----------------------------------------------------------------------
+    # Step B: Granular Multi-Stage Timeouts & Intelligent Retry Handling
+    # - Connect Timeout: 10s (fails fast if network or socket is dead/unreachable)
+    # - Read Timeout: 180s (ample room for deep reasoning & multi-file generation)
+    # -----------------------------------------------------------------------
+    cloud_timeout = httpx.Timeout(
+        connect=10.0,
+        read=180.0,
+        write=15.0,
+        pool=10.0
     )
 
-    # Execute API request with automatic 429 rate-limit backoff retry
     max_retries = 3
     backoff = 2.0
     res_data = None
@@ -505,24 +629,52 @@ def call_cloud_llm_chat(
 
     for attempt in range(max_retries):
         try:
-            with urllib.request.urlopen(req, timeout=300) as resp:
-                res_data = json.loads(resp.read().decode("utf-8"))
+            with httpx.Client(timeout=cloud_timeout, follow_redirects=True) as client:
+                response = client.post(target_url, json=payload, headers=headers)
+                
+                # Check for HTTP errors
+                if response.status_code >= 400:
+                    response.raise_for_status()
+                
+                res_data = response.json()
+                # Mark key as verified in cache on successful response
+                set_cached_auth(provider_id, api_key, True, "Authentication verified.")
                 break
-        except urllib.error.HTTPError as e:
+
+        except httpx.HTTPStatusError as e:
             last_err = e
-            if e.code == 429 and attempt < max_retries - 1:
-                # Read rate limit error message
-                err_body = e.read().decode("utf-8", errors="ignore")
+            code = e.response.status_code
+            err_body = e.response.text
+            try:
+                err_detail = e.response.json().get("error", {}).get("message", err_body)
+            except Exception:
+                err_detail = err_body
+
+            # Immediate abort on terminal auth/credit failures (Never retry 401/402/403)
+            if code in (401, 403):
+                set_cached_auth(provider_id, api_key, False, f"HTTP {code}: {err_detail[:80]}")
+                raise RuntimeError(f"Cloud LLM API error (HTTP {code}): {err_detail[:200]}") from e
+            elif code == 402:
+                set_cached_auth(provider_id, api_key, False, "HTTP 402: Insufficient credits")
+                raise RuntimeError("Cloud LLM API error (HTTP 402): Insufficient credits or quota exhausted.") from e
+            elif code == 429 and attempt < max_retries - 1:
                 print(f"[CloudLLM] HTTP 429 Rate Limit (attempt {attempt+1}/{max_retries}). Backing off for {backoff:.1f}s...")
                 time.sleep(backoff)
                 backoff *= 2.0
                 continue
-            err_body = e.read().decode("utf-8", errors="ignore")
-            try:
-                err_detail = json.loads(err_body).get("error", {}).get("message", err_body)
-            except Exception:
-                err_detail = err_body
-            raise RuntimeError(f"Cloud LLM API error (HTTP {e.code}): {err_detail[:200]}") from e
+            
+            raise RuntimeError(f"Cloud LLM API error (HTTP {code}): {err_detail[:200]}") from e
+
+        except httpx.ConnectTimeout as e:
+            last_err = e
+            print(f"[CloudLLM Connect Timeout]: Failed to connect to {target_url} within 10s.")
+            raise RuntimeError("Cloud LLM Connection Timeout (10s): Remote server is unreachable or gateway stalled.") from e
+
+        except httpx.ReadTimeout as e:
+            last_err = e
+            print(f"[CloudLLM Read Timeout]: Remote server failed to generate response within 180s.")
+            raise RuntimeError("Cloud LLM Read Timeout (180s): Generation exceeded limit.") from e
+
         except Exception as e:
             last_err = e
             raise e

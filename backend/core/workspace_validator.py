@@ -426,22 +426,23 @@ def validate_workspace(
     # ==========================================
     if not all_code_files:
         add_error("workspace", "missing_file", "No code or project files found in project workspace.")
-    elif html_file.exists():
-        html_content = html_file.read_text(encoding="utf-8", errors="replace")
-        lowered_html = html_content.lower()
-        if "<!doctype html>" not in lowered_html and "<html" not in lowered_html:
-            add_error("index.html", "html_structure", "'index.html' is not a valid HTML5 document (missing <!DOCTYPE html> or <html> tag).")
-        if "styles.css" not in lowered_html and css_file.exists():
-            add_warning("index.html", "missing_link", "'index.html' does not link 'styles.css' in its <head>.")
-        if "app.js" not in lowered_html and js_file.exists():
-            add_error("index.html", "missing_link", "'index.html' does not link 'app.js' (<script src=\"app.js\"></script>). Interactivity will not run!")
-    elif py_files:
-        import py_compile
-        for py_f in py_files:
-            try:
-                py_compile.compile(str(py_f), doraise=True)
-            except py_compile.PyCompileError as pe:
-                add_error(py_f.name, "syntax_error", f"Python Syntax Error in '{py_f.name}': {pe}")
+    else:
+        if html_file.exists():
+            html_content = html_file.read_text(encoding="utf-8", errors="replace")
+            lowered_html = html_content.lower()
+            if "<!doctype html>" not in lowered_html and "<html" not in lowered_html:
+                add_error("index.html", "html_structure", "'index.html' is not a valid HTML5 document (missing <!DOCTYPE html> or <html> tag).")
+            if "styles.css" not in lowered_html and css_file.exists():
+                add_warning("index.html", "missing_link", "'index.html' does not link 'styles.css' in its <head>.")
+            if "app.js" not in lowered_html and js_file.exists():
+                add_error("index.html", "missing_link", "'index.html' does not link 'app.js' (<script src=\"app.js\"></script>). Interactivity will not run!")
+        if py_files:
+            import py_compile
+            for py_f in py_files:
+                try:
+                    py_compile.compile(str(py_f), doraise=True)
+                except py_compile.PyCompileError as pe:
+                    add_error(py_f.name, "syntax_error", f"Python Syntax Error in '{py_f.name}': {pe}")
 
     # Validate JavaScript files linked in index.html or primary app.js with node -c
     for js_p in proj_dir.glob("*.js"):
@@ -698,7 +699,7 @@ def validate_workspace(
             for e in err_list[:3]:
                 summary_lines.append(f"  - {e}")
             if f_name.endswith(".js"):
-                summary_lines.append(f"  -> PRESCRIPTIVE INSTRUCTION: Call 'edit_project_file' or 'write_project_file' on '{f_name}' to fix these runtime/logic defects. Do NOT modify 'index.html'!")
+                summary_lines.append(f"  -> PRESCRIPTIVE INSTRUCTION: Call 'edit_project_file' or 'write_project_file' on '{f_name}' to fix these runtime/logic defects.")
             elif f_name.endswith(".html"):
                 summary_lines.append(f"  -> PRESCRIPTIVE INSTRUCTION: Call 'edit_project_file' or 'write_project_file' on '{f_name}' to update HTML structure and IDs.")
             elif f_name.endswith(".css"):

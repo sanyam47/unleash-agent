@@ -40,19 +40,19 @@ DEFAULT_MEMORY_SCHEMA: Dict[str, Any] = {
     "learned_rules": [
         {
             "id": "rule_sandboxed_storage",
-            "rule": "Bare localStorage throws unhandled DOMException in sandboxed preview iframes; wrap in try/catch or memory fallback.",
+            "rule": "In browser client scripts, wrap localStorage access in try/catch to gracefully handle restricted iframe sandboxes.",
             "source": "acceptance_gate",
             "created_at": "2026-11-09"
         },
         {
-            "id": "rule_event_binding_parity",
-            "rule": "Every button, input, or control in index.html must have an active event listener in app.js.",
+            "id": "rule_syntax_integrity",
+            "rule": "Every generated code file must have 100% valid syntax with clean imports and zero unhandled compilation errors.",
             "source": "acceptance_gate",
             "created_at": "2026-11-09"
         },
         {
-            "id": "rule_target_provenance",
-            "rule": "Target runtime errors directly to app.js, layout issues to styles.css, and structural missing elements to index.html.",
+            "id": "rule_modular_provenance",
+            "rule": "Structure projects modularly across planned target files and resolve runtime issues surgically in the responsible file.",
             "source": "acceptance_gate",
             "created_at": "2026-11-09"
         }

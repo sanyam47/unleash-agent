@@ -297,37 +297,44 @@ def run_scout_phase(user_prompt: str, project_dir: Optional[Path] = None) -> Dic
             scout_contract_text += f"- Explicit Directives: {', '.join(explicit_features)}\n"
 
     if capabilities:
-        scout_contract_text += "MANDATORY INTERACTIVE CAPABILITIES (Strict Acceptance Gate Verified):\n"
+        scout_contract_text += "MANDATORY FUNCTIONAL CAPABILITIES (Acceptance Gate Verified):\n"
         if capabilities.get("add"):
-            scout_contract_text += "- ADD: You MUST create an Add form/inputs in index.html and push to state array in app.js.\n"
+            scout_contract_text += "- ADD: Implement interactive creation/addition flow (form, endpoint, or CLI command) with persistence.\n"
         if capabilities.get("delete"):
-            scout_contract_text += "- DELETE: You MUST create a Delete/Remove button on each card and remove items from state in app.js.\n"
+            scout_contract_text += "- DELETE: Implement deletion/removal logic (action button, route, or CLI flag) to remove items from state/db.\n"
         if capabilities.get("update"):
-            scout_contract_text += "- UPDATE: You MUST create an Edit/Update button and modal/flow to modify existing items in app.js.\n"
+            scout_contract_text += "- UPDATE: Implement edit/update logic to modify existing item properties.\n"
         if capabilities.get("search"):
-            scout_contract_text += "- SEARCH: You MUST implement live search filtering as user types in input.\n"
+            scout_contract_text += "- SEARCH: Implement search or filtering query logic.\n"
 
-    if section_checklist and not is_cli_or_python:
-        scout_contract_text += "REQUIRED SEMANTIC SECTIONS (Do NOT create 1-button stubs!):\n"
+    if not is_cli_or_python and any(f["path"].endswith((".html", ".jsx")) for f in files_plan):
+        scout_contract_text += "REQUIRED SECTIONS (Do NOT create 1-button stubs!):\n"
         for idx, s in enumerate(section_checklist, 1):
             scout_contract_text += f"  {idx}. {s}\n"
+
+        scout_contract_text += (
+            f"Interface Contract (Parity Check):\n"
+            f"- Target Container ID: '{dom_contract['primary_container']}'\n"
+            f"- Interaction Input ID: '{dom_contract['filter_or_search']}'\n"
+            f"- Primary Action Button ID: '{dom_contract['action_button']}'\n"
+            f"- Status / Counter ID: '{dom_contract['feedback_element']}'\n"
+            f"RULE: Every interactive control declared MUST be bound to a real executable event handler!\n"
+        )
+    elif is_cli_or_python:
+        scout_contract_text += (
+            f"Backend / CLI Contract:\n"
+            f"- Entrypoint: Run via 'python {files_plan[0]['path'] if files_plan else 'main.py'}'\n"
+            f"- Architecture: Modular separation between models, execution logic, and utilities.\n"
+            f"- Quality Gate: Valid Python syntax with zero compilation errors.\n"
+        )
 
     if dataset_info:
         scout_contract_text += (
             f"Authoritative Dataset Grounding [Source: {dataset_info['source']}]:\n"
             f"- Dataset ID: {dataset_info.get('dataset_id') or dataset_info.get('dataset_name')}\n"
             f"- Description: {dataset_info.get('description')}\n"
-            f"MANDATE: Populate the UI and mock records using authentic schema attributes of this domain.\n"
+            f"MANDATE: Populate records and data structures using authentic schema attributes of this domain.\n"
         )
-
-    scout_contract_text += (
-        f"Mandatory DOM Contract (Parity Check):\n"
-        f"- Target Container ID: '{dom_contract['primary_container']}'\n"
-        f"- Interaction Input ID: '{dom_contract['filter_or_search']}'\n"
-        f"- Primary Action Button ID: '{dom_contract['action_button']}'\n"
-        f"- Status / Counter ID: '{dom_contract['feedback_element']}'\n"
-        f"RULE: Every ID declared in HTML MUST be bound to a real click/input event handler in app.js!\n"
-    )
 
     return {
         "is_data_app": is_data_app,

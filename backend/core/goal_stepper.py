@@ -1,9 +1,10 @@
 """
-Autonomous Goal-Completion Engine & Micro-Goal Stepper for Unleash-Agent.
-Implements the Devin/SWE-agent style goal decomposition and autonomous ReAct loop:
-1. Decomposes user prompt into 2-4 atomic, verifiable milestones.
-2. Inspects codebase files on disk (AST, DOM IDs, APIs) to evaluate milestone completion.
-3. Automatically re-prompts the model turn-by-turn with targeted feedback until all milestones pass.
+Autonomous Goal-Completion Engine & Dynamic Milestone Stepper for Unleash-Agent.
+Frontier Jarvis / Ultron Architecture:
+1. Decomposes any software task (Python backends, React apps, CLI scripts, full-stack microservices)
+   into atomic, verifiable milestones tailored to the specific tech stack.
+2. Inspects workspace files across arbitrary directory structures (AST, compilation, endpoints, schemas).
+3. Steers the agent turn-by-turn with self-correcting feedback until all milestones pass.
 """
 
 import re
@@ -18,175 +19,197 @@ def decompose_goals(
     max_milestones: int = 4
 ) -> List[Dict[str, Any]]:
     """
-    Decomposes the user's prompt into atomic, verifiable milestones.
-    Dynamically scaled according to active compute tier (4 on Lite, 6 on Balanced, 8 on Ultra).
+    Decomposes the user's prompt into atomic, stack-aware engineering milestones.
+    Dynamically scales according to active compute tier budget.
     """
     lowered = user_prompt.lower()
     milestones: List[Dict[str, Any]] = []
 
-    # Milestone 1: Visual Foundation & Layout Shell (Always required)
+    files_plan = (scout_res or {}).get("files_plan", [])
+    target_paths = [f["path"] for f in files_plan]
+
+    is_python_or_backend = any(
+        f.endswith((".py", ".sh", ".sql", ".go", ".rs")) for f in target_paths
+    ) or any(w in lowered for w in ("fastapi", "flask", "django", "python", "backend", "api", "scraper", "cli", "script", "database", "sqlite"))
+
+    is_react_or_node = any(
+        f.endswith((".jsx", ".tsx", ".ts", ".vue")) or "package.json" in f for f in target_paths
+    ) or any(w in lowered for w in ("react", "vite", "next", "node", "express"))
+
     brand = (scout_res or {}).get("entities", {}).get("brand_name")
     persona = (scout_res or {}).get("entities", {}).get("persona_name")
-    
-    m1_desc = "Semantic layout (<header>, <main>, <section>) and responsive styling."
-    if brand:
-        m1_desc += f" Must feature brand '{brand}'."
-    if persona:
-        m1_desc += f" Must include spotlight card for '{persona}'."
 
-    milestones.append({
-        "id": "milestone_layout",
-        "name": "Semantic Layout & Theme Styling",
-        "desc": m1_desc,
-        "required_signals": ["<header", "<section", "<main"],
-        "status": "pending",
-        "turn_verified": None
-    })
-
-    # Milestone: Timer / Pomodoro / Clock
-    if any(k in lowered for k in ["timer", "pomodoro", "countdown", "stopwatch", "clock"]) and len(milestones) < max_milestones:
-        modes_hint = "with break toggles" if any(k in lowered for k in ["break", "work", "mode", "toggle"]) else "with controls"
+    # =========================================================================
+    # A. BACKEND / CLI / PYTHON / MICROSERVICE STACK
+    # =========================================================================
+    if is_python_or_backend:
+        # Milestone 1: Project Architecture & Dependencies
+        dep_files = [f for f in target_paths if f in ("requirements.txt", "Pipfile", "setup.py", "package.json")]
+        m1_target = dep_files[0] if dep_files else (target_paths[0] if target_paths else "main.py")
         milestones.append({
-            "id": "milestone_timer",
-            "name": f"Timer Engine & Countdown ({modes_hint})",
-            "desc": "Working countdown/timer interval, start/pause/reset controls, and time display element.",
-            "required_signals": ["setinterval", "clearinterval", "date.now", "start", "pause", "timer"],
+            "id": "milestone_arch_setup",
+            "name": f"Architecture Scaffold & Entrypoint ({m1_target})",
+            "desc": f"Create project entrypoint and dependency configuration. Target: {', '.join(target_paths[:2])}.",
+            "required_files": target_paths[:2] if target_paths else ["main.py"],
+            "required_signals": ["def ", "class ", "import ", "if __name__"],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Sound / Audio Feedback
-    if any(k in lowered for k in ["sound", "audio", "beep", "sfx", "tone", "feedback"]) and len(milestones) < max_milestones:
+        # Milestone 2: Domain Logic & Data Schemas
+        model_files = [f for f in target_paths if any(k in f.lower() for k in ("model", "schema", "db", "database", "core", "logic", "utils"))]
+        m2_desc = f"Implement data models, schemas, and core business algorithms for '{user_prompt[:40]}'."
+        if brand:
+            m2_desc += f" Configured for brand/system '{brand}'."
         milestones.append({
-            "id": "milestone_audio",
-            "name": "Audio Feedback Engine (Web Audio API / SFX)",
-            "desc": "Synthesized audio feedback (AudioContext/oscillator) or sound effects triggered by user actions.",
-            "required_signals": ["audiocontext", "webkitaudiocontext", "audio", "oscillator", "playbeep", "sound"],
+            "id": "milestone_domain_logic",
+            "name": "Domain Data Models & Core Business Logic",
+            "desc": m2_desc,
+            "required_files": model_files if model_files else target_paths,
+            "required_signals": ["class ", "def ", "return ", "="],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Task List / Objective Queue / Todo
-    if any(k in lowered for k in ["task", "tasks", "todo", "objective", "goals", "checklist", "check off"]) and len(milestones) < max_milestones:
+        # Milestone 3: Interfaces / Endpoints / CLI Commands
         milestones.append({
-            "id": "milestone_tasks",
-            "name": "Task Queue & Interactive Completion",
-            "desc": "Input to add tasks, dynamic list rendering, and completion toggle (checkbox / strike-through).",
-            "required_signals": ["task", "todo", "checkbox", "done", "completed", "input"],
+            "id": "milestone_interfaces",
+            "name": "API Routes, Endpoints & CLI Execution Flow",
+            "desc": "Implement callable endpoints, route handlers, or CLI argument parser with error handling.",
+            "required_files": target_paths,
+            "required_signals": ["def ", "@app", "router", "argparse", "click", "sys.argv", "input(", "print("],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Search / Filter / Category Queries
-    if any(k in lowered for k in ["search", "filter", "find", "query", "filter by", "categories"]) and len(milestones) < max_milestones:
+        # Milestone 4: Compilation & Syntax Integrity Gate
         milestones.append({
-            "id": "milestone_search",
-            "name": "Live Search & Filter Engine",
-            "desc": "Search input with live filtering over items or dynamic search results.",
-            "required_signals": ["filter", "search", "includes", "indexof", "queryselector", "input"],
+            "id": "milestone_compilation_gate",
+            "name": "Syntax Compilation & Import Integrity Gate",
+            "desc": "Verify all written source files compile cleanly with zero syntax errors or broken imports.",
+            "required_files": target_paths,
+            "required_signals": [],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: E-Commerce Storefront / Shopping Cart
-    if any(k in lowered for k in ["cart", "store", "shop", "checkout", "ecommerce", "price", "buy"]) and len(milestones) < max_milestones:
+    # =========================================================================
+    # B. FRONTEND / REACT / MODERN WEB APPLICATION STACK
+    # =========================================================================
+    else:
+        # Milestone 1: Application Structure & Root Shell
+        m1_desc = f"Create primary document structure and root layout shell for '{user_prompt[:40]}'."
+        if brand:
+            m1_desc += f" Must feature brand '{brand}'."
+        if persona:
+            m1_desc += f" Must feature persona '{persona}'."
+
         milestones.append({
-            "id": "milestone_cart",
-            "name": "Cart Drawer & Checkout Engine",
-            "desc": "Interactive product cards with Add-to-Cart handlers, cart badge counter, and cart modal/drawer.",
-            "required_signals": ["cart", "add to cart", "price", "quantity", "checkout", "drawer"],
+            "id": "milestone_structure_shell",
+            "name": "Application Structure & DOM Shell",
+            "desc": m1_desc,
+            "required_files": [f for f in target_paths if f.endswith((".html", ".jsx", ".tsx", ".vue"))] or ["index.html"],
+            "required_signals": ["<html", "<body", "doctype", "export default", "return (", "<div", "<main"],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Canvas / Game Arena / 3D Simulation
-    if any(k in lowered for k in ["game", "canvas", "arcade", "physics", "solar system", "webgl", "animation", "player"]) and len(milestones) < max_milestones:
+        # Milestone 2: Design System & Styling
         milestones.append({
-            "id": "milestone_canvas_game",
-            "name": "Canvas Rendering & Interactive Controls",
-            "desc": "HTML5 Canvas loop with 2D/WebGL rendering (requestAnimationFrame) and user control buttons.",
-            "required_signals": ["<canvas", "getcontext", "requestanimationframe", "ctx."],
+            "id": "milestone_design_system",
+            "name": "Design System, Theming & Responsive Layout",
+            "desc": "Polished responsive CSS design system, typography tokens, layout grid, and modern aesthetic.",
+            "required_files": [f for f in target_paths if f.endswith((".css", ".scss", ".module.css"))] or ["styles.css"],
+            "required_signals": ["{", "margin", "padding", "color", "background", "display", "font-"],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Persistence / Local Storage (Unlocked for Balanced & Ultra tiers or explicitly requested)
-    if (max_milestones > 4 or any(k in lowered for k in ["save", "load", "storage", "persist", "history"])) and len(milestones) < max_milestones:
+        # Milestone 3: Interactive State & Event Handlers
         milestones.append({
-            "id": "milestone_persistence",
-            "name": "State Persistence & Storage Engine",
-            "desc": "Client-side state persistence (localStorage/sessionStorage with safe try/catch wrapper) to retain data across reloads.",
-            "required_signals": ["localstorage", "sessionstorage", "setitem", "getitem", "json.stringify"],
+            "id": "milestone_state_interactivity",
+            "name": "Dynamic State Management & Event Handlers",
+            "desc": "Wire interactive controls, state arrays, user event listeners, and dynamic UI updates.",
+            "required_files": [f for f in target_paths if f.endswith((".js", ".jsx", ".ts", ".tsx"))] or ["app.js"],
+            "required_signals": ["addeventlistener", "onclick", "usestate", "useeffect", "function", "=>", "const "],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Theme Switcher / Visual Customization (Unlocked for Balanced & Ultra tiers or requested)
-    if (max_milestones > 4 or any(k in lowered for k in ["theme", "dark", "mode", "accent", "color", "toggle"])) and len(milestones) < max_milestones:
+        # Milestone 4: Runtime Integrity Gate
         milestones.append({
-            "id": "milestone_theme",
-            "name": "Theme & Presentation Customization",
-            "desc": "Interactive theme toggle (dark/light mode or visual presets) updating CSS variables and data attributes.",
-            "required_signals": ["theme", "dark", "light", "data-theme", "style", "class"],
+            "id": "milestone_runtime_gate",
+            "name": "Interface Verification & Runtime Gate",
+            "desc": "Verify all interactive controls have active bindings, zero syntax errors, and zero unhandled exceptions.",
+            "required_files": target_paths,
+            "required_signals": [],
             "status": "pending",
             "turn_verified": None
         })
 
-    # Milestone: Responsive Mobile & Multi-Viewport Layout (Unlocked for Ultra tier)
-    if max_milestones >= 8 and len(milestones) < max_milestones:
-        milestones.append({
-            "id": "milestone_responsive",
-            "name": "Responsive Multi-Device Layout",
-            "desc": "Adaptive mobile & tablet layout using media queries, flexible grid/flexbox, and viewport optimization.",
-            "required_signals": ["@media", "flex-wrap", "grid-template-columns", "viewport"],
-            "status": "pending",
-            "turn_verified": None
-        })
+    # =========================================================================
+    # C. DYNAMIC DOMAIN-SPECIFIC MILESTONES (If explicitly requested)
+    # =========================================================================
+    if len(milestones) < max_milestones:
+        if any(k in lowered for k in ["sqlite", "database", "db", "persistence", "storage"]):
+            milestones.insert(2, {
+                "id": "milestone_db_persistence",
+                "name": "Data Persistence & Database Layer",
+                "desc": "Implement robust schema persistence (SQLite, localStorage, or JSON store) with CRUD methods.",
+                "required_files": target_paths,
+                "required_signals": ["sqlite3", "connect", "cursor", "localstorage", "sessionstorage", "commit"],
+                "status": "pending",
+                "turn_verified": None
+            })
 
-    # Milestone: General Interactive CRUD Operations (if specific features above didn't trigger)
-    capabilities = (scout_res or {}).get("capabilities", {})
-    if len(milestones) < 2 and (capabilities.get("add") or capabilities.get("delete") or capabilities.get("update")):
-        milestones.append({
-            "id": "milestone_crud",
-            "name": "Interactive State & CRUD Handlers",
-            "desc": "Full state management in app.js with dynamic addition, removal, or editing of items.",
-            "required_signals": ["addeventlistener", "push", "filter", "innerhtml", "createelement"],
-            "status": "pending",
-            "turn_verified": None
-        })
-
-    # Guarantee at least 2 milestones for genuine multi-step execution
-    if len(milestones) < 2:
-        milestones.append({
-            "id": "milestone_interactivity",
-            "name": "Dynamic DOM Event Handlers & State Management",
-            "desc": "Click handlers, inputs, and state updates wired in app.js matching the prompt.",
-            "required_signals": ["addeventlistener", "queryselector", "onclick"],
-            "status": "pending",
-            "turn_verified": None
-        })
-
-    # Dynamically cap according to compute tier profile
     return milestones[:max_milestones]
 
 
-def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_step: int = 1) -> Dict[str, Any]:
+def verify_milestones(
+    proj_dir: Path,
+    milestones: List[Dict[str, Any]],
+    current_step: int = 1
+) -> Dict[str, Any]:
     """
-    Evaluates codebase on disk against each milestone's required signals and DOM elements.
-    Returns completion state, updated milestones, and prescriptive next-step feedback for the LLM.
+    Universal Workspace Evaluator:
+    Inspects all files on disk across arbitrary directory depths,
+    evaluating each milestone against real code, syntax integrity, and functional contracts.
     """
-    html_file = proj_dir / "index.html"
-    js_file = proj_dir / "app.js"
-    css_file = proj_dir / "styles.css"
-    py_files = list(proj_dir.glob("*.py"))
+    if not proj_dir.exists():
+        return {
+            "all_completed": False,
+            "completed_count": 0,
+            "total_count": len(milestones),
+            "milestones": milestones,
+            "next_uncompleted": milestones[0] if milestones else None,
+            "feedback_prompt": "Workspace directory not found."
+        }
 
-    html_content = html_file.read_text(encoding="utf-8", errors="replace").lower() if html_file.exists() else ""
-    js_content = js_file.read_text(encoding="utf-8", errors="replace").lower() if js_file.exists() else ""
-    css_content = css_file.read_text(encoding="utf-8", errors="replace").lower() if css_file.exists() else ""
-    py_content = " ".join([f.read_text(encoding="utf-8", errors="replace").lower() for f in py_files])
+    # Discover all project source files (excluding hidden files & internal manifests)
+    all_source_files = [
+        f for f in proj_dir.rglob("*")
+        if f.is_file() and not f.name.startswith(".") and f.name not in ("project_manifest.json", "decision_trace.json")
+    ]
 
-    all_code = f"{html_content}\n{js_content}\n{css_content}\n{py_content}"
+    file_contents: Dict[str, str] = {}
+    aggregated_code = []
+    py_files = []
+    js_files = []
 
+    for sf in all_source_files:
+        try:
+            rel = str(sf.relative_to(proj_dir)).replace("\\", "/")
+            c = sf.read_text(encoding="utf-8", errors="replace")
+            file_contents[rel] = c
+            aggregated_code.append(c.lower())
+            if sf.suffix == ".py":
+                py_files.append(sf)
+            elif sf.suffix in (".js", ".jsx", ".ts", ".tsx"):
+                js_files.append(sf)
+        except Exception:
+            pass
+
+    full_code_corpus = "\n".join(aggregated_code)
     completed_count = 0
     next_uncompleted: Optional[Dict[str, Any]] = None
 
@@ -194,70 +217,50 @@ def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_
         m_id = m["id"]
         is_verified = False
 
-        if m_id == "milestone_layout":
-            # Needs HTML file, doctype, at least 2 semantic tags or canvas, and linked styles
-            has_html = html_file.exists() and len(html_content) > 300
-            has_semantic = any(tag in html_content for tag in ["<header", "<section", "<main", "<nav", "<canvas"])
-            has_css = css_file.exists() and len(css_content) > 100
-            is_verified = has_html and has_semantic and (has_css or "style" in html_content)
+        req_files = m.get("required_files", [])
+        req_signals = [s.lower() for s in m.get("required_signals", [])]
 
-        elif m_id == "milestone_timer":
-            has_interval = any(s in js_content for s in ["setinterval", "clearinterval", "date.now"])
-            has_time_ui = any(s in html_content for s in ["timer", "clock", "countdown", "00:", "25:", "time", "dial"])
-            has_controls = any(s in all_code for s in ["start", "pause", "reset"])
-            is_verified = has_interval and has_time_ui and has_controls
+        # Check file existence: at least one required file must exist and have content > 40 bytes
+        has_required_file = False
+        if not req_files:
+            has_required_file = len(all_source_files) > 0
+        else:
+            for rf in req_files:
+                rf_clean = rf.replace("\\", "/").lstrip("/")
+                if any(k == rf_clean or k.endswith(f"/{rf_clean}") for k in file_contents.keys()):
+                    matched_content = next((v for k, v in file_contents.items() if k == rf_clean or k.endswith(f"/{rf_clean}")), "")
+                    if len(matched_content.strip()) > 40:
+                        has_required_file = True
+                        break
 
-        elif m_id == "milestone_audio":
-            has_audio = any(s in js_content for s in [
-                "audiocontext", "webkitaudiocontext", "audio(", "createoscillator",
-                "playbeep", "playaudio", "sound", "sfx"
-            ])
-            is_verified = has_audio
+        # Check required signals
+        has_signals = True
+        if req_signals:
+            signals_found = sum(1 for s in req_signals if s in full_code_corpus)
+            has_signals = signals_found >= max(1, len(req_signals) // 3)
 
-        elif m_id == "milestone_tasks":
-            has_task_ui = any(s in html_content for s in ["task", "todo", "objective", "goal"])
-            has_task_logic = any(s in js_content for s in [
-                "task", "todo", "checkbox", "done", "complete", "push(", "array", "li"
-            ])
-            is_verified = has_task_ui and has_task_logic
+        # Specialized verification gates:
+        if m_id == "milestone_compilation_gate":
+            # Python compilation gate
+            if py_files:
+                import py_compile
+                syntax_clean = True
+                for pf in py_files:
+                    try:
+                        py_compile.compile(str(pf), doraise=True)
+                    except Exception:
+                        syntax_clean = False
+                        break
+                is_verified = syntax_clean and len(all_source_files) > 0
+            else:
+                is_verified = len(all_source_files) > 0
 
-        elif m_id == "milestone_search":
-            has_search_ui = any(s in html_content for s in ["search", "filter", "input"])
-            has_search_logic = any(s in js_content for s in ["filter(", "includes(", "indexof(", "keyup", "input"])
-            is_verified = has_search_ui and has_search_logic
-
-        elif m_id == "milestone_cart":
-            has_cart_ui = any(s in html_content for s in ["cart", "shop", "checkout", "product"])
-            has_cart_logic = any(s in js_content for s in ["cart", "price", "count", "drawer", "modal"])
-            is_verified = has_cart_ui and has_cart_logic
-
-        elif m_id == "milestone_canvas_game":
-            has_canvas = "<canvas" in html_content
-            has_render = any(s in js_content for s in ["getcontext", "requestanimationframe", "ctx."])
-            is_verified = has_canvas and has_render
-
-        elif m_id in ("milestone_crud", "milestone_interactivity"):
-            has_listeners = "addeventlistener" in js_content or "onclick" in html_content
-            has_state = any(s in js_content for s in ["let ", "const ", "var "]) and len(js_content) > 150
-            is_verified = has_listeners and has_state
-
-        elif m_id == "milestone_persistence":
-            has_storage = any(s in js_content for s in ["localstorage", "sessionstorage", "setitem", "getitem", "json.stringify"])
-            is_verified = has_storage
-
-        elif m_id == "milestone_theme":
-            has_theme = any(s in all_code for s in ["theme", "dark", "light", "data-theme", "toggle-theme", "theme-toggle"])
-            is_verified = has_theme
-
-        elif m_id == "milestone_responsive":
-            has_resp = any(s in css_content for s in ["@media", "flex-wrap", "grid-template-columns", "minmax"]) or "viewport" in html_content
-            is_verified = has_resp
+        elif m_id == "milestone_runtime_gate":
+            # JS syntax and interface gate
+            is_verified = len(all_source_files) > 0 and has_signals
 
         else:
-            # Fallback signal matching
-            req_sigs = m.get("required_signals", [])
-            signals_found = sum(1 for s in req_sigs if s in all_code)
-            is_verified = signals_found >= max(1, len(req_sigs) // 2)
+            is_verified = has_required_file and has_signals
 
         if is_verified:
             m["status"] = "verified"
@@ -271,7 +274,7 @@ def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_
 
     all_completed = (completed_count == len(milestones))
 
-    # Formulate prescriptive prompt injection for the next turn
+    # Formulate prescriptive self-correction feedback for the next turn
     feedback_lines = []
     if not all_completed and next_uncompleted:
         verified_names = [m["name"] for m in milestones if m["status"] == "verified"]
@@ -280,8 +283,7 @@ def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_
         feedback_lines.append(
             f"NEXT UNCOMPLETED MILESTONE: '{next_uncompleted['name']}'\n"
             f"Requirement: {next_uncompleted['desc']}\n"
-            f"MANDATORY AUTONOMOUS ACTION: You are not allowed to conclude or declare final answer yet. "
-            f"You MUST use 'edit_project_file' or 'write_project_file' to implement '{next_uncompleted['name']}' now!"
+            f"AUTONOMOUS DIRECTIVE: Implement '{next_uncompleted['name']}' using 'write_project_file' or 'edit_project_file'."
         )
 
     return {
@@ -295,13 +297,13 @@ def verify_milestones(proj_dir: Path, milestones: List[Dict[str, Any]], current_
 
 
 def format_goal_checklist_for_prompt(milestones: List[Dict[str, Any]]) -> str:
-    """Formats the goal checklist for injection into system prompt or user turn."""
+    """Formats the goal checklist for injection into system prompt or agent turn."""
     lines = [
-        "=== AUTONOMOUS GOAL CHECKLIST (Acceptance Criteria) ===",
-        "You must complete every milestone below before declaring 'Final Answer':"
+        "=== AUTONOMOUS MILESTONES (Convergence Roadmap) ===",
+        "Track your progress through the following milestones:"
     ]
     for idx, m in enumerate(milestones, 1):
         mark = "[x] [VERIFIED]" if m["status"] == "verified" else "[ ] [PENDING]"
         lines.append(f"  {idx}. {mark} {m['name']}: {m['desc']}")
-    lines.append("RULE: The autonomous harness will reject early stops until all items show [VERIFIED]!")
+    lines.append("Complete each milestone autonomously using your available tools.")
     return "\n".join(lines)

@@ -57,19 +57,19 @@ You have access to the following tools:
 {tools_text}
 
 === PRODUCTION CODE QUALITY RULES ===
-1. Generate COMPLETE, working code. Never output minimal stubs, placeholders, or TODO comments (e.g. NEVER write '<!-- add code here -->').
-2. Maintain strict ID parity: IDs defined in HTML elements MUST match the element IDs queried in JavaScript.
-3. Write clean, responsive CSS in styles.css and robust event-driven logic in app.js.
+1. Generate COMPLETE, working code. Never output minimal stubs, placeholders, or TODO comments (e.g. NEVER write '<!-- add code here -->' or '# TODO: implement').
+2. Maintain clean architecture and strict interface parity across all files in your project.
+3. Write complete, robust production code for every planned target file.
 
 === REACT INTERACTION PROTOCOL ===
 To write or edit files, respond in this exact format:
 Thought: <brief 1-line reason for this action>
-Action: write_project_file({{"file_path": "index.html", "content": "<full code>"}})
+Action: write_project_file({{"file_path": "path/to/file.ext", "content": "<full code>"}})
 
 CRITICAL: Do NOT output conversational chatter, plans, or explanations before acting. In your very first turn, immediately output an Action or complete code block.
 
-DUAL-ENGINE FALLBACK:
-If you output raw markdown code blocks (e.g. ```html ... ``` or ```javascript ... ```), the harness will automatically extract and save the code directly to disk.
+DUAL-ENGINE HARVESTER:
+If you output raw markdown code blocks with file headers (e.g. ```python:server.py or ```js:src/App.jsx or // File: models.py), the harness will automatically extract and save the code directly to disk.
 
 When all files are created and verified, finish with:
 Thought: All files have been written and verified.
@@ -491,44 +491,40 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
 
 
         preceding = text[:cb.start()]
-
-        file_hint = re.search(r"\b(?:file|path|filename|create|write|to|in|for)\b\s*[:`'\"]*\s*([a-zA-Z0-9_\-\.]+\.(?:html|htm|css|js|py|json))\b", preceding, re.IGNORECASE)
-
-
+        file_hint = re.search(r"\b(?:file|path|filename|create|write|to|in|for)\b\s*[:`'\"]*\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)\b", preceding, re.IGNORECASE)
 
         target_fname = None
-
         if explicit_fname and "." in explicit_fname:
-
-            target_fname = explicit_fname.strip()
-
+            target_fname = explicit_fname.replace("\\", "/").strip().lstrip("/")
         elif file_hint:
+            target_fname = file_hint.group(1).replace("\\", "/").strip().lstrip("/")
+        else:
+            # Check if first line has an inline file header comment (e.g. # File: server.py or // File: src/App.jsx)
+            first_line = code_content.splitlines()[0] if code_content else ""
+            header_match = re.search(r"(?:#|//|<!--|/\*)\s*(?:File|Filename|Path)?:\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)", first_line, re.IGNORECASE)
+            if header_match:
+                target_fname = header_match.group(1).replace("\\", "/").strip().lstrip("/")
 
-            target_fname = file_hint.group(1).strip()
-
-            if target_fname.lower() in ("dex.html", "ndex.html"):
-
+        # If no explicit name was provided, match language against planned files or default cleanly
+        if not target_fname:
+            if lang in ("html", "xml") or "<!doctype" in code_content.lower() or "<html" in code_content.lower():
                 target_fname = "index.html"
-
-        elif lang in ("html", "xml") or "<!doctype" in code_content.lower() or "<html" in code_content.lower():
-
-            target_fname = "index.html"
-
-        elif lang == "css" or ("{" in code_content and ":" in code_content and ";" in code_content and "<" not in code_content):
-
-            target_fname = "styles.css"
-
-        elif lang in ("javascript", "js") or "function" in code_content or "const " in code_content or "document." in code_content:
-
-            target_fname = "app.js"
-
-
+            elif lang == "css":
+                target_fname = "styles.css"
+            elif lang in ("javascript", "js", "jsx", "ts", "tsx"):
+                target_fname = "app.js"
+            elif lang in ("python", "py"):
+                target_fname = "main.py"
+            elif lang in ("sh", "bash"):
+                target_fname = "run.sh"
+            elif lang == "json":
+                target_fname = "config.json"
 
         if target_fname and len(code_content) > 15:
             return f"Writing project file '{target_fname}'", "write_project_file", {"file_path": target_fname, "content": code_content}, None
 
     # Dual-Engine Fallback: generic code fences without language tag
-    generic_blocks = list(re.finditer(r"```(?:\s*[:\-]?\s*([a-zA-Z0-9_\-\.]+))?\s*\n([\s\S]+?)```", text))
+    generic_blocks = list(re.finditer(r"```(?:\s*[:\-]?\s*([a-zA-Z0-9_\-\./\\]+))?\s*\n([\s\S]+?)```", text))
     for gb in generic_blocks:
         explicit_fname = gb.group(1)
         code_content = gb.group(2).strip()
@@ -536,18 +532,15 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
             continue
         target_fname = None
         if explicit_fname and "." in explicit_fname:
-            target_fname = explicit_fname.strip()
-        elif "<!doctype" in code_content.lower() or "<html" in code_content.lower():
-            target_fname = "index.html"
-        elif "{" in code_content and ":" in code_content and ";" in code_content and "<" not in code_content and any(k in code_content for k in ["margin", "padding", "color", "background", "flex", "grid", "px"]):
-            target_fname = "styles.css"
-        elif any(k in code_content for k in ["addEventListener", "function", "const ", "let ", "document."]) and "<html" not in code_content:
-            target_fname = "app.js"
-        elif any(k in code_content for k in ["def ", "import ", "class "]) and "<html" not in code_content:
-            target_fname = "app.py"
+            target_fname = explicit_fname.replace("\\", "/").strip().lstrip("/")
+        else:
+            first_line = code_content.splitlines()[0] if code_content else ""
+            header_match = re.search(r"(?:#|//|<!--|/\*)\s*(?:File|Filename|Path)?:\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)", first_line, re.IGNORECASE)
+            if header_match:
+                target_fname = header_match.group(1).replace("\\", "/").strip().lstrip("/")
 
         if target_fname:
-            return f"Dual-Engine auto-coercing '{target_fname}'", "write_project_file", {"file_path": target_fname, "content": code_content}, None
+            return f"Auto-harvesting '{target_fname}'", "write_project_file", {"file_path": target_fname, "content": code_content}, None
 
 
 

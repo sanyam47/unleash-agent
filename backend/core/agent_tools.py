@@ -749,7 +749,7 @@ AGENT_TOOLS_SCHEMA = [
         "name": "edit_project_file",
         "description": "Surgically edit an existing file by replacing an exact code snippet or function block without wiping or rewriting the entire file. Use 'read_project_file' first to find the exact target string.",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'app.js', 'styles.css')",
+            "file_path": "Relative path to file at any arbitrary nested location (e.g. 'main.py', 'src/api/auth.py', 'database/schema.sql', 'docker-compose.yml', 'index.html')",
             "target": "Exact existing code string to be replaced (must match whitespace exactly)",
             "replacement": "New code string to replace the target with"
         }
@@ -761,9 +761,9 @@ AGENT_TOOLS_SCHEMA = [
     },
     {
         "name": "write_project_file",
-        "description": "Create or overwrite a file in the project workspace (e.g. index.html, styles.css, app.py, exploit.py).",
+        "description": "Create or overwrite a file at any arbitrary nested path in the project workspace (e.g. main.py, src/api/auth.py, database/schema.sql, docker-compose.yml, index.html).",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'src/app.js')",
+            "file_path": "Relative path to file at any arbitrary nested location (e.g. 'main.py', 'src/api/auth.py', 'database/schema.sql', 'docker-compose.yml', 'index.html')",
             "content": "Full content of the file to write"
         }
     },
@@ -771,7 +771,7 @@ AGENT_TOOLS_SCHEMA = [
         "name": "append_project_file",
         "description": "Append code or text to an existing file in the project workspace, enabling chunked multi-thousand line generation without truncation.",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'styles.css', 'app.js')",
+            "file_path": "Relative path to file at any arbitrary nested location (e.g. 'main.py', 'models.py', 'index.html')",
             "content": "Code or text content to append"
         }
     },
@@ -779,7 +779,7 @@ AGENT_TOOLS_SCHEMA = [
         "name": "read_project_file",
         "description": "Read the contents of a file in the project workspace (or specify 'project_name' to inspect and reuse code from any past project in persistent memory).",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')",
+            "file_path": "Relative path to file at any arbitrary nested location (e.g. 'main.py', 'src/app.js')",
             "project_name": "Optional name of a past project from persistent memory to inspect"
         }
     },
@@ -964,9 +964,9 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
 LEAN_TOOLS_SCHEMA = [
     {
         "name": "write_project_file",
-        "description": "Create or overwrite a file in the project workspace (e.g. index.html, styles.css, app.js).",
+        "description": "Create or overwrite a file at any arbitrary nested path in the project workspace (e.g. main.py, src/api/auth.py, database/schema.sql, index.html).",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'app.js', 'styles.css')",
+            "file_path": "Relative path to file (e.g. 'main.py', 'src/app.js', 'index.html')",
             "content": "Full content of the file to write"
         }
     },
@@ -974,7 +974,7 @@ LEAN_TOOLS_SCHEMA = [
         "name": "edit_project_file",
         "description": "Surgically edit an existing file by replacing an exact code snippet or function block.",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')",
+            "file_path": "Relative path to file (e.g. 'main.py', 'src/app.js')",
             "target": "Exact existing code string to be replaced (must match whitespace exactly)",
             "replacement": "New code string to replace the target with"
         }
@@ -983,7 +983,7 @@ LEAN_TOOLS_SCHEMA = [
         "name": "read_project_file",
         "description": "Read the text content of a file in the project workspace.",
         "parameters": {
-            "file_path": "Relative path to file (e.g. 'index.html', 'app.js')"
+            "file_path": "Relative path to file (e.g. 'main.py', 'src/app.js')"
         }
     }
 ]

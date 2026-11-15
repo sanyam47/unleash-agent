@@ -65,17 +65,40 @@ class ChatRequest(BaseModel):
 
 def _extract_vision_description(base64_image: str) -> str:
     """
-    Transcribes screenshots, code, terminal traces, and errors using local moondream VLM.
-    Fallback to Gemini if moondream is slow or unavailable.
+    Transcribes screenshots, code, terminal traces, and errors.
+    Tier 1: Instant sub-second cloud VLM via Gemini if key configured.
+    Tier 2: Local Moondream VLM with strict 4s timeout.
     """
+    prompt = (
+        "Carefully analyze this image. If it contains code, terminal output, or an error message: "
+        "1. Transcribe the exact error text, stack trace, and code verbatim. "
+        "2. Note any highlighted lines, error markers, or file paths. "
+        "3. If it is a UI or diagram, describe all visible components in detail."
+    )
+
+    # Tier 1: Try Cloud Gemini Vision directly if available (ultra-fast <1s)
     try:
-        # Prompt moondream for comprehensive OCR & error inspection
-        prompt = (
-            "Carefully analyze this image. If it contains code, terminal output, or an error message: "
-            "1. Transcribe the exact error text, stack trace, and code verbatim. "
-            "2. Note any highlighted lines, error markers, or file paths. "
-            "3. If it is a UI or diagram, describe all visible components in detail."
-        )
+        from backend.core.gemini_client import gemini_available, _get_client
+        if gemini_available():
+            client = _get_client()
+            import base64
+            clean_b64 = base64_image.split(",")[-1] if "," in base64_image else base64_image
+            img_bytes = base64.b64decode(clean_b64)
+            from google.genai import types
+            part = types.Part.from_bytes(data=img_bytes, mime_type="image/png")
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[part, prompt]
+            )
+            txt = (response.text or "").strip()
+            if txt:
+                print("[Vision Pipeline]: Fast Gemini multimodal transcription succeeded.")
+                return txt
+    except Exception as g_err:
+        print(f"[Vision Pipeline]: Cloud Gemini vision notice: {g_err}")
+
+    # Tier 2: Local Moondream on Ollama
+    try:
         v_payload = {
             "model": "moondream:latest",
             "messages": [
@@ -92,13 +115,14 @@ def _extract_vision_description(base64_image: str) -> str:
             data=json.dumps(v_payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(v_req, timeout=5) as v_resp:
+        with urllib.request.urlopen(v_req, timeout=4) as v_resp:
             v_data = json.loads(v_resp.read().decode("utf-8"))
             content = v_data.get("message", {}).get("content", "").strip()
             if content:
+                print("[Vision Pipeline]: Local Moondream transcription succeeded.")
                 return content
     except Exception as e:
-        print(f"Moondream vision bridge error: {e}")
+        print(f"[Vision Pipeline]: Moondream local notice: {e}")
 
     return "[Attached Screenshot: Image transcription unavailable]"
 
@@ -129,8 +153,9 @@ def send_chat_message(req: ChatRequest):
             raise HTTPException(status_code=503, detail="Ollama local server is not running. Please start Ollama first.")
 
     # Check if target model natively supports images
-    native_vision_models = ["moondream", "qwen2-vl", "qwen2.5-vl", "llama3.2-vision", "llava", "bakllava"]
-    is_native_vision = any(vm in req.model.lower() for vm in native_vision_models)
+    from backend.core.cloud_llm_client import is_cloud_model
+    native_vision_models = ["moondream", "qwen2-vl", "qwen2.5-vl", "llama3.2-vision", "llava", "bakllava", "gemini", "gpt-4o", "claude-3"]
+    is_native_vision = any(vm in req.model.lower() for vm in native_vision_models) or (is_cloud_model(req.model) and any(m in req.model.lower() for m in ("gpt-4o", "gemini", "claude", "vl")))
 
     # 0. Local Cybersecurity RAG Context Retrieval
     rag_sources = []
@@ -1046,6 +1071,16 @@ def _load_persisted_sessions() -> List[Dict[str, Any]]:
     os.makedirs(CONVERSATIONS_DIR, exist_ok=True)
     sessions_map: Dict[str, Dict[str, Any]] = {}
 
+    # 0. Load from SQLite primary database
+    try:
+        from backend.db.chat_sqlite import load_sessions_from_sqlite
+        sql_sessions = load_sessions_from_sqlite()
+        for s in sql_sessions:
+            if s.get("id"):
+                sessions_map[s["id"]] = s
+    except Exception as e:
+        print(f"[SQLite Load Notice]: {e}")
+
     # 1. Load from aggregate index file if it exists
     if os.path.exists(SESSIONS_FILE_PATH):
         try:
@@ -1112,6 +1147,14 @@ def _save_persisted_sessions(sessions: List[Dict[str, Any]]) -> bool:
         # 2. Save unified master index
         with open(SESSIONS_FILE_PATH, "w", encoding="utf-8") as f:
             json.dump(sessions_to_save, f, indent=2, ensure_ascii=False)
+
+        # 3. Synchronize to SQLite (WAL mode)
+        try:
+            from backend.db.chat_sqlite import sync_sessions_to_sqlite
+            sync_sessions_to_sqlite(sessions_to_save)
+        except Exception as sqle:
+            print(f"[SQLite Sync Notice]: {sqle}")
+
         return True
     except Exception as e:
         print(f"Error saving {SESSIONS_FILE_PATH}: {e}")

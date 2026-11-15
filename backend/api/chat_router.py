@@ -195,7 +195,8 @@ def send_chat_message(req: ChatRequest):
         "3. Explicitly Acknowledge Ignorance: State clearly: 'I cannot identify or confirm this with high certainty based on my base weights alone.'\n"
         "4. Knowledge Acquisition: Note that an authoritative domain knowledge base can be downloaded and connected to ground your answers with 100% precision."
     )
-    base_sys = f"{base_sys}{epistemic_directive}"
+    from backend.core.prompt_injection_guard import PROMPT_INJECTION_GUARD_DIRECTIVE
+    base_sys = f"{base_sys}{epistemic_directive}\n{PROMPT_INJECTION_GUARD_DIRECTIVE}"
 
     # 0.01 Check for Epistemic Knowledge Gap & Premier Database Discovery
     knowledge_proposal = None
@@ -343,6 +344,12 @@ def send_chat_message(req: ChatRequest):
                 )
 
             agent_reply = agent_res["reply"]
+            try:
+                from backend.core.secret_scrubber import scrub_sensitive_content
+                agent_reply = scrub_sensitive_content(agent_reply)
+            except Exception:
+                pass
+
             if knowledge_proposal and "[KNOWLEDGE_ACQUIRE_PROPOSAL:" not in agent_reply:
                 agent_reply += f"\n\n[KNOWLEDGE_ACQUIRE_PROPOSAL:{knowledge_proposal['domain_key']}:{knowledge_proposal['database_name']}:{knowledge_proposal['description']}:{knowledge_proposal['source_url']}]"
 
@@ -1992,6 +1999,13 @@ def approve_action_endpoint(req: ActionApprovalRequest):
     files_written = chk.get("files_written", [])
 
     if req.approved:
+        # Time-Machine Pre-Action Snapshot: Capture workspace state right before executing approved action
+        try:
+            from backend.core.workspace_snapshot import create_snapshot
+            create_snapshot(clean_proj, step_label=f"pre_{pending['action']}", description=f"Safety snapshot before executing approved {pending['action']}")
+        except Exception:
+            pass
+
         tool_res = dispatch_tool(pending["action"], pending["args"] or {}, context)
         step_rec = {
             "step": chk.get("step", 1) + 1,

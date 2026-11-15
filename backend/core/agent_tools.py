@@ -304,6 +304,17 @@ def write_project_file(project_name: str, file_path: str, content: str) -> Dict[
         target = resolve_safe_project_path(project_name, file_path)
         target.parent.mkdir(parents=True, exist_ok=True)
         
+        # Secret Scrubber: Redact any accidental active host secrets or private keys
+        try:
+            from backend.core.secret_scrubber import SecretScrubber
+            scrubbed_c, sec_dets = SecretScrubber.scrub_text(content)
+            if sec_dets:
+                content = scrubbed_c
+                det_labels = ", ".join(set(d.get("type", "SECRET") for d in sec_dets))
+                warning_note = f"SECRET SCRUBBER: Redacted credentials ({det_labels}) before writing to disk."
+        except Exception:
+            pass
+
         target.write_text(content, encoding="utf-8")
         size_bytes = target.stat().st_size
 
@@ -558,9 +569,17 @@ def search_web_docs(query: str, project_name: Optional[str] = None) -> Dict[str,
             link_url = links[i][0].strip() if i < len(links) else ""
             if link_url.startswith("//"):
                 link_url = "https:" + link_url
+
+            # Prompt Injection Shield: Wrap external scraped data in untrusted boundary tags
+            try:
+                from backend.core.prompt_injection_guard import wrap_untrusted_content
+                guarded_snippet = wrap_untrusted_content(clean_snippet, source=link_url)
+            except Exception:
+                guarded_snippet = clean_snippet
+
             results.append({
                 "title": f"Documentation Result {i+1}",
-                "snippet": clean_snippet,
+                "snippet": guarded_snippet,
                 "url": link_url
             })
 
@@ -710,6 +729,15 @@ def edit_project_file(
                     "error": f"JSON syntax validation failed after edit in '{file_path}': {je}"
                 }
 
+        # Secret Scrubber: Redact any accidental secrets in replacement
+        try:
+            from backend.core.secret_scrubber import SecretScrubber
+            scrubbed_new, sec_dets = SecretScrubber.scrub_text(new_content)
+            if sec_dets:
+                new_content = scrubbed_new
+        except Exception:
+            pass
+
         # Commit edit to disk
         target_path.write_text(new_content, encoding="utf-8")
         
@@ -726,6 +754,38 @@ def edit_project_file(
         }
     except Exception as e:
         return {"status": "error", "error": f"Failed to edit file '{file_path}': {str(e)}"}
+
+
+def delete_project_file(project_name: str, file_path: str) -> Dict[str, Any]:
+    """
+    Safely deletes a file from the project workspace.
+    Automatically captures a time-machine snapshot before deletion so rollback is always possible.
+    """
+    try:
+        clean_proj = sanitize_project_name(project_name)
+        target = resolve_safe_project_path(clean_proj, file_path)
+        if not target.exists() or not target.is_file():
+            return {"status": "error", "error": f"File '{file_path}' does not exist in workspace."}
+
+        # Take pre-action micro-snapshot before deletion for 1-click rollback
+        snap_id = None
+        try:
+            from backend.core.workspace_snapshot import create_snapshot
+            snap_res = create_snapshot(clean_proj, step_label="pre_delete", description=f"Safety snapshot before deleting {file_path}")
+            snap_id = snap_res.get("snapshot_id")
+        except Exception:
+            pass
+
+        target.unlink()
+        return {
+            "status": "success",
+            "file": file_path,
+            "project": clean_proj,
+            "snapshot_id": snap_id,
+            "message": f"Successfully deleted '{file_path}' from workspace. (Safety rollback snapshot created: {snap_id})"
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to delete file '{file_path}': {str(e)}"}
 
 
 def get_project_tree(project_name: str) -> Dict[str, Any]:
@@ -745,6 +805,13 @@ def get_project_tree(project_name: str) -> Dict[str, Any]:
 
 
 AGENT_TOOLS_SCHEMA = [
+    {
+        "name": "delete_project_file",
+        "description": "Delete a file from the project workspace. Triggers a Human-in-the-Loop confirmation gate and saves an automatic time-machine rollback snapshot before unlinking.",
+        "parameters": {
+            "file_path": "Relative path to file in project workspace to delete"
+        }
+    },
     {
         "name": "edit_project_file",
         "description": "Surgically edit an existing file by replacing an exact code snippet or function block without wiping or rewriting the entire file. Use 'read_project_file' first to find the exact target string.",
@@ -913,6 +980,12 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
     elif tool_name == "list_project_files":
         return list_project_files(project_name)
 
+    elif tool_name in ("delete_project_file", "delete_file", "remove_file", "unlink_file"):
+        path = args.get("file_path") or args.get("path") or args.get("filename")
+        if not path:
+            return {"status": "error", "error": "Missing 'file_path' argument for delete_project_file"}
+        return delete_project_file(project_name, str(path))
+
     elif tool_name in ("run_terminal_command", "execute_command", "terminal"):
         cmd = args.get("command") or args.get("cmd") or ""
         if not cmd:
@@ -968,6 +1041,13 @@ LEAN_TOOLS_SCHEMA = [
         "parameters": {
             "file_path": "Relative path to file (e.g. 'main.py', 'src/app.js', 'index.html')",
             "content": "Full content of the file to write"
+        }
+    },
+    {
+        "name": "delete_project_file",
+        "description": "Delete a file from the project workspace. Triggers a Human-in-the-Loop confirmation gate and saves an automatic time-machine rollback snapshot before unlinking.",
+        "parameters": {
+            "file_path": "Relative path to file in project workspace to delete"
         }
     },
     {

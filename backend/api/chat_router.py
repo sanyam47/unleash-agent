@@ -121,8 +121,12 @@ def send_chat_message(req: ChatRequest):
     - If the target model is text-only (e.g. dolphin3, llama3, custom LLMs), automatically routes
       images through local Moondream vision bridge to transcribe errors, code, and UI into the context seamlessly!
     """
-    if not check_ollama_alive():
-        raise HTTPException(status_code=503, detail="Ollama local server is not running. Please start Ollama first.")
+    from backend.core.cloud_llm_client import is_cloud_model
+    if not is_cloud_model(req.model):
+        if not check_ollama_alive():
+            ensure_ollama_daemon()
+        if not check_ollama_alive():
+            raise HTTPException(status_code=503, detail="Ollama local server is not running. Please start Ollama first.")
 
     # Check if target model natively supports images
     native_vision_models = ["moondream", "qwen2-vl", "qwen2.5-vl", "llama3.2-vision", "llava", "bakllava"]
@@ -453,6 +457,25 @@ class ImportModelRequest(BaseModel):
     modelfile_path: str
 
 
+def ensure_ollama_daemon():
+    """Guarantees Ollama local inference engine is alive. Auto-spawns detached process if offline."""
+    if check_ollama_alive():
+        return True
+    try:
+        subprocess.Popen(
+            ["ollama", "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        )
+        for _ in range(8):
+            time.sleep(0.3)
+            if check_ollama_alive():
+                return True
+    except Exception as e:
+        print(f"[Ollama Supervisor]: Auto-spawn notice: {e}")
+    return check_ollama_alive()
+
 def check_ollama_alive() -> bool:
     try:
         req = urllib.request.Request(f"{get_ollama_base_url()}/api/tags")
@@ -502,6 +525,9 @@ def get_available_models():
     """Lists all models installed in local Ollama instance combined with configured Cloud LLM models."""
     from backend.core.cloud_llm_client import CloudLlmManager
     cloud_models = CloudLlmManager.get_configured_models()
+
+    if not check_ollama_alive():
+        ensure_ollama_daemon()
 
     if not check_ollama_alive():
         if cloud_models:

@@ -35,10 +35,13 @@ app.include_router(skills_router.router)
 
 @app.on_event("startup")
 def startup_event():
-    """Background startup warm-up: launches Docker Desktop asynchronously if installed so container sandbox is hot."""
+    """Background startup warm-up: launches Docker & Ollama supervisors asynchronously."""
     import threading
     from backend.core.sandbox import ensure_docker_daemon_async
     threading.Thread(target=ensure_docker_daemon_async, daemon=True).start()
+
+    from backend.api.chat_router import ensure_ollama_daemon
+    threading.Thread(target=ensure_ollama_daemon, daemon=True).start()
 
 
 @app.get("/debug/gemini")

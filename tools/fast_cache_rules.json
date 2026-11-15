@@ -1,0 +1,12 @@
+{
+  "0x80000003": {
+    "diagnosis": "Sandboxed helper process permission denial",
+    "action": "FIX_PERMISSIONS",
+    "requires_path": true
+  },
+  "0xc0000005": {
+    "diagnosis": "Zombie process memory conflict",
+    "action": "KILL_ZOMBIES",
+    "requires_path": false
+  }
+}

@@ -177,10 +177,33 @@ class LocalPermissionController:
                 is_sensitive = True
                 risk_level = "high"
                 action_title = f"Install Dependency ({pkg_mgr.upper()})"
-                reason = (
-                    f"Agent requests to install external dependency: '{cmd}'. "
-                    "Requires human approval before downloading packages into the hardened container."
-                )
+                
+                # Perform live pre-flight package verification & typosquat check
+                try:
+                    from backend.core.package_verifier import audit_command_packages
+                    audits = audit_command_packages(cmd)
+                    badges = [a.get("badge") for a in audits if a.get("badge")]
+                    warnings = [a.get("typo_warning") for a in audits if a.get("typo_warning")]
+
+                    if warnings:
+                        risk_level = "critical"
+                        action_title = "⚠️ High-Risk Dependency Alert"
+                        reason = f"Security Warning: {'; '.join(warnings)}. (Command: '{cmd}')"
+                    elif any(a.get("is_new") for a in audits):
+                        risk_level = "high"
+                        action_title = "⚠️ Zero-Day / New Package"
+                        reason = f"New Package Alert: Released <30 days ago. Requires human approval. (Command: '{cmd}')"
+                    else:
+                        badge_str = f" [{', '.join(badges)}]" if badges else ""
+                        reason = (
+                            f"Agent requests to install external dependency: '{cmd}'{badge_str}. "
+                            "Requires human approval before downloading packages into the hardened container."
+                        )
+                except Exception:
+                    reason = (
+                        f"Agent requests to install external dependency: '{cmd}'. "
+                        "Requires human approval before downloading packages into the hardened container."
+                    )
 
             elif zone == SecurityZone.QUARANTINE_AIRGAP:
                 docker_on = is_docker_running()

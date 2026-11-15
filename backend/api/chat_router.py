@@ -92,7 +92,7 @@ def _extract_vision_description(base64_image: str) -> str:
             data=json.dumps(v_payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(v_req, timeout=35) as v_resp:
+        with urllib.request.urlopen(v_req, timeout=5) as v_resp:
             v_data = json.loads(v_resp.read().decode("utf-8"))
             content = v_data.get("message", {}).get("content", "").strip()
             if content:

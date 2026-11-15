@@ -7370,7 +7370,7 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                                 <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; opacity: 0.8;"></span>
                                 <div style="margin-left: 10px; background: var(--bg-base); border: 1px solid var(--border-subtle); padding: 2px 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px;">
                                     <span style="color: var(--text-muted);">🔒</span>
-                                    <span>http://127.0.0.1:8001${previewUrl}</span>
+                                    <span>${window.location.origin}${previewUrl}</span>
                                 </div>
                             </div>
                             <div style="display: flex; align-items: center; gap: 6px;">

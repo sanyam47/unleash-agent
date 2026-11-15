@@ -13,13 +13,20 @@ DEFAULT_CONFIG = {
     "last_updated": 0
 }
 
+SENSITIVE_FILES_PATTERN = {
+    ".env", ".env.local", ".env.production", "secrets.json", "credentials.json",
+    "id_rsa", "id_ed25519", "private_key.pem", ".npmrc", ".pypirc"
+}
+
+
 class LocalPermissionController:
     """
-    Antigravity-Style Local Permissions Controller:
-    - Request Review: Every command requires approval.
-    - Default (Recommended): Ask before sensitive operations (overwrites, deletions, terminal shell).
-    - Auto: Automatically decide if commands run based on AST and blast radius.
-    - Turbo: Run all commands without restrictions.
+    Antigravity Risk-Tiered Human-in-the-Loop (HITL) Permissions Controller:
+    - Request Review: Every command requires approval (Strict).
+    - Default (Recommended): Ask before high-risk operations (package install, file deletion,
+      Docker-offline host fallback, secret edits). Auto-approve harmless read-only & air-gapped tasks.
+    - Auto: Automatically decide if commands run based on risk level and blast radius.
+    - Turbo: Run without human prompts (underlying container sandbox still enforces capabilities & air-gap).
     """
     CONFIG_FILE = CONFIG_FILE
     _lock = threading.RLock()
@@ -84,25 +91,25 @@ class LocalPermissionController:
                 "id": "review",
                 "name": "Request Review",
                 "badge": "Strict",
-                "description": "Every command requires approval."
+                "description": "Every command requires human approval before execution."
             },
             "default": {
                 "id": "default",
                 "name": "Default",
                 "badge": "Recommended",
-                "description": "Ask before sensitive operations."
+                "description": "Ask before sensitive actions (packages, deletions, host fallback). Auto-approves safe code."
             },
             "auto": {
                 "id": "auto",
                 "name": "Auto",
                 "badge": "Intelligent",
-                "description": "Automatically decide if commands run."
+                "description": "Automatically decide if commands run based on risk level and blast radius."
             },
             "turbo": {
                 "id": "turbo",
                 "name": "Turbo",
                 "badge": "Full Autonomy",
-                "description": "Run all commands without restrictions."
+                "description": "Run without HITL prompts (sandbox container still drops caps & air-gaps code)."
             }
         }
         return modes_meta.get(m, modes_meta["default"])
@@ -116,83 +123,135 @@ class LocalPermissionController:
         existing_files: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Evaluates a tool execution against the active permission mode.
-        Returns whether approval is required and details for human confirmation.
+        Evaluates a tool execution against the active permission mode and security zones.
+        Returns whether human approval is required and details for confirmation.
         """
         existing_files = existing_files or []
         mode = cls.get_mode()
 
-        # 1. Turbo mode runs all commands without restrictions
+        # 1. Turbo mode runs all commands without human prompts
+        # (Downstream container sandbox still drops capabilities and air-gaps code)
         if mode == "turbo":
             return {
                 "mode": "turbo",
                 "requires_approval": False,
                 "risk_level": "low",
                 "action_title": f"Execute {tool_name}",
-                "action_desc": "Turbo mode: running without restrictions.",
+                "action_desc": "Turbo mode: running without human-in-the-loop prompts.",
                 "target": ""
             }
 
-        # Determine target and sensitivity
         target = ""
         is_sensitive = False
         risk_level = "low"
+        action_title = f"Run {tool_name}"
         reason = ""
 
-        # Analyze tool type
-        if tool_name in ("write_project_file", "edit_project_file", "append_project_file", "write_file", "edit_file", "append_file"):
-            target = tool_args.get("file_path") or tool_args.get("path") or ""
-            # If target already exists on disk, it's an overwrite/edit of existing work
-            is_overwrite = target in existing_files
-            if is_overwrite or tool_name in ("edit_project_file", "edit_file"):
-                is_sensitive = True
-                risk_level = "medium"
-                reason = f"Modifies existing workspace file '{target}'."
-            else:
-                # Creating brand new file in project
-                risk_level = "low"
-                reason = f"Creates new workspace file '{target}'."
-
-        elif tool_name in ("run_terminal_command", "terminal_run_command", "run_command", "execute_command", "run_in_sandbox", "bash", "sh"):
+        # =====================================================================
+        # A. TERMINAL / SHELL COMMANDS (Integrated with 3-Zone Sandbox)
+        # =====================================================================
+        if tool_name in ("run_terminal_command", "terminal_run_command", "run_command", "execute_command", "run_in_sandbox", "bash", "sh"):
             cmd = tool_args.get("command") or tool_args.get("cmd") or ""
-            target = cmd[:60]
-            is_sensitive = True
-            # Check for destructive commands and PowerShell cmdlets
-            destructive_patterns = [
-                "rm ", "rmdir", "del ", "erase", "format ", "git reset", "git clean", 
-                "drop ", "sudo ", "remove-item", "clear-content", "rd /", "deltree"
-            ]
-            cmd_lower = cmd.lower()
-            if any(pat in cmd_lower for pat in destructive_patterns):
-                risk_level = "high"
-                reason = f"High-risk command execution: '{cmd[:50]}...'"
-            else:
-                risk_level = "medium"
-                reason = f"Executes terminal command: '{cmd[:50]}...'"
+            target = cmd[:80]
 
+            from backend.core.container_runner import classify_command_security_zone, SecurityZone, is_docker_running
+            zone, zone_reason, meta = classify_command_security_zone(cmd)
+
+            if zone == SecurityZone.BLOCKED:
+                is_sensitive = True
+                risk_level = "critical"
+                action_title = "Blocked System Command"
+                reason = f"Security Violation: {zone_reason}"
+
+            elif zone == SecurityZone.LOCAL_SAFE:
+                # Harmless offline inspection: py_compile, ast, git status/diff
+                # Zero prompt fatigue: auto-approved in default & auto modes
+                is_sensitive = False
+                risk_level = "low"
+                action_title = "Local Verification Check"
+                reason = f"Safe offline developer inspection: '{cmd[:60]}' (Zone 1: Local Safe)."
+
+            elif zone == SecurityZone.CONTROLLED_EGRESS:
+                # Package managers: pip install, npm install, yarn add, cargo add
+                pkg_mgr = meta.get("package_manager", "package manager")
+                is_sensitive = True
+                risk_level = "high"
+                action_title = f"Install Dependency ({pkg_mgr.upper()})"
+                reason = (
+                    f"Agent requests to install external dependency: '{cmd}'. "
+                    "Requires human approval before downloading packages into the hardened container."
+                )
+
+            elif zone == SecurityZone.QUARANTINE_AIRGAP:
+                docker_on = is_docker_running()
+                if docker_on:
+                    # In Docker, it's strictly air-gapped (--network none, cap-drop=ALL, read-only deps)
+                    is_sensitive = False
+                    risk_level = "medium"
+                    action_title = "Run Air-Gapped Code / Test"
+                    reason = f"Air-gapped execution in isolated container (--network none): '{cmd[:60]}'."
+                else:
+                    # Docker is offline: would execute on host!
+                    is_sensitive = True
+                    risk_level = "high"
+                    action_title = "Run Script on Host (Docker Offline)"
+                    reason = (
+                        f"Docker is offline. Running script '{cmd[:60]}' directly on host machine "
+                        "requires explicit user approval."
+                    )
+
+        # =====================================================================
+        # B. FILE DELETIONS (High Risk)
+        # =====================================================================
         elif tool_name in ("delete_project_file", "unlink_file", "remove_file", "delete_file"):
             target = tool_args.get("file_path") or tool_args.get("path") or ""
             is_sensitive = True
             risk_level = "high"
-            reason = f"Deletes file '{target}' from workspace."
+            action_title = "Delete Workspace File"
+            reason = f"Permanently deletes file '{target}' from project workspace."
 
+        # =====================================================================
+        # C. FILE WRITING & EDITING
+        # =====================================================================
+        elif tool_name in ("write_project_file", "edit_project_file", "append_project_file", "write_file", "edit_file", "append_file"):
+            target = tool_args.get("file_path") or tool_args.get("path") or ""
+            filename_only = Path(target).name.lower()
+
+            # Check for sensitive credentials, keys, and environment files
+            if filename_only in SENSITIVE_FILES_PATTERN or any(s in filename_only for s in ("secret", "token", "password", "credential")):
+                is_sensitive = True
+                risk_level = "high"
+                action_title = "Modify Sensitive File"
+                reason = f"Modifies sensitive environment/credential file '{target}'."
+            else:
+                # Normal code files in project workspace: autonomous editing permitted
+                is_sensitive = False
+                risk_level = "low"
+                action_title = f"{'Edit' if 'edit' in tool_name else 'Write'} Code File"
+                reason = f"{'Modifies' if target in existing_files else 'Creates'} project file '{target}'."
+
+        # =====================================================================
+        # D. READ-ONLY INSPECTION TOOLS
+        # =====================================================================
         else:
-            # Pure read/inspection tools (read_project_file, search_docs, list_files)
             target = str(tool_args.get("path") or tool_args.get("query") or "")
             is_sensitive = False
             risk_level = "low"
-            reason = f"Read-only operation: {tool_name}"
+            action_title = f"Query {tool_name}"
+            reason = f"Read-only workspace inspection: {tool_name}"
 
-        # 2. Evaluate based on Mode
+        # =====================================================================
+        # EVALUATE HUMAN APPROVAL REQUIREMENT BY MODE
+        # =====================================================================
         if mode == "review":
-            # Strict mode: every action with side-effects requires approval
-            requires_approval = is_sensitive or (tool_name in ("write_project_file", "edit_project_file"))
+            # Strict mode: every action with side-effects requires human approval
+            requires_approval = is_sensitive or (tool_name in ("write_project_file", "edit_project_file", "run_terminal_command"))
         elif mode == "default":
-            # Default mode: ask before sensitive operations (overwriting existing files, shell commands, deletions)
+            # Default (Recommended): ask on high-risk operations (package install, deletions, host fallback, secret edits)
             requires_approval = is_sensitive
         elif mode == "auto":
-            # Auto mode: only prompt on high-risk operations (destructive commands or deletions)
-            requires_approval = (risk_level == "high")
+            # Auto mode: only prompt on high/critical risk
+            requires_approval = (risk_level in ("high", "critical"))
         else:
             requires_approval = False
 
@@ -202,7 +261,7 @@ class LocalPermissionController:
             "risk_level": risk_level,
             "tool_name": tool_name,
             "tool_args": tool_args,
-            "action_title": f"{'Modify' if 'edit' in tool_name or is_sensitive else 'Run'} {tool_name}",
+            "action_title": action_title,
             "action_desc": reason,
             "reason": reason,
             "target": target

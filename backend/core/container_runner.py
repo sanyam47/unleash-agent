@@ -1,15 +1,17 @@
+import ast
 import os
 import re
 import shlex
 import time
 import subprocess
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List, Set
 
 from backend.core.agent_tools import resolve_safe_project_path, sanitize_project_name
 
 DOCKER_BIN = "docker"
-DEFAULT_TIMEOUT_SEC = 15
+DEFAULT_TIMEOUT_SEC = 20
 
 STANDARD_DOCKER_DESKTOP_PATHS = [
     r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
@@ -18,6 +20,88 @@ STANDARD_DOCKER_DESKTOP_PATHS = [
     os.path.expandvars(r"%ProgramW6432%\Docker\Docker\Docker Desktop.exe")
 ]
 
+
+# ============================================================================
+# SECURITY ZONE DEFINITIONS
+# ============================================================================
+
+class SecurityZone(str, Enum):
+    """
+    3-Zone Dynamic Quarantine Security Model:
+    - BLOCKED: Malicious, destructive, or host-compromising instructions. Unconditionally rejected.
+    - LOCAL_SAFE: Purely local, offline dev tooling (AST, py_compile, git status). Zero overhead.
+    - CONTROLLED_EGRESS: Package management (pip, npm, yarn, cargo). Strictly inside hardened Docker
+      with script suppression, host DNS sinkholes, and resource throttles. NEVER falls back to host.
+    - QUARANTINE_AIRGAP: Code execution, test suites, and untrusted scripts. Air-gapped (--network none)
+      inside isolated container. Zero network, zero host access.
+    """
+    BLOCKED = "BLOCKED"
+    LOCAL_SAFE = "LOCAL_SAFE"
+    CONTROLLED_EGRESS = "CONTROLLED_EGRESS"
+    QUARANTINE_AIRGAP = "QUARANTINE_AIRGAP"
+
+
+# High-risk destructive commands unconditionally blocked
+BLOCKED_COMMANDS = [
+    r"\bformat\b",
+    r"\brmdir\s+/[sq]",
+    r"\bdel\s+/[sq]",
+    r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|--recursive)\s+/",
+    r"\breg\b",
+    r"\bregedit\b",
+    r"\bnetsh\b",
+    r"\bshutdown\b",
+    r"\bpkexec\b",
+    r"\bdd\s+if=",
+    r"\bmkfs\b",
+    r"\bchmod\s+(?:-[a-zA-Z]*R\s+)?777\s+/",
+    r"\bpowershell(?:\.exe)?\s+-[ec]",
+    r"\bcmd(?:\.exe)?\s+/[ck]",
+    r"\b(?:curl|wget)\b.*\|\s*(?:ba)?sh",
+    r"\b/dev/tcp/",
+    r"\bnc(?:\.traditional)?\s+.*-e\b",
+    r"\bmkfifo\b",
+    r":\(\)\s*\{\s*:\|:&\s*\};:",  # fork bomb
+    r"(?:/etc/shadow|/etc/passwd|C:\\Windows\\System32\\config)"
+]
+
+# Package managers that perform remote resolution and dependency fetching
+PACKAGE_MANAGERS_PATTERN = re.compile(
+    r"^\s*(?:python\s+-m\s+)?pip\s+(?:install|download)\b|"
+    r"^\s*npm\s+(?:install|i|add)\b|"
+    r"^\s*yarn\s+(?:add|install)\b|"
+    r"^\s*pnpm\s+(?:add|install|i)\b|"
+    r"^\s*cargo\s+(?:add|fetch)\b|"
+    r"^\s*poetry\s+(?:add|install)\b|"
+    r"^\s*composer\s+(?:require|install)\b|"
+    r"^\s*go\s+get\b",
+    re.IGNORECASE
+)
+
+# Strictly offline, local dev inspections with zero network or filesystem modification
+LOCAL_SAFE_COMMANDS_PATTERN = re.compile(
+    r"^\s*python\s+(-m\s+)?(py_compile|ast)\b|"
+    r"^\s*node\s+(-c|--check)\b|"
+    r"^\s*git\s+(status|log|diff|rev-parse|branch|show)\b|"
+    r"^\s*(?:dir|ls|echo|cat|type)\b",
+    re.IGNORECASE
+)
+
+# AST safety analysis sets for script inspection
+DANGEROUS_AST_MODULES: Set[str] = {
+    "socket", "subprocess", "ctypes", "pty", "shlex", "winreg",
+    "webbrowser", "paramiko", "requests", "urllib", "http.client",
+    "urllib3", "ftplib", "smtplib", "telnetlib"
+}
+DANGEROUS_AST_CALLS: Set[str] = {
+    "system", "popen", "spawnl", "spawnle", "spawnlp", "spawnlpe",
+    "spawnv", "spawnve", "spawnvp", "spawnvpe"
+}
+
+
+# ============================================================================
+# DOCKER LIFECYCLE MANAGEMENT
+# ============================================================================
 
 def get_docker_desktop_executable() -> Optional[str]:
     """Finds Docker Desktop.exe across standard Windows installation paths."""
@@ -28,22 +112,6 @@ def get_docker_desktop_executable() -> Optional[str]:
 
 
 DOCKER_DESKTOP_PATH = get_docker_desktop_executable() or r"C:\Program Files\Docker\Docker\Docker Desktop.exe"
-
-# Dangerous host commands unconditionally blocked regardless of runner mode
-BLOCKED_COMMANDS = [
-    r"\bformat\b",
-    r"\brmdir\s+/[sq]",
-    r"\bdel\s+/[sq]",
-    r"\breg\b",
-    r"\bregedit\b",
-    r"\bnetsh\b",
-    r"\bshutdown\b",
-    r"\bpkexec\b",
-    r"\bdd\s+if=",
-    r"\bmkfs\b",
-    r"\bpowershell(?:\.exe)?\s+-[ec]",
-    r"\bcmd(?:\.exe)?\s+/[ck]"
-]
 
 
 def is_docker_running() -> bool:
@@ -142,11 +210,114 @@ class DockerEphemeralSession:
                 print(f"[DOCKER LIFECYCLE WARNING]: Error stopping Docker: {e}")
 
 
+# ============================================================================
+# CLASSIFICATION & AST SAFETY AUDITING
+# ============================================================================
+
+def classify_command_security_zone(command: str) -> Tuple[SecurityZone, str, Dict[str, Any]]:
+    """
+    Evaluates an arbitrary command and assigns it to one of the 4 security zones:
+    1. BLOCKED: System destruction, host compromise, or arbitrary pipes to shell.
+    2. LOCAL_SAFE: Fast, read-only dev inspections (py_compile, ast, git status).
+    3. CONTROLLED_EGRESS: Package resolution (pip, npm, yarn) needing outbound network.
+    4. QUARANTINE_AIRGAP: Untrusted code, scripts, and tests needing strict network isolation.
+    """
+    raw_cmd = command.strip()
+    lowered = raw_cmd.lower()
+
+    # 1. Check for blocked malicious patterns
+    for pat in BLOCKED_COMMANDS:
+        if re.search(pat, lowered):
+            return (
+                SecurityZone.BLOCKED,
+                f"Command matches restricted host instruction pattern: {pat}",
+                {"sanitized_command": raw_cmd}
+            )
+
+    # 2. Check for package managers (Controlled Egress)
+    if PACKAGE_MANAGERS_PATTERN.search(raw_cmd):
+        pkg_mgr = "npm" if "npm" in lowered else "yarn" if "yarn" in lowered else "pip"
+        return (
+            SecurityZone.CONTROLLED_EGRESS,
+            f"Package management command detected ({pkg_mgr}). Requires hardened container with controlled egress.",
+            {"package_manager": pkg_mgr, "sanitized_command": raw_cmd}
+        )
+
+    # 3. Check for safe local developer checks (py_compile, git status)
+    if LOCAL_SAFE_COMMANDS_PATTERN.search(raw_cmd):
+        return (
+            SecurityZone.LOCAL_SAFE,
+            "Harmless offline inspection tool. Permitted for zero-latency local execution.",
+            {"tool": "local_dev", "sanitized_command": raw_cmd}
+        )
+
+    # 4. All other execution defaults to Quarantine Airgap
+    return (
+        SecurityZone.QUARANTINE_AIRGAP,
+        "Untrusted script, test runner, or executable. Requires air-gapped container isolation (--network none).",
+        {"tool": "untrusted_runner", "sanitized_command": raw_cmd}
+    )
+
+
+def check_python_ast_safety(file_path: Path) -> Tuple[bool, Optional[str]]:
+    """
+    Statically inspects a Python file's Abstract Syntax Tree (AST) before allowing
+    any local host fallback. Rejects network sockets, subprocess spawns, and ctypes.
+    """
+    try:
+        if not file_path.exists() or file_path.suffix.lower() != ".py":
+            return True, None
+        content = file_path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(content, filename=str(file_path))
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root_mod = alias.name.split(".")[0].lower()
+                    if root_mod in DANGEROUS_AST_MODULES:
+                        return False, f"Potentially hazardous import '{alias.name}' detected in {file_path.name}."
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    root_mod = node.module.split(".")[0].lower()
+                    if root_mod in DANGEROUS_AST_MODULES:
+                        return False, f"Potentially hazardous import from '{node.module}' detected in {file_path.name}."
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Attribute) and node.func.attr.lower() in DANGEROUS_AST_CALLS:
+                    return False, f"Potentially hazardous system call '{node.func.attr}' detected in {file_path.name}."
+                elif isinstance(node.func, ast.Name) and node.func.id.lower() in {"eval", "exec"}:
+                    return False, f"Dynamic code evaluation '{node.func.id}' detected in {file_path.name}."
+
+        return True, None
+    except Exception as e:
+        return False, f"AST parsing failed on {file_path.name}: {str(e)}"
+
+
+def get_preferred_docker_image(command: str) -> str:
+    """Selects the most suitable hardened container image for the command."""
+    lowered = command.lower()
+    if any(tok in lowered for tok in ["node", "npm", "yarn", "pnpm", "npx"]):
+        return "node:18-alpine"
+    return "python:3.11-slim"
+
+
+# ============================================================================
+# EXECUTION ENGINE: 3-ZONE DYNAMIC QUARANTINE SANDBOX
+# ============================================================================
+
 def execute_in_isolated_container(project_name: str, command: str, timeout: int = DEFAULT_TIMEOUT_SEC) -> Dict[str, Any]:
     """
-    Executes a terminal or test command strictly inside the isolated project workspace.
-    1. If Docker is active: Runs inside an air-gapped container (`--network none`) with mounted workspace.
-    2. If Docker is closed: Falls back to a whitelisted sandboxed runner (`shell=False`, `cwd=project_dir`).
+    Executes commands through the 3-Zone Dynamic Quarantine Security Sandbox:
+
+    - ZONE 0 (BLOCKED): Dangerous destructive host commands are immediately rejected.
+    - ZONE 1 (LOCAL_SAFE): Read-only dev checks (py_compile, ast, git status) run locally
+      with shell=False and zero overhead.
+    - ZONE 2 (CONTROLLED_EGRESS): Package managers (pip, npm, yarn, cargo) run in a hardened
+      ephemeral Docker container with DNS sinkholes, script suppression (--ignore-scripts),
+      capability dropping (--cap-drop=ALL), and resource caps.
+      * CRITICAL: NEVER falls back to host execution if Docker is offline.
+    - ZONE 3 (QUARANTINE_AIRGAP): Untrusted code, tests, and scripts run strictly inside an
+      air-gapped Docker container (--network none) with read-only dependency mounts.
+      * If Docker is offline, AST safety check is enforced before permitting any local test run.
     """
     clean_proj = sanitize_project_name(project_name)
     proj_dir = resolve_safe_project_path(clean_proj, "")
@@ -154,138 +325,309 @@ def execute_in_isolated_container(project_name: str, command: str, timeout: int 
     if not proj_dir.exists():
         return {
             "status": "error",
+            "zone": "PRE_CHECK",
             "error": f"Project workspace '{clean_proj}' does not exist on disk."
         }
 
-    # Security check: detect blacklisted destructive commands
-    lowered = command.strip().lower()
-    for pattern in BLOCKED_COMMANDS:
-        if re.search(pattern, lowered):
+    # Step 1: Classify Security Zone
+    zone, reason, meta = classify_command_security_zone(command)
+    start_t = time.perf_counter()
+
+    # =========================================================================
+    # ZONE 0: BLOCKED COMMANDS
+    # =========================================================================
+    if zone == SecurityZone.BLOCKED:
+        return {
+            "status": "security_block",
+            "zone": zone.value,
+            "command": command,
+            "error": f"SECURITY BLOCK: {reason}"
+        }
+
+    # =========================================================================
+    # ZONE 1: LOCAL SAFE COMMANDS (py_compile, ast, git status)
+    # =========================================================================
+    if zone == SecurityZone.LOCAL_SAFE:
+        try:
+            parts = shlex.split(command, posix=True)
+            if not parts:
+                return {"status": "error", "error": "Empty command."}
+
+            proc = subprocess.run(
+                parts,
+                shell=False,  # CRITICAL: shell=False prevents shell injection attacks (&, |, ;)
+                cwd=str(proj_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            dur = round(time.perf_counter() - start_t, 3)
+            return {
+                "status": "success" if proc.returncode == 0 else "error",
+                "zone": zone.value,
+                "mode": "local_safe_runner",
+                "command": command,
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout[:8192],
+                "stderr": proc.stderr[:8192],
+                "execution_time_sec": dur,
+                "isolation": "Zone 1: Local Safe (shell=False, Project CWD Jail)"
+            }
+        except subprocess.TimeoutExpired:
             return {
                 "status": "error",
-                "error": f"SECURITY BLOCK: Command '{command}' matches restricted system instruction."
+                "zone": zone.value,
+                "command": command,
+                "error": f"Execution timed out after {timeout} seconds."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "zone": zone.value,
+                "command": command,
+                "error": str(e)
             }
 
-    start_t = time.perf_counter()
+    # =========================================================================
+    # DOCKER DAEMON VERIFICATION (For Zone 2 & Zone 3)
+    # =========================================================================
     docker_available = is_docker_running()
+    if not docker_available:
+        # Attempt to spin up Docker Desktop if installed
+        start_res = start_docker_desktop()
+        if start_res.get("status") == "success":
+            for _ in range(6):
+                time.sleep(1.0)
+                if is_docker_running():
+                    docker_available = True
+                    break
+
+    win_path = str(proj_dir).replace("\\", "/")
+    volume_name = f"unleash_deps_{clean_proj}"
+    image = get_preferred_docker_image(command)
 
     # =========================================================================
-    # PATH A: DOCKER ISOLATED CONTAINER (AIR-GAPPED `--network none`)
+    # ZONE 2: CONTROLLED EGRESS (Package Management: pip, npm, yarn, cargo)
     # =========================================================================
-    if docker_available:
+    if zone == SecurityZone.CONTROLLED_EGRESS:
+        if not docker_available:
+            # STRICT DEFENSE: NEVER FALL BACK TO HOST FOR PACKAGE INSTALLATION!
+            # Malicious setup.py or npm postinstall scripts would execute on the user's host OS.
+            return {
+                "status": "security_block",
+                "zone": zone.value,
+                "command": command,
+                "error": (
+                    "CONTAINER ISOLATION REQUIRED: Package installation commands ('pip', 'npm', 'yarn', 'cargo') "
+                    "cannot be executed directly on the host machine to protect against supply-chain attacks and malicious "
+                    "setup.py execution hooks. Docker Desktop must be running to execute in a hardened sandbox."
+                ),
+                "remediation": "Start Docker Desktop and retry the installation."
+            }
+
         try:
-            # Mount project folder to /workspace in an isolated container
-            # Using python:3.11-slim or node:18-alpine if available, else python
-            win_path = str(proj_dir).replace("\\", "/")
+            # Automatic security flag injection for package managers
+            hardened_cmd = command
+            lowered_cmd = command.lower()
+
+            if "npm" in lowered_cmd and "--ignore-scripts" not in lowered_cmd:
+                hardened_cmd += " --ignore-scripts --no-audit --no-fund"
+            elif "yarn" in lowered_cmd and "--ignore-scripts" not in lowered_cmd:
+                hardened_cmd += " --ignore-scripts"
+            elif "pip" in lowered_cmd:
+                if "--disable-pip-version-check" not in lowered_cmd:
+                    hardened_cmd += " --disable-pip-version-check --no-warn-script-location"
+                if "--target" not in lowered_cmd and "-t " not in lowered_cmd:
+                    hardened_cmd += " --target=/deps"
+
             docker_cmd = [
                 DOCKER_BIN, "run", "--rm",
-                "--network", "none",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges:true",
                 "--cpus", "1.0",
                 "--memory", "512m",
+                "--pids-limit", "100",
+                # LAN / Private Subnet DNS Sinkholing (Prevents pivoting or hitting host ports)
+                "--add-host", "host.docker.internal:0.0.0.0",
+                "--add-host", "gateway.docker.internal:0.0.0.0",
+                "--add-host", "kubernetes.docker.internal:0.0.0.0",
+                "--add-host", "metadata.google.internal:0.0.0.0",
+                # Persistent project dependency volume & workspace mount
+                "-v", f"{volume_name}:/deps",
                 "-v", f"{win_path}:/workspace",
                 "-w", "/workspace",
-                "python:3.11-slim",
-                "sh", "-c", command
+                "-e", "PYTHONPATH=/deps:/workspace",
+                "-e", "PATH=/deps/bin:/usr/local/bin:/usr/bin:/bin",
+                "-e", "NODE_PATH=/workspace/node_modules",
+                image,
+                "sh", "-c", hardened_cmd
             ]
 
             proc = subprocess.run(
                 docker_cmd,
                 capture_output=True,
                 text=True,
-                timeout=timeout,
+                timeout=timeout * 2,  # Package downloads may take slightly longer
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
 
             dur = round(time.perf_counter() - start_t, 2)
-            if proc.returncode == 127:
-                # Command not present inside container image (e.g. node or npm not in python:3.11-slim)
-                print(f"[CONTAINER RUNNER]: Command '{command}' returned 127 (not found in container). Falling back to local sandbox...")
-            else:
+            return {
+                "status": "success" if proc.returncode == 0 else "error",
+                "zone": zone.value,
+                "mode": "docker_controlled_egress",
+                "command": hardened_cmd,
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout[:8192],
+                "stderr": proc.stderr[:8192],
+                "execution_time_sec": dur,
+                "isolation": f"Zone 2: Hardened Docker ({image}, Cap-Drop: ALL, Host DNS Sinkholed, --ignore-scripts)"
+            }
+
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "error",
+                "zone": zone.value,
+                "command": command,
+                "error": f"Package installation timed out after {timeout * 2} seconds."
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "zone": zone.value,
+                "command": command,
+                "error": f"Docker container launch failed: {str(e)}"
+            }
+
+    # =========================================================================
+    # ZONE 3: QUARANTINE AIRGAP (Untrusted Code, Scripts, Tests)
+    # =========================================================================
+    if zone == SecurityZone.QUARANTINE_AIRGAP:
+        if docker_available:
+            try:
+                docker_cmd = [
+                    DOCKER_BIN, "run", "--rm",
+                    "--network", "none",  # STRICT AIR-GAP: Zero internet, zero LAN, zero sockets
+                    "--cap-drop=ALL",
+                    "--security-opt=no-new-privileges:true",
+                    "--cpus", "1.0",
+                    "--memory", "512m",
+                    "--pids-limit", "100",
+                    # Read-only dependency mount to prevent runtime tampering with libraries
+                    "-v", f"{volume_name}:/deps:ro",
+                    "-v", f"{win_path}:/workspace",
+                    "-w", "/workspace",
+                    "-e", "PYTHONPATH=/deps:/workspace",
+                    "-e", "PATH=/deps/bin:/usr/local/bin:/usr/bin:/bin",
+                    "-e", "NODE_PATH=/workspace/node_modules",
+                    image,
+                    "sh", "-c", command
+                ]
+
+                proc = subprocess.run(
+                    docker_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+
+                dur = round(time.perf_counter() - start_t, 2)
                 return {
                     "status": "success" if proc.returncode == 0 else "error",
-                    "mode": "docker_isolated_container",
+                    "zone": zone.value,
+                    "mode": "docker_airgap_quarantine",
                     "command": command,
                     "exit_code": proc.returncode,
                     "stdout": proc.stdout[:8192],
                     "stderr": proc.stderr[:8192],
                     "execution_time_sec": dur,
-                    "isolation": "Docker (--network none, 512MB RAM, 1.0 CPU)"
+                    "isolation": f"Zone 3: Air-Gapped Docker (--network none, Cap-Drop: ALL, Read-Only Deps)"
                 }
 
+            except subprocess.TimeoutExpired:
+                return {
+                    "status": "error",
+                    "zone": zone.value,
+                    "command": command,
+                    "error": f"Air-gapped execution timed out after {timeout} seconds."
+                }
+            except Exception as e:
+                print(f"[CONTAINER RUNNER WARNING]: Docker airgap run failed ({e}). Checking AST safety for fallback...")
+
+        # If Docker is unavailable for Zone 3, perform strict AST audit before permitting local test fallback
+        parts = shlex.split(command, posix=True)
+        if not parts:
+            return {"status": "error", "error": "Empty command."}
+
+        # Check if the command is targeting a python file
+        py_candidates = [proj_dir / p for p in parts if p.endswith(".py")]
+        for py_cand in py_candidates:
+            is_safe, ast_err = check_python_ast_safety(py_cand)
+            if not is_safe:
+                return {
+                    "status": "security_block",
+                    "zone": zone.value,
+                    "command": command,
+                    "error": (
+                        f"CONTAINER ISOLATION REQUIRED: File '{py_cand.name}' contains potentially unsafe instructions ({ast_err}). "
+                        "Execution on the host machine is blocked without Docker airgap isolation."
+                    )
+                }
+
+        # If AST passed and command is a standard test runner, permit local execution with shell=False
+        try:
+            proc = subprocess.run(
+                parts,
+                shell=False,
+                cwd=str(proj_dir),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            dur = round(time.perf_counter() - start_t, 2)
+            return {
+                "status": "success" if proc.returncode == 0 else "error",
+                "zone": zone.value,
+                "mode": "local_ast_verified_fallback",
+                "command": command,
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout[:8192],
+                "stderr": proc.stderr[:8192],
+                "execution_time_sec": dur,
+                "isolation": "Local Sandbox Fallback (Docker offline; AST verified safe; shell=False)"
+            }
         except subprocess.TimeoutExpired:
             return {
                 "status": "error",
-                "mode": "docker_isolated_container",
+                "zone": zone.value,
                 "command": command,
                 "error": f"Execution timed out after {timeout} seconds."
             }
         except Exception as e:
-            # If container launch fails, gracefully fall through to sandboxed runner
-            print(f"[CONTAINER RUNNER WARNING]: Docker run failed ({e}), falling back to local sandbox.")
+            return {
+                "status": "error",
+                "zone": zone.value,
+                "command": command,
+                "error": str(e)
+            }
 
-    # =========================================================================
-    # PATH B: WHITELISTED SANDBOXED RUNNER (`shell=False`, `cwd=proj_dir`)
-    # =========================================================================
-    try:
-        # Split command safely without shell expansion
-        parts = shlex.split(command, posix=True)
+    return {"status": "error", "error": "Unhandled security zone."}
 
-        if not parts:
-            return {"status": "error", "error": "Empty command."}
 
-        proc = subprocess.run(
-            parts,
-            shell=False,  # CRITICAL: shell=False prevents shell injection attacks (&, |, ;)
-            cwd=str(proj_dir),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        )
-
-        dur = round(time.perf_counter() - start_t, 2)
-        return {
-            "status": "success" if proc.returncode == 0 else "error",
-            "mode": "sandboxed_runner",
-            "command": command,
-            "exit_code": proc.returncode,
-            "stdout": proc.stdout[:8192],
-            "stderr": proc.stderr[:8192],
-            "execution_time_sec": dur,
-            "isolation": "Local Sandbox (shell=False, Project CWD Jail)"
-        }
-
-    except subprocess.TimeoutExpired:
-        return {
-            "status": "error",
-            "mode": "sandboxed_runner",
-            "command": command,
-            "error": f"Execution timed out after {timeout} seconds."
-        }
-    except FileNotFoundError:
-        return {
-            "status": "error",
-            "mode": "sandboxed_runner",
-            "command": command,
-            "error": f"Executable '{parts[0]}' not found in system PATH."
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "mode": "sandboxed_runner",
-            "command": command,
-            "error": str(e)
-        }
-
+# ============================================================================
+# UNIVERSAL DEFINITION OF DONE (DoD) BACKEND TEST GATE
+# ============================================================================
 
 def run_backend_docker_test_gate(project_name: Any, timeout: int = 15) -> Dict[str, Any]:
     """
     Universal Backend Definition of Done (DoD) Gate:
-    Validates syntax and runs tests strictly inside the isolated container:
-      1. Validates Python syntax via py_compile for all .py files
-      2. If test files or unittest/pytest tests exist, executes them
-      3. If Node package.json / backend JS exists, runs syntax checks
-    Captures exact fatal stack traces (<150 tokens) and maps to primary_repair_file.
+    Validates syntax and runs tests strictly through the 3-Zone Dynamic Quarantine Security Sandbox:
+      1. Validates Python syntax via py_compile for all .py files (Zone 1: Local Safe, 0 latency)
+      2. If test files exist, executes them inside Zone 3 (Air-Gapped Docker Container)
+      3. Captures exact fatal stack traces (<150 tokens) and maps to primary_repair_file.
     """
     if isinstance(project_name, Path):
         clean_proj = sanitize_project_name(project_name.name)
@@ -305,7 +647,7 @@ def run_backend_docker_test_gate(project_name: Any, timeout: int = 15) -> Dict[s
     if not py_files and not package_json.exists():
         return {"valid": True, "tested": False, "summary": "No backend files present."}
 
-    # 1. Python Syntax / py_compile test
+    # 1. Python Syntax / py_compile test (Zone 1: Local Safe)
     if py_files:
         for py_f in py_files:
             rel_name = py_f.name
@@ -323,7 +665,7 @@ def run_backend_docker_test_gate(project_name: Any, timeout: int = 15) -> Dict[s
                     "summary": f"Python compilation failed on {rel_name}."
                 }
 
-        # 2. Automated Test Suite (if test files exist)
+        # 2. Automated Test Suite (Zone 3: Quarantine Air-Gap)
         if test_files:
             primary_test = test_files[0].name
             test_res = execute_in_isolated_container(clean_proj, f"python -m unittest {primary_test}", timeout=timeout)

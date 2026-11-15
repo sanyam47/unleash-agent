@@ -5207,17 +5207,17 @@ function appendTypingIndicator(modelName, projectName) {
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 7px;">
                         <span id="${id}_dot" class="status-dot agent-status-pulse" style="background: #3b82f6; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px #3b82f6; display: inline-block;"></span>
-                        <span id="${id}_phase" style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">SCOUTING</span>
+                        <span id="${id}_phase" style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">THINKING</span>
                         <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${modelName}</span>
                     </div>
                     <span id="${id}_timer" style="font-size: 0.70rem; color: var(--text-muted); font-family: var(--font-mono);">0.0s</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                     <div id="${id}_headline" style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                        <span>Scouting project architecture & requirements...</span>
+                        <span>Analyzing prompt & intent...</span>
                     </div>
                     <div id="${id}_detail" style="font-size: 0.73rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        Pre-flight prompt analysis & dataset discovery
+                        Frontier intent classification & pre-flight routing
                     </div>
                 </div>
             </div>

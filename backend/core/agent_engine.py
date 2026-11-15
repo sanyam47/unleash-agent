@@ -154,15 +154,16 @@ You have access to the following tools:
 
    - If files already exist in workspace: Use 'get_project_tree' to inspect files. For targeted changes or bug fixes, prefer 'edit_project_file' to surgically replace only the needed code blocks rather than rewriting the entire file.
 
-   - If creating new web project: Write 'index.html', 'styles.css', and 'app.js' with full working logic.
+   - If creating new web project: Plan and generate all necessary files with full working logic (e.g. index.html, styles.css, app.js or React/Node components).
+   - If creating Python or CLI project: Generate server.py, main.py, database.py, requirements.txt, or appropriate scripts.
 
-   - Test and verify execution using 'run_terminal_command' (e.g. 'node -c app.js').
+   - Test and verify execution using 'run_terminal_command' (e.g. 'node -c app.js' or 'python -m py_compile main.py').
 
    - Conclude with 'Final Answer:' summarizing the project and instructions to test it.
 
 4. When you write an Action, output ONLY that single Action call and stop so the system can execute it and return the Observation.
 
-5. All buttons and inputs in index.html MUST have matching event listeners in app.js!
+5. In web projects, all buttons and interactive controls defined in HTML/components MUST have matching event handlers in JavaScript!
 
 
 
@@ -171,16 +172,12 @@ You have access to the following tools:
 When concluding with 'Final Answer:', you MUST format your response in clear, professional markdown:
 
 1. ### Modifications & Implementation Summary:
+   - List the files created or modified.
+   - Provide a concise breakdown of the architecture, features, and styling implemented.
 
-   - List the files created or modified ('index.html', 'styles.css', 'app.js').
-
-   - Provide a concise bullet-point breakdown of the mechanics, controls, game loops, and styling you implemented.
-
-2. ### Live Preview & Verification:
-
-   - Provide the direct live URL: http://127.0.0.1:8001/api/chat/agent/projects/{clean_proj}/preview/
-
-   - Instruct the user to open or refresh the preview window to test the changes live.
+2. ### Verification:
+   - For web apps with index.html, provide the live preview link at: http://127.0.0.1:8000/api/chat/agent/projects/{clean_proj}/preview/
+   - For scripts or CLI tools, provide the command to run them (e.g. 'python main.py').
 
 
 
@@ -977,9 +974,14 @@ def run_agentic_react_loop(
     # NOTE: Never wipe an existing custom directory! Only sandbox projects if requested to build new.
     if is_new_app_creation and existing_files and not custom_ws and "data" in str(proj_dir):
         print(f"[PROJECT ISOLATION]: User requested new application '{user_prompt}', resetting workspace in '{clean_proj}'")
+        import shutil
         for entry in os.listdir(proj_dir):
+            target_path = proj_dir / entry
             try:
-                (proj_dir / entry).unlink()
+                if target_path.is_file() or target_path.is_symlink():
+                    target_path.unlink()
+                elif target_path.is_dir() and entry != ".snapshots":
+                    shutil.rmtree(target_path)
             except Exception:
                 pass
         existing_files = []
@@ -1327,7 +1329,7 @@ def run_agentic_react_loop(
                         "agentic": True,
                         "status": "error",
                         "project_name": clean_proj,
-                        "created_files": created_files,
+                        "created_files": [],
                         "steps": steps,
                         "telemetry": {"tokens_per_second": 0, "eval_tokens": total_eval_tokens, "eval_duration_sec": round(total_time_sec, 2), "step_count": len(steps)},
                         "checkpoint_saved": True
@@ -1969,9 +1971,7 @@ def run_agentic_react_loop(
                 f"Provide your Final Answer formatted as:\n"
 
                 f"1. A structured bullet-point breakdown of the exact files and features you implemented.\n"
-
-                f"2. Direct link to http://127.0.0.1:8001/api/chat/agent/projects/{clean_proj}/preview/ with instructions to refresh the preview to test it live."
-
+                f"2. If this is a web project with an index.html, provide instructions on how to test it live."
             )
 
             messages.append({"role": "user", "content": summary_prompt})
@@ -1985,22 +1985,15 @@ def run_agentic_react_loop(
                 print(f"[SUMMARY ERROR]: Could not generate final summary ({sum_err}), using fallback summary.")
                 final_reply = f"I have built the requested application with {len(created_files)} files: {', '.join(created_files)}."
 
+        # Attach live preview link ONLY for web projects with index.html that actually had files written this session
+        has_html_file = (proj_dir / "index.html").exists()
+        preview_url = f"http://127.0.0.1:8000/api/chat/agent/projects/{clean_proj}/preview/"
 
-
-        # Ensure the preview URL and refresh instruction are always present in the response
-
-        preview_url = f"http://127.0.0.1:8001/api/chat/agent/projects/{clean_proj}/preview/"
-
-        if preview_url not in final_reply and clean_proj:
-
+        if has_html_file and files_written_this_run and preview_url not in final_reply and clean_proj:
             final_reply += (
-
                 f"\n\n---\n"
-
                 f"**Live Preview:** You can test this project live at [{preview_url}]({preview_url})\n\n"
-
                 f"*Please refresh the preview window to see your latest changes!*"
-
             )
 
 
@@ -2023,64 +2016,41 @@ def run_agentic_react_loop(
 
 
 
-        # 1. Harvest index.html if not on disk
-
-        index_file = proj_dir / "index.html"
-
-        if not index_file.exists():
-
-            html_match = re.search(r"```(?:html|xml)?\s*\n(<!DOCTYPE[\s\S]+?</html>)", combined_text, re.IGNORECASE)
-
-            if not html_match:
-
-                html_match = re.search(r"```html\s*\n([\s\S]+?)```", combined_text, re.IGNORECASE)
-
-            if html_match:
-
-                from backend.core.agent_tools import write_project_file
-
-                write_project_file(clean_proj, "index.html", html_match.group(1).strip())
-
-
-
-        # 2. Harvest styles.css if not on disk
-
-        css_file = proj_dir / "styles.css"
-
-        if not css_file.exists():
-
-            css_match = re.search(r"```css\s*\n([\s\S]+?)```", combined_text, re.IGNORECASE)
-
-            if css_match:
-
-                from backend.core.agent_tools import write_project_file
-
-                write_project_file(clean_proj, "styles.css", css_match.group(1).strip())
-
-
-
-        # 3. Harvest app.js if not on disk
-
-        js_file = proj_dir / "app.js"
-
-        if not js_file.exists():
-
-            js_match = re.search(r"```(?:javascript|js)\s*\n([\s\S]+?)```", combined_text, re.IGNORECASE)
-
-            if js_match:
-
-                from backend.core.agent_tools import write_project_file
-
-                write_project_file(clean_proj, "app.js", js_match.group(1).strip())
-
-
+        # Universal Code Harvester: Discovers ANY files generated in markdown blocks
+        from backend.core.agent_tools import write_project_file
+        block_pattern = r"```([a-zA-Z0-9_\-\./]+)?(?::\s*([a-zA-Z0-9_\-\./]+))?\s*\n([\s\S]+?)```"
+        for m in re.finditer(block_pattern, combined_text):
+            lang = (m.group(1) or "").lower().strip()
+            explicit_name = m.group(2)
+            block_code = m.group(3).strip()
+            target_name = explicit_name
+            if not target_name:
+                first_line = block_code.splitlines()[0] if block_code else ""
+                header_match = re.search(r"(?:#|//|<!--|/\*)\s*(?:File|Filename|Path)?:\s*([a-zA-Z0-9_\-\./\\]+\.[a-zA-Z0-9]+)", first_line, re.IGNORECASE)
+                if header_match:
+                    target_name = header_match.group(1).replace("\\", "/").strip()
+            if not target_name:
+                for expected in target_files:
+                    if not (proj_dir / expected).exists():
+                        exp_ext = expected.split(".")[-1].lower()
+                        if (lang in ("html", "htm") and exp_ext == "html") or \
+                           (lang in ("css", "style") and exp_ext == "css") or \
+                           (lang in ("js", "javascript", "jsx", "ts", "tsx") and exp_ext in ("js", "jsx", "ts", "tsx")) or \
+                           (lang in ("py", "python") and exp_ext == "py") or \
+                           (lang in ("sh", "bash") and exp_ext == "sh") or \
+                           (lang in ("json",) and exp_ext == "json"):
+                            target_name = expected
+                            break
+            if target_name and not (proj_dir / target_name).exists():
+                try:
+                    write_project_file(clean_proj, target_name, block_code)
+                    print(f"[Universal Harvester]: Auto-persisted '{target_name}' to workspace.")
+                except Exception as he:
+                    print(f"[Universal Harvester Error]: {he}")
 
         # Final disk sync to ensure all created project files are reported
-
         for entry in os.listdir(proj_dir):
-
-            if (proj_dir / entry).is_file() and entry not in created_files:
-
+            if (proj_dir / entry).is_file() and not entry.startswith(".") and entry not in ("project_manifest.json", "decision_trace.json") and entry not in created_files:
                 created_files.append(entry)
 
 

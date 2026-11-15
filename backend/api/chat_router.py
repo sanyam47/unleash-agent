@@ -288,11 +288,14 @@ def send_chat_message(req: ChatRequest):
     if req.agentic:
         from backend.core.intent_gate import classify_user_action_intent
         is_actionable, intent_type = classify_user_action_intent(latest_prompt)
-        # If user explicitly provided a project_name or mounted workspace, respect agentic mode
-        if is_actionable or bool(req.project_name or req.workspace_path or req.use_swarm):
+        # Antigravity Frontier Intent Gate:
+        # Only execute the heavy agentic workspace loop if the user prompt is actually actionable
+        # (e.g. asking to build, code, edit, fix, script, or manipulate files).
+        # Note: req.project_name is an internal UI session ID generated for every chat, NOT user intent.
+        if is_actionable:
             should_execute_agentic = True
         else:
-            print(f"[Intent Gate]: Informational inquiry detected ('{latest_prompt[:50]}'). Answering directly in chat without creating workspace.")
+            print(f"[Intent Gate]: Non-actionable inquiry detected ('{latest_prompt[:50]}'). Fast-routing directly to conversational chat without workspace overhead.")
 
     if should_execute_agentic:
         try:
@@ -316,7 +319,7 @@ def send_chat_message(req: ChatRequest):
             # 2. Swarm keywords (swarm, multi-agent, pair-program)
             # 3. Any Agentic coding, building, refactoring, or repair task
             is_code_task = bool(re.search(r'\b(build|create|implement|code|make|fix|refactor|debug|test|audit|develop|add|generate|mount)\b', latest_prompt, re.IGNORECASE))
-            use_swarm_mode = req.use_swarm is True or (req.use_swarm is not False and req.agentic and (is_code_task or bool(req.workspace_path or req.project_name))) or bool(re.search(r'\b(swarm|multi-agent|pair-program)\b', latest_prompt, re.IGNORECASE))
+            use_swarm_mode = req.use_swarm is True or bool(re.search(r'\b(swarm|multi-agent|pair-program)\b', latest_prompt, re.IGNORECASE)) or (is_code_task and req.use_swarm is not False)
             if use_swarm_mode:
                 from backend.core.agent_engine import run_dynamic_swarm_pipeline
                 agent_res = run_dynamic_swarm_pipeline(

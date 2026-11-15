@@ -93,12 +93,12 @@ CLOUD_PROVIDERS: Dict[str, Dict[str, Any]] = {
         "name": "Groq",
         "display_title": "Groq Cloud (LPU Ultra-Fast 300+ tok/s)",
         "base_url": "https://api.groq.com/openai/v1/chat/completions",
-        "default_model": "qwen/qwen3.8-27b",
+        "default_model": "llama-3.3-70b-versatile",
         "popular_models": [
+            {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B (Versatile & High Limit)"},
             {"id": "qwen/qwen3.8-27b", "name": "Qwen 2.5 Coder 27B (Ultra-Fast Coding)"},
             {"id": "openai/gpt-oss-120b", "name": "GPT-OSS 120B (Flagship Reasoning)"},
-            {"id": "openai/gpt-oss-20b", "name": "GPT-OSS 20B (High Speed)"},
-            {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B (Versatile)"}
+            {"id": "openai/gpt-oss-20b", "name": "GPT-OSS 20B (High Speed)"}
         ],
         "auth_type": "bearer",
         "doc_url": "https://console.groq.com/keys"

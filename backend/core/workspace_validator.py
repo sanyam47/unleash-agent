@@ -416,18 +416,16 @@ def validate_workspace(
     html_content = ""
     js_content = ""
 
+    all_code_files = [
+        f for f in proj_dir.rglob("*")
+        if f.is_file() and not f.name.startswith(".") and f.name not in ("project_manifest.json", "decision_trace.json")
+    ]
+
     # ==========================================
     # LAYER 1: SYNTACTIC & COMPILATION INTEGRITY
     # ==========================================
-    if py_files and not html_file.exists():
-        import py_compile
-        for py_f in py_files:
-            try:
-                py_compile.compile(str(py_f), doraise=True)
-            except py_compile.PyCompileError as pe:
-                add_error(py_f.name, "syntax_error", f"Python Syntax Error in '{py_f.name}': {pe}")
-    elif not html_file.exists() and not py_files:
-        add_error("index.html", "missing_file", "Missing required 'index.html' or primary code file in project workspace.")
+    if not all_code_files:
+        add_error("workspace", "missing_file", "No code or project files found in project workspace.")
     elif html_file.exists():
         html_content = html_file.read_text(encoding="utf-8", errors="replace")
         lowered_html = html_content.lower()
@@ -437,6 +435,13 @@ def validate_workspace(
             add_warning("index.html", "missing_link", "'index.html' does not link 'styles.css' in its <head>.")
         if "app.js" not in lowered_html and js_file.exists():
             add_error("index.html", "missing_link", "'index.html' does not link 'app.js' (<script src=\"app.js\"></script>). Interactivity will not run!")
+    elif py_files:
+        import py_compile
+        for py_f in py_files:
+            try:
+                py_compile.compile(str(py_f), doraise=True)
+            except py_compile.PyCompileError as pe:
+                add_error(py_f.name, "syntax_error", f"Python Syntax Error in '{py_f.name}': {pe}")
 
     # Validate JavaScript files linked in index.html or primary app.js with node -c
     for js_p in proj_dir.glob("*.js"):

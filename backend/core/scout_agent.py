@@ -149,7 +149,7 @@ def run_scout_phase(user_prompt: str, project_dir: Optional[Path] = None) -> Dic
     # 2. Dynamic Dataset / Reference Schema Search
     dataset_info = None
     # If project already exists and has established files, check if user is asking to update/modify it
-    is_existing_project = project_dir and (project_dir / "index.html").exists()
+    is_existing_project = project_dir and any(f.is_file() for f in project_dir.iterdir() if not f.name.startswith("."))
     if is_data_app and not is_existing_project:
         dataset_info = search_huggingface_schema(keywords)
         # Check local gateway datasets if Hugging Face was offline or empty
@@ -167,11 +167,11 @@ def run_scout_phase(user_prompt: str, project_dir: Optional[Path] = None) -> Dic
             except Exception:
                 pass
 
-    # 3. Dynamic Antigravity File Architecture Planning
-    # Discovers requested files and extensions dynamically from user prompt
+    # 3. Jarvis/Ultron Autonomous File & Architecture Synthesizer
+    # Dynamically deduces the ideal multi-file architecture from tech stack and domain intent
     files_plan = []
 
-    # Check for explicit files or specific languages requested by user
+    # 3.1 Extract explicitly named files from prompt
     file_pattern = r"(?:^|\s|['\"`])([a-zA-Z0-9_\-\./\\]+\.(?:py|js|ts|tsx|jsx|html|css|json|sh|sql|md|yml|yaml|go|rs|cpp|c|java))(?:$|\s|['\"`])"
     explicit_file_matches = re.findall(file_pattern, user_prompt)
     if explicit_file_matches:
@@ -180,25 +180,51 @@ def run_scout_phase(user_prompt: str, project_dir: Optional[Path] = None) -> Dic
             if not any(f["path"] == clean_p for f in files_plan):
                 files_plan.append({"path": clean_p, "purpose": f"Target file '{clean_p}' specified in prompt", "depends_on": []})
 
+    # 3.2 If no explicit files named, dynamically construct stack-specific architecture:
     if not files_plan:
-        if is_cli_or_python:
+        # Fullstack / React / Vue / Next.js
+        if any(w in lowered for w in ("react", "vite", "next", "vue", "frontend")):
+            files_plan = [
+                {"path": "index.html", "purpose": "HTML5 root mounting point", "depends_on": []},
+                {"path": "src/App.jsx", "purpose": "Main root application component and state router", "depends_on": ["index.html"]},
+                {"path": "src/index.css", "purpose": "Design system, tokens, and theme styling", "depends_on": ["index.html"]},
+                {"path": "src/components/Header.jsx", "purpose": "Header navigation and branding bar", "depends_on": ["src/App.jsx"]},
+                {"path": "package.json", "purpose": "Node dependencies and project scripts", "depends_on": []}
+            ]
+        # FastAPI / Flask / Python Web Server / Backend / Microservice
+        elif any(w in lowered for w in ("fastapi", "flask", "django", "rest api", "backend", "microservice", "server")):
             files_plan = [
                 {"path": "requirements.txt", "purpose": "Python dependencies and packages", "depends_on": []},
-                {"path": "main.py", "purpose": "Primary entrypoint and CLI logic", "depends_on": ["requirements.txt"]}
+                {"path": "main.py", "purpose": "FastAPI/Flask API routes, server startup, and middleware", "depends_on": ["requirements.txt"]},
+                {"path": "models.py", "purpose": "Data models, schemas, and validation structures", "depends_on": ["main.py"]},
+                {"path": "database.py", "purpose": "Database connection and session persistence layer", "depends_on": ["models.py"]}
             ]
-        elif bool(re.search(r'\b(bash|shell|sh|script|automate)\b', lowered)):
+        # Express / Node.js Backend
+        elif any(w in lowered for w in ("express", "node", "nodejs")):
             files_plan = [
-                {"path": "run.sh", "purpose": "Executable shell automation script", "depends_on": []}
+                {"path": "package.json", "purpose": "npm project manifest and dependencies", "depends_on": []},
+                {"path": "server.js", "purpose": "Express HTTP entrypoint and routing controllers", "depends_on": ["package.json"]},
+                {"path": "routes.js", "purpose": "REST endpoints and request handlers", "depends_on": ["server.js"]}
             ]
-        elif is_game or is_tool or is_data_app:
+        # Python CLI / Automation / Scraper / Bot / ML
+        elif is_cli_or_python or any(w in lowered for w in ("scraper", "crawler", "bot", "cli", "parser")):
             files_plan = [
-                {"path": "index.html", "purpose": "Semantic DOM structure and component hierarchy", "depends_on": []},
-                {"path": "styles.css", "purpose": "Design system and responsive styling", "depends_on": ["index.html"]},
-                {"path": "app.js", "purpose": "Application state, event bindings, and interactions", "depends_on": ["index.html"]}
+                {"path": "requirements.txt", "purpose": "Python dependencies and packages", "depends_on": []},
+                {"path": "main.py", "purpose": "Primary CLI entrypoint and orchestrator logic", "depends_on": ["requirements.txt"]},
+                {"path": "utils.py", "purpose": "Helper routines, data parsers, and error handlers", "depends_on": ["main.py"]}
             ]
+        # Shell / Bash / DevOps / Automation
+        elif any(w in lowered for w in ("bash", "shell", "sh", "script", "devops", "docker", "deploy")):
+            files_plan = [
+                {"path": "deploy.sh", "purpose": "Executable shell automation logic", "depends_on": []},
+                {"path": "README.md", "purpose": "Operational execution and configuration guide", "depends_on": []}
+            ]
+        # Modern Responsive Web Application (Default)
         else:
             files_plan = [
-                {"path": "main.py", "purpose": "Application logic", "depends_on": []}
+                {"path": "index.html", "purpose": "Modern semantic DOM structure and layout sections", "depends_on": []},
+                {"path": "styles.css", "purpose": "Polished responsive CSS design system and theme", "depends_on": ["index.html"]},
+                {"path": "app.js", "purpose": "Client-side state manager and dynamic interactivity", "depends_on": ["index.html"]}
             ]
 
     # 4. Extract Atomic Requirements (Brand, Persona, Capabilities)

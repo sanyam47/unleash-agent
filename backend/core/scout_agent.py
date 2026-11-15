@@ -167,33 +167,39 @@ def run_scout_phase(user_prompt: str, project_dir: Optional[Path] = None) -> Dic
             except Exception:
                 pass
 
-    # 3. Dynamic File Dependency Tree Generation
+    # 3. Dynamic Antigravity File Architecture Planning
+    # Discovers requested files and extensions dynamically from user prompt
     files_plan = []
-    if is_cli_or_python:
-        files_plan = [
-            {"path": "requirements.txt", "purpose": "Python dependencies and runtime packages", "depends_on": []},
-            {"path": "main.py", "purpose": "Primary entrypoint, CLI argument parser, and business logic", "depends_on": ["requirements.txt"]}
-        ]
-    elif is_game:
-        files_plan = [
-            {"path": "index.html", "purpose": "HTML5 Canvas viewport, HUD score overlays, and game controls", "depends_on": []},
-            {"path": "styles.css", "purpose": "Fullscreen arcade styling, HUD typography, and button states", "depends_on": ["index.html"]},
-            {"path": "app.js", "purpose": "Game loop (requestAnimationFrame), collision physics, and keyboard handlers", "depends_on": ["index.html"]}
-        ]
-    elif is_tool:
-        files_plan = [
-            {"path": "index.html", "purpose": "Interactive tool layout, input fields, and output displays", "depends_on": []},
-            {"path": "styles.css", "purpose": "Clean responsive interface, action buttons, and active states", "depends_on": ["index.html"]},
-            {"path": "app.js", "purpose": "Tool state machine, calculation logic, and DOM event listeners", "depends_on": ["index.html"]}
-        ]
-    else:
-        # Full Responsive Data-Driven Web Application (e.g. Netflix, Coaching Center, Store, Dashboard, Portal)
-        # 3 modular files (HTML, CSS, JS) is the proven sweet spot for 8B models (keeps state in app.js, avoids data.js syntax bottlenecks)
-        files_plan = [
-            {"path": "index.html", "purpose": "Multi-section semantic layout with navbar, hero, interactive cards/grid, and Add/Edit modals", "depends_on": []},
-            {"path": "styles.css", "purpose": "Modern design system, responsive card grid, typography, badges, and modal overlays", "depends_on": ["index.html"]},
-            {"path": "app.js", "purpose": "Client-side state manager, initial seed records, CRUD functions (Add/Delete/Update), filtering, and event listeners", "depends_on": ["index.html"]}
-        ]
+
+    # Check for explicit files or specific languages requested by user
+    file_pattern = r"(?:^|\s|['\"`])([a-zA-Z0-9_\-\./\\]+\.(?:py|js|ts|tsx|jsx|html|css|json|sh|sql|md|yml|yaml|go|rs|cpp|c|java))(?:$|\s|['\"`])"
+    explicit_file_matches = re.findall(file_pattern, user_prompt)
+    if explicit_file_matches:
+        for ef in explicit_file_matches:
+            clean_p = ef.replace("\\", "/").strip().lstrip("/")
+            if not any(f["path"] == clean_p for f in files_plan):
+                files_plan.append({"path": clean_p, "purpose": f"Target file '{clean_p}' specified in prompt", "depends_on": []})
+
+    if not files_plan:
+        if is_cli_or_python:
+            files_plan = [
+                {"path": "requirements.txt", "purpose": "Python dependencies and packages", "depends_on": []},
+                {"path": "main.py", "purpose": "Primary entrypoint and CLI logic", "depends_on": ["requirements.txt"]}
+            ]
+        elif bool(re.search(r'\b(bash|shell|sh|script|automate)\b', lowered)):
+            files_plan = [
+                {"path": "run.sh", "purpose": "Executable shell automation script", "depends_on": []}
+            ]
+        elif is_game or is_tool or is_data_app:
+            files_plan = [
+                {"path": "index.html", "purpose": "Semantic DOM structure and component hierarchy", "depends_on": []},
+                {"path": "styles.css", "purpose": "Design system and responsive styling", "depends_on": ["index.html"]},
+                {"path": "app.js", "purpose": "Application state, event bindings, and interactions", "depends_on": ["index.html"]}
+            ]
+        else:
+            files_plan = [
+                {"path": "main.py", "purpose": "Application logic", "depends_on": []}
+            ]
 
     # 4. Extract Atomic Requirements (Brand, Persona, Capabilities)
     atomic_reqs = extract_atomic_requirements(user_prompt)

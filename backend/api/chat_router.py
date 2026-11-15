@@ -278,12 +278,25 @@ def send_chat_message(req: ChatRequest):
 
         payload_messages.append(msg_dict)
 
-    # 0.2 If Agentic ReAct Mode is explicitly requested by user toggle, route to autonomous agent engine
+    # 0.2 Antigravity Intent Gate:
+    # Even if req.agentic is toggled, verify if the user is actually asking to build/modify software,
+    # or simply asking a conceptual/informational question. Informational prompts bypass the file generator completely!
+    user_texts = [m["content"] for m in payload_messages if m["role"] == "user"]
+    latest_prompt = user_texts[-1] if user_texts else "Proceed with task."
+
+    should_execute_agentic = False
     if req.agentic:
+        from backend.core.intent_gate import classify_user_action_intent
+        is_actionable, intent_type = classify_user_action_intent(latest_prompt)
+        # If user explicitly provided a project_name or mounted workspace, respect agentic mode
+        if is_actionable or bool(req.project_name or req.workspace_path or req.use_swarm):
+            should_execute_agentic = True
+        else:
+            print(f"[Intent Gate]: Informational inquiry detected ('{latest_prompt[:50]}'). Answering directly in chat without creating workspace.")
+
+    if should_execute_agentic:
         try:
             from backend.core.agent_engine import run_agentic_react_loop
-            user_texts = [m["content"] for m in payload_messages if m["role"] == "user"]
-            latest_prompt = user_texts[-1] if user_texts else "Proceed with task."
             skills_prompt_str = "\n\n".join(skill_blocks) if (chosen and 'skill_blocks' in locals()) else None
 
             # Pass recent conversation history so the agent understands contextual references (e.g. 'it', 'fix that', 'start button')

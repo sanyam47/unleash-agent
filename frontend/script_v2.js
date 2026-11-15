@@ -4535,9 +4535,9 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
     msgDiv.style.flexDirection = isUser ? 'row-reverse' : 'row';
 
     const avatar = document.createElement('div');
-    avatar.style.width = '34px';
-    avatar.style.height = '34px';
-    avatar.style.borderRadius = '8px';
+    avatar.style.width = '26px';
+    avatar.style.height = '26px';
+    avatar.style.borderRadius = '50%';
     avatar.style.display = 'flex';
     avatar.style.alignItems = 'center';
     avatar.style.justifyContent = 'center';
@@ -4550,11 +4550,13 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
         : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 15h6"/></svg>`;
 
     const bubble = document.createElement('div');
-    bubble.style.maxWidth = '80%';
-    bubble.style.padding = '14px 18px';
-    bubble.style.borderRadius = isUser ? '16px 16px 2px 16px' : '16px 16px 16px 2px';
-    bubble.style.background = isUser ? 'var(--chat-bubble-user)' : 'var(--chat-bubble-bot)';
-    bubble.style.border = isUser ? '1px solid var(--chat-bubble-user-border)' : '1px solid var(--chat-bubble-bot-border)';
+    bubble.style.maxWidth = isUser ? '75%' : '100%';
+    bubble.style.width = isUser ? 'auto' : '100%';
+    bubble.style.padding = isUser ? '9px 16px' : '0';
+    bubble.style.borderRadius = isUser ? '18px' : '0';
+    bubble.style.boxShadow = isUser ? '0 2px 10px rgba(0, 0, 0, 0.3)' : 'none';
+    bubble.style.background = isUser ? 'var(--chat-bubble-user, #18181b)' : 'transparent';
+    bubble.style.border = isUser ? '1px solid var(--chat-bubble-user-border, rgba(255, 255, 255, 0.10))' : 'none';
     bubble.style.color = isUser ? 'var(--chat-bubble-user-text)' : 'var(--chat-bubble-bot-text)';
     bubble.style.lineHeight = '1.6';
     bubble.style.fontSize = '0.92rem';
@@ -4863,170 +4865,86 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
     }
 
     // 2. Render Created Project Files Artifact Card directly beneath message
-    if (!isUser && agenticData && agenticData.project_name) {
+        if (!isUser && agenticData && agenticData.project_name) {
         let files = (agenticData.created_files && agenticData.created_files.length > 0) ? agenticData.created_files : ['index.html', 'styles.css', 'app.js'];
         const projCard = document.createElement('div');
-        projCard.style.marginTop = '12px';
-        projCard.style.padding = '12px 14px';
-        projCard.style.background = 'var(--bg-surface)';
-        projCard.style.border = '1px solid var(--border-subtle)';
-        projCard.style.borderRadius = '8px';
+        projCard.className = 'studio-workspace-card';
 
-        const hasHtml = files.some(f => f.toLowerCase().endsWith('.html'));
-        const chips = files.map(f => {
-            return `<button type="button" onclick="openAgentProjectModal('${agenticData.project_name}', '${f}', 'code')" class="btn-quiet" style="font-size:0.72rem;font-family:var(--font-mono);color:var(--text-muted);border-color:var(--border-subtle);background:var(--bg-surface-elevated);padding:2px 8px;display:inline-flex;align-items:center;gap:4px;border-radius:4px;">
-                <span>📄 ${f}</span>
-            </button>`;
-        }).join(' ');
+        const filePillsHtml = files.map(f => `
+            <div class="studio-file-pill" onclick="openAgentProjectModal('${agenticData.project_name}', '${f}', 'code')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>${f}</span>
+            </div>
+        `).join('');
 
         projCard.innerHTML = `
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-                <span style="font-size:0.78rem;font-weight:600;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
+            <div class="studio-workspace-header">
+                <div class="title-group">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                    Workspace (${files.length} Files):
-                </span>
-                <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                    ${hasHtml ? `
-                        <button type="button" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'preview')" class="btn-quiet" style="font-size:0.73rem;padding:3px 11px;color:var(--text-primary);border:1px solid var(--border-strong);background:var(--bg-surface-elevated);display:inline-flex;align-items:center;gap:4px;font-weight:600;border-radius:4px;" title="Live Interactive Browser Preview">
-                            <span>🖥️ Live Preview</span>
-                        </button>
-                    ` : ''}
-                    <button type="button" onclick="openProjectInVSCode('${agenticData.project_name}')" class="btn-quiet" style="font-size:0.73rem;padding:3px 10px;color:var(--text-secondary);border:1px solid var(--border-subtle);background:transparent;display:inline-flex;align-items:center;gap:4px;border-radius:4px;" title="Open workspace folder in VS Code">
-                        <span>💙 VS Code</span>
+                    <span>WORKSPACE • ${files.length} Files</span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button type="button" class="studio-btn-primary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'preview')">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        <span>Live Preview</span>
                     </button>
-                    <button type="button" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'code')" class="btn-quiet" style="font-size:0.73rem;padding:3px 9px;color:var(--text-muted);border:1px solid var(--border-subtle);background:transparent;border-radius:4px;" title="View file tree and code">
+                    <button type="button" class="studio-btn-secondary" onclick="openProjectInVSCode('${agenticData.project_name}')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        <span>VS Code</span>
+                    </button>
+                    <button type="button" class="studio-btn-secondary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'code')">
                         <span>Code ↗</span>
                     </button>
                 </div>
             </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+                ${filePillsHtml}
+            </div>
         `;
         bubble.appendChild(projCard);
     }
 
     // 3. Render Antigravity ReAct Steps Trace as sleek, collapsed developer accordion at bottom
+        // 3. Antigravity & Cursor Style Collapsed Pill: "Worked for Xs ▾"
     if (!isUser && agenticData && agenticData.steps && agenticData.steps.length > 0) {
-        // ReAct Steps & Execution Trace
-        const reactBox = document.createElement('details');
-        reactBox.style.marginTop = '10px';
-        reactBox.style.background = 'var(--bg-surface)';
-        reactBox.style.border = '1px solid var(--border-subtle)';
-        reactBox.style.borderRadius = '6px';
-        reactBox.style.padding = '6px 12px';
-        reactBox.open = false; // Collapsed by default so conversation remains clean and uncluttered!
+        const traceDetails = document.createElement('details');
+        traceDetails.className = 'antigravity-trace-details';
+        traceDetails.style.marginTop = '10px';
+        traceDetails.style.marginBottom = '4px';
 
-        const summary = document.createElement('summary');
-        summary.style.cursor = 'pointer';
-        summary.style.fontSize = '0.74rem';
-        summary.style.fontWeight = '500';
-        summary.style.color = 'var(--text-secondary)';
-        summary.style.display = 'flex';
-        summary.style.alignItems = 'center';
-        summary.style.justifyContent = 'space-between';
-        summary.style.userSelect = 'none';
-        const traceLabel = agenticData.swarm_mode
-            ? `🐝 Dynamic Swarm Trace (${agenticData.steps.length} Steps · ${escapeHtml(agenticData.mode_label || agenticData.swarm_mode)})`
-            : `ReAct Execution Trace (${agenticData.steps.length} Step${agenticData.steps.length === 1 ? '' : 's'})`;
-        summary.innerHTML = `
-            <span style="display:inline-flex;align-items:center;gap:6px;">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                ${traceLabel}
-            </span>
-            <span style="font-size:0.66rem;color:var(--text-muted);font-family:var(--font-mono);">Workspace: ${agenticData.project_name || 'default'}</span>
-        `;
-        reactBox.appendChild(summary);
+        const stepCount = agenticData.steps.length;
+        const estSeconds = Math.max(2, Math.round(stepCount * 1.8));
 
-        if (agenticData.gateway_grounding && agenticData.gateway_grounding.matched) {
-            const gw = agenticData.gateway_grounding;
-            const gwBadge = document.createElement('div');
-            gwBadge.style.marginTop = '8px';
-            gwBadge.style.marginBottom = '6px';
-            gwBadge.style.padding = '6px 10px';
-            gwBadge.style.borderRadius = '5px';
-            gwBadge.style.background = 'var(--bg-surface-elevated)';
-            gwBadge.style.border = '1px solid var(--border-subtle)';
-            gwBadge.style.fontSize = '0.72rem';
-            gwBadge.style.color = 'var(--text-secondary)';
-            gwBadge.style.display = 'flex';
-            gwBadge.style.alignItems = 'center';
-            gwBadge.style.justifyContent = 'space-between';
-            gwBadge.innerHTML = `
-                <span style="display:inline-flex;align-items:center;gap:6px;">
-                    <span>⚡ <strong>Gateway Grounded:</strong> <em>${escapeHtml(gw.dataset_name)}</em></span>
-                </span>
-                <span style="font-family:var(--font-mono);font-size:0.66rem;color:var(--text-muted);">${gw.latency_ms || 0.5}ms · Zero Fine-Tuning</span>
-            `;
-            reactBox.appendChild(gwBadge);
-        }
-
-        const stepsList = document.createElement('div');
-        stepsList.style.marginTop = '8px';
-        stepsList.style.display = 'flex';
-        stepsList.style.flexDirection = 'column';
-        stepsList.style.gap = '6px';
-
-        agenticData.steps.forEach(st => {
-            const stepItem = document.createElement('div');
-            stepItem.style.background = 'var(--bg-base)';
-            stepItem.style.border = '1px solid var(--border-subtle)';
-            stepItem.style.borderRadius = '5px';
-            stepItem.style.padding = '7px 9px';
-            stepItem.style.fontSize = '0.74rem';
-
-            let actionHtml = '';
-            if (st.action) {
-                const argsSnippet = st.args ? JSON.stringify(st.args).substring(0, 80) : '';
-                actionHtml = `
-                    <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px; font-family: var(--font-mono);">
-                        <span style="color: var(--text-muted); font-weight: 500;">⚡ Action:</span>
-                        <code style="background: var(--bg-surface-elevated); padding: 1px 5px; border-radius: 4px; color: var(--text-primary); border: 1px solid var(--border-subtle);">${st.action}</code>
-                        <span style="color: var(--text-muted); font-size: 0.67rem;">${argsSnippet}</span>
+        // Format detailed step history for dropdown
+        let stepsDetailHtml = agenticData.steps.map((st, idx) => {
+            const stepNum = idx + 1;
+            const thoughtText = st.thought ? `<div style="color:var(--text-secondary); margin-bottom:4px; font-style:italic;">Thought: ${escapeHtml(st.thought)}</div>` : '';
+            const actionText = st.action ? `<div style="font-family:var(--font-mono); color:#38bdf8; font-size:0.72rem;">⚡ ${escapeHtml(st.action)} ${st.args ? escapeHtml(JSON.stringify(st.args)) : ''}</div>` : '';
+            const obsText = st.observation ? `<div style="color:var(--text-muted); font-size:0.70rem; margin-top:2px;">↳ ${escapeHtml(String(st.observation).substring(0, 150))}</div>` : '';
+            return `
+                <div style="padding: 6px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; font-size: 0.73rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; font-weight:600; color:var(--text-primary);">
+                        <span>Step ${stepNum}</span>
+                        <span style="color:#22c55e; font-size:0.68rem;">✓ Done</span>
                     </div>
-                `;
-            }
-
-            let obsHtml = '';
-            if (st.action === 'run_terminal_command' && typeof st.observation === 'object') {
-                const termObs = st.observation;
-                const modeLabel = termObs.mode === 'docker_isolated_container' ? '🐳 Docker (--network none)' : '🛡️ Safe Sandbox';
-                const outputContent = (termObs.stdout || termObs.stderr || termObs.error || '(no output)').trim();
-                obsHtml = `
-                    <div style="margin-top: 6px; background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 5px; overflow: hidden; font-family: var(--font-mono); font-size: 0.71rem;">
-                        <div style="background: var(--bg-surface-elevated); padding: 4px 8px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 0.67rem;">
-                            <span>>_ Terminal Output [${escapeHtml(modeLabel)}]</span>
-                            <span style="color: ${termObs.exit_code === 0 ? 'var(--text-secondary)' : '#f87171'};">Exit: ${termObs.exit_code ?? 0}</span>
-                        </div>
-                        <pre style="margin: 0; padding: 7px; max-height: 120px; overflow-y: auto; color: var(--text-primary); white-space: pre-wrap; line-height: 1.4;">${escapeHtml(outputContent)}</pre>
-                    </div>
-                `;
-            } else if (st.observation) {
-                const obsText = typeof st.observation === 'object' ? JSON.stringify(st.observation) : String(st.observation);
-                obsHtml = `
-                    <div style="margin-top: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 0.69rem; background: var(--bg-surface-elevated); padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        ✓ Observation: ${escapeHtml(obsText.substring(0, 140))}
-                    </div>
-                `;
-            }
-
-            const stepHeading = st.worker
-                ? `🐝 [${escapeHtml(st.role || st.worker)}]`
-                : `Step ${st.step}:`;
-            const stepBody = st.worker
-                ? (st.observation || `Status: ${st.status}`)
-                : (st.thought || 'Executing step...');
-
-            stepItem.innerHTML = `
-                <div style="color: var(--text-secondary); line-height: 1.4;">
-                    <strong style="color: var(--text-primary);">${stepHeading}</strong> ${escapeHtml(stepBody)}
+                    ${thoughtText}
+                    ${actionText}
+                    ${obsText}
                 </div>
-                ${actionHtml}
-                ${obsHtml}
             `;
-            stepsList.appendChild(stepItem);
-        });
+        }).join('');
 
-        reactBox.appendChild(stepsList);
-        bubble.appendChild(reactBox);
+        traceDetails.innerHTML = `
+            <summary style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; padding:4px 10px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:9999px; font-size:0.72rem; color:var(--text-secondary); user-select:none; transition:all 0.15s ease;" onmouseenter="this.style.background='rgba(255,255,255,0.08)'; this.style.color='#ffffff';" onmouseleave="this.style.background='rgba(255,255,255,0.04)'; this.style.color='var(--text-secondary)';">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>Worked for ${estSeconds}s (${stepCount} steps)</span>
+                <svg class="chevron-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </summary>
+            <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px; max-height:260px; overflow-y:auto; padding:6px 0;">
+                ${stepsDetailHtml}
+            </div>
+        `;
+        bubble.appendChild(traceDetails);
     }
 
     if (!isUser && telemetry && telemetry.tokens_per_second) {

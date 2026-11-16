@@ -15,6 +15,8 @@ ENV/
 # Database & Celery Results
 **/*.db
 **/*.sqlite3
+*.db-shm
+*.db-wal
 celery_results.db
 jobs.db
 
@@ -41,8 +43,12 @@ models/
 backend/data/sandbox/
 
 # Personal & User-generated Workspace Data
+backend/data/personas/
 backend/data/projects/
 backend/data/conversations/
+backend/data/habits/
+backend/data/tasks/
+backend/data/voice_profiles/
 backend/data/chat_sessions.json
 backend/data/workspace_registry.json
 backend/data/cloud_gpu_config.json
@@ -90,3 +96,15 @@ test_model_upload.pkl
 Thumbs.db
 .snapshots/
 backend/data/execution_checkpoints/
+backend/data/browser_screenshots/
+
+# Voice Audio Cache & Large Binary Models
+backend/data/voice_profiles/cache/
+*.mp3
+*.wav
+backend/data/voices/*.onnx
+backend/data/voices/*.onnx.json
+!backend/data/voices/README.txt
+
+# Scratch Directory
+scratch/

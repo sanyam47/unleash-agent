@@ -59,7 +59,9 @@ def open_project_vscode_endpoint(project_name: str):
     if not proj_dir.exists():
         raise HTTPException(status_code=404, detail=f"Project workspace '{clean_proj}' does not exist.")
 
-    code_bin = shutil.which("code") or r"C:\Users\asopa\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    default_vscode = os.path.join(local_app_data, "Programs", "Microsoft VS Code", "bin", "code.cmd") if local_app_data else "code"
+    code_bin = shutil.which("code") or (default_vscode if os.path.exists(default_vscode) else "code")
     try:
         subprocess.Popen(f'"{code_bin}" "{str(proj_dir)}"', shell=True)
         return {

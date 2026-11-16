@@ -860,13 +860,6 @@ AGENT_TOOLS_SCHEMA = [
         }
     },
     {
-        "name": "recall_memory",
-        "description": "Search or view persistent cross-session memory for user preferences, learned architectural rules, or past workspace project summaries.",
-        "parameters": {
-            "query": "Optional search keyword to filter preferences or past projects (leave empty to view all)"
-        }
-    },
-    {
         "name": "list_project_files",
         "description": "List all files currently created in this project.",
         "parameters": {}
@@ -911,6 +904,293 @@ AGENT_TOOLS_SCHEMA = [
         "name": "verify_workspace_integrity",
         "description": "Automated code compiler and contract verification. Checks JavaScript syntax compilation, HTML links, and event listeners to ensure all buttons and features work properly without crashing.",
         "parameters": {}
+    },
+    {
+        "name": "launch_application",
+        "description": "Launch desktop applications, Windows system utilities, or protocol handlers (e.g. 'whatsapp', 'terminal', 'vscode', 'spotify', 'chrome', 'calc', 'notepad', 'settings', 'taskmgr', 'explorer', 'discord', 'slack'). Automatically falls back to browser web app if desktop app is not installed.",
+        "parameters": {
+            "app_name": "Name or alias of application to launch (e.g. 'whatsapp', 'terminal', 'vscode', 'spotify', 'calc', 'notepad')",
+            "args": "Optional arguments or file path to pass to the application"
+        }
+    },
+    {
+        "name": "open_browser_url",
+        "description": "Open a website, web application, search query, or link in the user's default Windows web browser (e.g. 'https://youtube.com', 'https://web.whatsapp.com', 'https://github.com').",
+        "parameters": {
+            "url": "Web URL to open in default browser"
+        }
+    },
+    {
+        "name": "system_control",
+        "description": "Inspect real-time hardware telemetry, running processes, Windows system logs, or control system settings. Supported actions: 'processes' or 'top_processes' (inspect top CPU & RAM processes), 'logs' or 'check_logs' (inspect recent system event logs/errors), 'diagnostics' or 'heating' (inspect GPU thermals, CPU, RAM metrics), 'get_system_info' (RAM, CPU cores, battery level, free disk space), 'get_clipboard' (read clipboard), 'set_clipboard' (copy text), 'volume_mute', 'volume_up', 'volume_down', 'lock_workstation'.",
+        "parameters": {
+            "action": "Action to execute: 'processes', 'logs', 'diagnostics', 'heating', 'get_system_info', 'get_clipboard', 'set_clipboard', 'volume_mute', 'volume_up', 'volume_down', 'lock_workstation'",
+            "value": "Optional value for actions like 'set_clipboard' (the text) or 'volume_up'/'volume_down' (number of steps)"
+        }
+    },
+    {
+        "name": "send_desktop_notification",
+        "description": "Display a native Windows desktop toast alert / notification popup on the user's screen.",
+        "parameters": {
+            "title": "Title of notification",
+            "message": "Body text of notification"
+        }
+    },
+    {
+        "name": "run_host_cli",
+        "description": "Execute a command directly on the host Windows machine outside the container sandbox. Used when the user explicitly requests host OS CLI execution (e.g. checking host git status, host system info, running local utilities).",
+        "parameters": {
+            "command": "The command line string to execute on the host Windows machine",
+            "timeout": "Optional timeout in seconds (default 15)"
+        }
+    },
+    {
+        "name": "browser_navigate",
+        "description": "Navigate to any web page or web application in Chrome/Edge. Returns page title, current URL, HTTP status, and text preview.",
+        "parameters": {
+            "url": "Target website or web app URL to visit (e.g. 'https://github.com/trending', 'https://news.ycombinator.com')",
+            "headless": "Optional boolean: True (default) for fast background browsing, False to show a visible browser window"
+        }
+    },
+    {
+        "name": "browser_click",
+        "description": "Click a link, button, or interactive element on the active web page by CSS selector or visible text.",
+        "parameters": {
+            "selector": "CSS selector of element to click (e.g. 'button.submit', 'a.read-more')",
+            "text": "Optional visible text content of element to click (e.g. 'Next', 'Sign in', 'Search')"
+        }
+    },
+    {
+        "name": "browser_type",
+        "description": "Type text into a search bar, input box, or form field on the active web page.",
+        "parameters": {
+            "selector": "CSS selector of input element (e.g. 'input[name=q]', '#search-input')",
+            "text": "Text string to enter into the input",
+            "press_enter": "Optional boolean: whether to submit Enter key after typing (default False)"
+        }
+    },
+    {
+        "name": "browser_extract",
+        "description": "Extract clean readable text and top link URLs from the active web page.",
+        "parameters": {
+            "selector": "Optional CSS selector to extract from specific section (e.g. 'article', '.content', 'main')",
+            "max_chars": "Optional maximum character length to extract (default 4000)"
+        }
+    },
+    {
+        "name": "browser_screenshot",
+        "description": "Capture a full visual PNG screenshot of the active web page for verification or VLM inspection.",
+        "parameters": {
+            "filename": "Optional name for screenshot image file (default 'screenshot_<timestamp>.png')",
+            "full_page": "Optional boolean: whether to capture the full scrollable page (default False)"
+        }
+    },
+    {
+        "name": "browser_search_and_read",
+        "description": "Autonomous web intelligence search: queries the live web, visits the top authoritative source, and extracts clean article text and summaries.",
+        "parameters": {
+            "query": "Search query or question (e.g. 'latest release features of python 3.12', 'fastapi background tasks tutorial')",
+            "num_results": "Optional number of top search results to inspect (default 3)"
+        }
+    },
+    {
+        "name": "browser_scroll",
+        "description": "Scroll the active web page down, up, or to the bottom/top to reveal lazy-loaded content or comments.",
+        "parameters": {
+            "direction": "Direction: 'down' (default), 'up', 'bottom', or 'top'",
+            "amount": "Optional pixel scroll amount (default 800)"
+        }
+    },
+    {
+        "name": "browser_close",
+        "description": "Close the active browser session and release memory.",
+        "parameters": {}
+    },
+    {
+        "name": "capture_desktop_screen",
+        "description": "Capture a high-resolution PNG screenshot of the user's Windows desktop or active screen.",
+        "parameters": {
+            "filename": "Optional output filename (e.g. 'error_state.png')",
+            "region": "Optional [x, y, width, height] crop box"
+        }
+    },
+    {
+        "name": "list_open_windows",
+        "description": "Perceive and list all currently active GUI application windows on the desktop (e.g. WhatsApp, Chrome, VS Code, Terminal).",
+        "parameters": {}
+    },
+    {
+        "name": "focus_window",
+        "description": "Bring an open application window to the foreground by matching its title, process name, or PID.",
+        "parameters": {
+            "title": "Window title or process name to activate (e.g. 'WhatsApp', 'Brave', 'Terminal')"
+        }
+    },
+    {
+        "name": "analyze_screen_vision",
+        "description": "Visually analyze the screen or a screenshot using multi-modal AI (Gemini Vision / Moondream). Extracts errors, traces, UI state, and answers questions about what is on screen.",
+        "parameters": {
+            "prompt": "Specific visual question or instruction (e.g. 'What error is shown in the terminal?', 'Describe the active window')",
+            "image_path": "Optional path to existing screenshot; captures desktop automatically if omitted"
+        }
+    },
+    {
+        "name": "desktop_click",
+        "description": "Click anywhere on the desktop or inside active application windows (left, right, middle, single, double-click).",
+        "parameters": {
+            "x": "Optional horizontal pixel coordinate (omitted clicks current position)",
+            "y": "Optional vertical pixel coordinate (omitted clicks current position)",
+            "button": "Mouse button: 'left' (default), 'right', or 'middle'",
+            "clicks": "Number of clicks: 1 (single, default) or 2 (double-click)"
+        }
+    },
+    {
+        "name": "desktop_type",
+        "description": "Type text into the active desktop application window (e.g. WhatsApp, Slack, VS Code, Terminal) with Unicode support.",
+        "parameters": {
+            "text": "Text to type into the focused input field",
+            "press_enter": "Whether to press Enter key after typing (default False, set True to send messages)"
+        }
+    },
+    {
+        "name": "desktop_hotkey",
+        "description": "Execute native Windows keyboard shortcut or special key (e.g. 'ctrl+c', 'ctrl+v', 'ctrl+s', 'alt+tab', 'win+d', 'enter', 'esc').",
+        "parameters": {
+            "keys": "Shortcut combination (e.g. 'ctrl+c', 'alt+tab', 'win+d', 'ctrl+shift+p')"
+        }
+    },
+    {
+        "name": "desktop_move",
+        "description": "Move the mouse cursor to absolute desktop coordinates (x, y).",
+        "parameters": {
+            "x": "Horizontal pixel coordinate",
+            "y": "Vertical pixel coordinate"
+        }
+    },
+    {
+        "name": "desktop_scroll",
+        "description": "Scroll the desktop mouse wheel up or down at the active location.",
+        "parameters": {
+            "direction": "Scroll direction: 'down' (default) or 'up'",
+            "amount": "Scroll amount units (default 3)"
+        }
+    },
+    {
+        "name": "desktop_cursor_pos",
+        "description": "Get current mouse cursor coordinates and primary display resolution.",
+        "parameters": {}
+    },
+    {
+        "name": "speak_aloud",
+        "description": "Speak text out loud through the computer speakers (supports low-latency neural and resonant studio modes).",
+        "parameters": {
+            "text": "The sentence or response to speak aloud",
+            "mode": "Optional override: 'work' (low-latency neural) or 'cinema' (resonant studio)"
+        }
+    },
+    {
+        "name": "set_voice_mode",
+        "description": "Switch voice synthesis profile between 'work' mode (ultra-fast, low-latency neural) and 'cinema' mode (deep resonant studio timbre).",
+        "parameters": {
+            "mode": "Target mode: 'work' or 'cinema'"
+        }
+    },
+    {
+        "name": "get_voice_mode",
+        "description": "Check current voice mode, audio settings, and engine status.",
+        "parameters": {}
+    },
+    {
+        "name": "configure_wake_word",
+        "description": "Configure wake-word settings: enable/disable background wake word listening, set custom trigger phrases (e.g. 'assistant', 'computer'), and toggle wake chime.",
+        "parameters": {
+            "enabled": "Optional boolean: True to enable wake word, False to disable",
+            "wake_words": "Optional list or comma-separated string of trigger words (e.g. 'assistant, computer')",
+            "wake_sound": "Optional boolean: True to chime on wake"
+        }
+    },
+    {
+        "name": "remember_fact",
+        "description": "Store a persistent fact, contact, preference, or relationship into the Long-Term Cognitive Knowledge Graph.",
+        "parameters": {
+            "content": "The fact or instruction to remember (e.g. 'Preferred default terminal is PowerShell Core')",
+            "category": "Optional category: 'contact', 'preference', 'fact', 'event'",
+            "importance": "Optional importance 1-10 (default 8)",
+            "entity": "Optional entity name (e.g. 'Terminal', 'Workstation')",
+            "relation": "Optional relationship (e.g. 'preferred_shell', 'project_lead')",
+            "target": "Optional target entity (e.g. 'PowerShell Core')"
+        }
+    },
+    {
+        "name": "recall_memory",
+        "description": "Search and retrieve facts, personal contacts, preferences, and past events from the Cognitive Knowledge Graph.",
+        "parameters": {
+            "query": "The person, tool, question, or concept to recall (e.g. 'Dad', 'preferred editor', 'AWS port')",
+            "top_k": "Optional maximum results to return (default 5)"
+        }
+    },
+    {
+        "name": "forget_memory",
+        "description": "Remove or redact a memory, contact, or rule from the Cognitive Knowledge Graph.",
+        "parameters": {
+            "item_type": "Type of item to delete: 'entity', 'relation', 'habit', 'episode', or 'raw'",
+            "item_id": "The ID of the memory item to delete"
+        }
+    },
+    {
+        "name": "multi_hop_query",
+        "description": "Perform multi-hop reasoning over the Semantic Knowledge Graph to discover indirect connections and relational chains (e.g. Varun -> AWS -> Cloud Migration).",
+        "parameters": {
+            "start_entity": "The starting entity name (e.g. 'User', 'Varun', 'AWS')",
+            "max_hops": "Maximum relational hops to traverse (default 3, range 1-4)",
+            "target_entity": "Optional target entity to find connecting paths to"
+        }
+    },
+    {
+        "name": "consolidate_memory",
+        "description": "Trigger an autonomous 'sleep cycle' consolidation to deduplicate memories, resolve conflicting facts, and synthesize procedural habits.",
+        "parameters": {}
+    },
+    {
+        "name": "start_background_task",
+        "description": "Spawn an asynchronous, unbounded daemon task that executes in the background while keeping the chat/voice stream 100% active.",
+        "parameters": {
+            "title": "Short descriptive title of the background task",
+            "description": "Full details of what the task should accomplish",
+            "steps": "Optional list or comma-separated stages of the task"
+        }
+    },
+    {
+        "name": "check_background_tasks",
+        "description": "Check real-time telemetry, stage progression, and status of running or recent background daemon tasks.",
+        "parameters": {
+            "task_id": "Optional specific task_id to inspect. If omitted, lists all active running tasks."
+        }
+    },
+    {
+        "name": "control_background_task",
+        "description": "Control a running background task: pause, resume, or cancel.",
+        "parameters": {
+            "task_id": "The ID of the daemon task to control",
+            "action": "Action to perform: 'pause', 'resume', or 'cancel'"
+        }
+    },
+    {
+        "name": "set_project_permission_policy",
+        "description": "Enforce persistent project-specific security rules (e.g. 'require_approval': True to always ask before executing in this project).",
+        "parameters": {
+            "project_name": "The project/workspace to apply the policy to",
+            "policy_key": "The policy rule (e.g. 'require_approval', 'ask_every_time')",
+            "value": "Value to set (default True)"
+        }
+    },
+    {
+        "name": "inspect_preflight_safety",
+        "description": "Run cognitive pre-flight inspection on a command, package, or URL to check for typosquatting, obfuscation, or suspicious patterns.",
+        "parameters": {
+            "target": "The command, package name, or URL to inspect",
+            "target_type": "Optional target type: 'command', 'package', or 'url' (auto-detected if omitted)"
+        }
     }
 ]
 
@@ -972,10 +1252,12 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
             val = args.get("text")
         return remember_preference(str(cat), str(key), str(val))
 
-    elif tool_name in ("recall_memory", "search_memory", "get_memory"):
-        from backend.core.memory_manager import recall_memory
-        q = args.get("query") or args.get("q") or None
-        return recall_memory(q)
+    elif tool_name in ("recall_memory", "search_memory", "get_memory", "recall"):
+        from backend.core.memory_pilot import recall_memory
+        q = args.get("query") or args.get("q") or args.get("topic") or args.get("search") or ""
+        k = int(args.get("top_k") or 5)
+        results = recall_memory(str(q), top_k=k)
+        return {"status": "success", "query": q, "results": results}
 
     elif tool_name == "list_project_files":
         return list_project_files(project_name)
@@ -1021,6 +1303,260 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
     elif tool_name in ("verify_workspace_integrity", "verify_workspace", "check_integrity", "lint_workspace"):
         from backend.core.workspace_validator import validate_workspace
         return validate_workspace(project_name)
+
+    elif tool_name in ("launch_application", "launch_app", "open_app", "start_app"):
+        from backend.core.jarvis_executive import launch_app
+        app_name = args.get("app_name") or args.get("name") or args.get("app") or ""
+        app_args = args.get("args") or args.get("arguments") or ""
+        return launch_app(str(app_name), str(app_args) if app_args else None)
+
+    elif tool_name in ("open_browser_url", "open_url", "browse_url", "open_browser", "browse"):
+        from backend.core.jarvis_executive import open_browser_url
+        url = args.get("url") or args.get("link") or args.get("target") or ""
+        return open_browser_url(str(url))
+
+    elif tool_name in ("system_control", "os_control", "sys_control", "hardware_telemetry"):
+        from backend.core.jarvis_executive import system_control
+        action_val = args.get("action") or args.get("act") or args.get("command") or ""
+        val = args.get("value") or args.get("val") or args.get("text") or None
+        return system_control(str(action_val), str(val) if val is not None else None)
+
+    elif tool_name in ("send_desktop_notification", "notify_user", "desktop_notification", "toast_notification", "notify"):
+        from backend.core.jarvis_executive import send_desktop_notification
+        title = args.get("title") or "Unleash Jarvis"
+        message = args.get("message") or args.get("body") or args.get("msg") or ""
+        return send_desktop_notification(str(title), str(message))
+
+    elif tool_name in ("run_host_cli", "host_cli", "run_host_command", "execute_host_command"):
+        from backend.core.jarvis_executive import run_host_cli
+        cmd = args.get("command") or args.get("cmd") or ""
+        timeout = int(args.get("timeout") or 15)
+        return run_host_cli(str(cmd), timeout=timeout)
+
+    elif tool_name in ("browser_navigate", "web_navigate", "goto_url", "navigate_browser"):
+        from backend.core.browser_pilot import browser_navigate
+        url = args.get("url") or args.get("link") or ""
+        headless = bool(args.get("headless", True))
+        return browser_navigate(str(url), headless=headless)
+
+    elif tool_name in ("browser_click", "web_click", "click_element"):
+        from backend.core.browser_pilot import browser_click
+        selector = args.get("selector") or ""
+        text = args.get("text") or None
+        return browser_click(str(selector), text=str(text) if text else None)
+
+    elif tool_name in ("browser_type", "web_type", "type_text", "fill_form"):
+        from backend.core.browser_pilot import browser_type
+        selector = args.get("selector") or ""
+        text = args.get("text") or args.get("value") or ""
+        press_enter = bool(args.get("press_enter", False))
+        return browser_type(str(selector), str(text), press_enter=press_enter)
+
+    elif tool_name in ("browser_extract", "web_extract", "extract_page", "read_page"):
+        from backend.core.browser_pilot import browser_extract
+        selector = args.get("selector") or None
+        max_chars = int(args.get("max_chars") or 4000)
+        return browser_extract(selector=str(selector) if selector else None, max_chars=max_chars)
+
+    elif tool_name in ("browser_screenshot", "web_screenshot", "take_screenshot"):
+        from backend.core.browser_pilot import browser_screenshot
+        fname = args.get("filename") or args.get("output_path") or None
+        full_page = bool(args.get("full_page", False))
+        return browser_screenshot(filename=str(fname) if fname else None, full_page=full_page)
+
+    elif tool_name in ("browser_search_and_read", "web_search_and_read", "deep_web_search"):
+        from backend.core.browser_pilot import browser_search_and_read
+        q = args.get("query") or args.get("q") or ""
+        num_res = int(args.get("num_results") or 3)
+        return browser_search_and_read(str(q), num_results=num_res)
+
+    elif tool_name in ("browser_scroll", "scroll_page", "page_scroll"):
+        from backend.core.browser_pilot import browser_scroll
+        dir_val = args.get("direction") or "down"
+        amt = int(args.get("amount") or 800)
+        return browser_scroll(direction=str(dir_val), amount=amt)
+
+    elif tool_name in ("browser_close", "close_browser"):
+        from backend.core.browser_pilot import browser_close
+        return browser_close()
+
+    elif tool_name in ("capture_desktop_screen", "capture_screen", "capture_desktop", "take_desktop_screenshot", "screen_capture"):
+        from backend.core.vision_pilot import capture_desktop
+        fname = args.get("filename") or args.get("output_filename") or None
+        region = args.get("region") or None
+        return capture_desktop(output_filename=str(fname) if fname else None, region=region)
+
+    elif tool_name in ("list_open_windows", "get_open_windows", "list_windows", "inspect_windows"):
+        from backend.core.vision_pilot import list_open_windows
+        return list_open_windows()
+
+    elif tool_name in ("focus_window", "activate_window", "switch_to_window", "bring_window_to_front"):
+        from backend.core.vision_pilot import focus_window
+        target = args.get("title") or args.get("target") or args.get("window_title") or args.get("pid") or ""
+        return focus_window(str(target))
+
+    elif tool_name in ("analyze_screen_vision", "screen_vision", "inspect_screen", "analyze_screen", "read_screen"):
+        from backend.core.vision_pilot import analyze_screen_vision
+        img_path = args.get("image_path") or args.get("path") or None
+        prompt_val = args.get("prompt") or args.get("question") or None
+        region = args.get("region") or None
+        return analyze_screen_vision(image_path=str(img_path) if img_path else None, prompt=str(prompt_val) if prompt_val else None, region=region)
+
+    elif tool_name in ("desktop_click", "mouse_click", "click_desktop"):
+        from backend.core.gui_pilot import desktop_click
+        x = args.get("x")
+        y = args.get("y")
+        btn = args.get("button", "left")
+        clicks = int(args.get("clicks") or 1)
+        return desktop_click(x=int(x) if x is not None else None, y=int(y) if y is not None else None, button=str(btn), clicks=clicks)
+
+    elif tool_name in ("desktop_type", "keyboard_type", "type_desktop"):
+        from backend.core.gui_pilot import desktop_type
+        txt = args.get("text") or args.get("content") or ""
+        p_enter = bool(args.get("press_enter", False))
+        return desktop_type(str(txt), press_enter=p_enter)
+
+    elif tool_name in ("desktop_hotkey", "press_hotkey", "send_hotkey", "keyboard_shortcut"):
+        from backend.core.gui_pilot import desktop_hotkey
+        k = args.get("keys") or args.get("hotkey") or args.get("shortcut") or ""
+        return desktop_hotkey(str(k))
+
+    elif tool_name in ("desktop_move", "mouse_move", "move_cursor"):
+        from backend.core.gui_pilot import desktop_move
+        x = int(args.get("x", 0))
+        y = int(args.get("y", 0))
+        return desktop_move(x, y)
+
+    elif tool_name in ("desktop_scroll", "scroll_desktop"):
+        from backend.core.gui_pilot import desktop_scroll
+        amt = int(args.get("amount") or 3)
+        direct = args.get("direction", "down")
+        return desktop_scroll(amount=amt, direction=str(direct))
+
+    elif tool_name in ("desktop_cursor_pos", "get_cursor_position", "cursor_position"):
+        from backend.core.gui_pilot import desktop_cursor_pos
+        return desktop_cursor_pos()
+
+    elif tool_name in ("speak_aloud", "speak", "say_aloud", "talk", "tts_speak"):
+        from backend.core.voice_pilot import speak_aloud
+        txt = args.get("text") or args.get("message") or args.get("content") or ""
+        v_mode = args.get("mode") or None
+        return speak_aloud(str(txt), mode=v_mode)
+
+    elif tool_name in ("set_voice_mode", "switch_voice_mode", "change_voice_mode"):
+        from backend.core.voice_pilot import set_voice_mode
+        m = args.get("mode") or "work"
+        return set_voice_mode(str(m))
+
+    elif tool_name in ("get_voice_mode", "check_voice_mode", "voice_status"):
+        from backend.core.voice_pilot import get_voice_mode, load_voice_config
+        cfg = load_voice_config()
+        return {"success": True, "mode": cfg.get("mode"), "config": cfg}
+
+    elif tool_name in ("configure_wake_word", "set_wake_word", "update_wake_word"):
+        from backend.core.voice_pilot import update_voice_config, load_voice_config
+        updates = {}
+        if "enabled" in args and args["enabled"] is not None:
+            updates["wake_word_enabled"] = bool(args["enabled"])
+        if "wake_words" in args and args["wake_words"]:
+            ww = args["wake_words"]
+            if isinstance(ww, str):
+                ww = [w.strip().lower() for w in ww.split(",") if w.strip()]
+            updates["wake_words"] = ww
+        if "wake_sound" in args and args["wake_sound"] is not None:
+            updates["wake_sound"] = bool(args["wake_sound"])
+        if updates:
+            cfg = update_voice_config(updates)
+        else:
+            cfg = load_voice_config()
+        return {"success": True, "message": f"Wake word config updated. Enabled: {cfg.get('wake_word_enabled')}, Trigger words: {cfg.get('wake_words')}", "config": cfg}
+
+    elif tool_name in ("remember_fact", "remember", "memorize_fact", "save_memory"):
+        from backend.core.memory_pilot import remember_fact
+        cnt = args.get("content") or args.get("fact") or args.get("text") or ""
+        cat = args.get("category") or "fact"
+        imp = int(args.get("importance") or 8)
+        ent = args.get("entity") or None
+        rel = args.get("relation") or None
+        tgt = args.get("target") or None
+        return remember_fact(content=str(cnt), category=str(cat), importance=imp, entity=ent, relation=rel, target=tgt)
+
+    elif tool_name in ("forget_memory", "forget", "delete_memory"):
+        from backend.core.memory_pilot import delete_memory
+        itype = args.get("item_type") or "raw"
+        iid = int(args.get("item_id") or args.get("id") or 0)
+        return delete_memory(str(itype), iid)
+
+    elif tool_name in ("multi_hop_query", "graph_reasoning", "multi_hop_reasoning"):
+        from backend.core.memory_pilot import query_multi_hop_relations, find_entity_path
+        start = str(args.get("start_entity") or args.get("entity") or args.get("source") or "").strip()
+        target = str(args.get("target_entity") or args.get("target") or "").strip()
+        hops = int(args.get("max_hops") or 3)
+        if target:
+            paths = find_entity_path(start, target, max_hops=hops)
+            return {"status": "success", "start": start, "target": target, "paths": paths}
+        else:
+            chains = query_multi_hop_relations(start, max_hops=hops)
+            return {"status": "success", "start": start, "chains": chains}
+
+    elif tool_name in ("consolidate_memory", "sleep_cycle_consolidation", "consolidate_memories"):
+        from backend.core.memory_pilot import run_sleep_cycle_consolidation
+        return run_sleep_cycle_consolidation()
+
+    elif tool_name in ("start_background_task", "spawn_daemon_task", "run_in_background"):
+        from backend.core.task_daemon import spawn_daemon_task
+        t_title = str(args.get("title") or args.get("name") or "Autonomous Background Task").strip()
+        t_desc = str(args.get("description") or t_title).strip()
+        raw_steps = args.get("steps")
+        steps = None
+        if isinstance(raw_steps, list):
+            steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+        elif isinstance(raw_steps, str):
+            steps = [s.strip() for s in raw_steps.split(",") if s.strip()]
+        return spawn_daemon_task(title=t_title, description=t_desc, steps=steps, project_name=project_name)
+
+    elif tool_name in ("check_background_tasks", "get_background_tasks", "list_background_tasks"):
+        from backend.core.task_daemon import get_task_status, list_active_tasks, list_all_tasks
+        t_id = args.get("task_id")
+        if t_id:
+            status = get_task_status(str(t_id))
+            if not status:
+                return {"status": "error", "error": f"Daemon task '{t_id}' not found."}
+            return {"status": "success", "task": status}
+        else:
+            actives = list_active_tasks()
+            return {"status": "success", "active_count": len(actives), "tasks": actives}
+
+    elif tool_name in ("control_background_task", "pause_background_task", "cancel_background_task"):
+        from backend.core.task_daemon import pause_task, resume_task, cancel_task
+        t_id = str(args.get("task_id") or "").strip()
+        act = str(args.get("action") or "pause").strip().lower()
+        if act == "pause":
+            return pause_task(t_id)
+        elif act == "resume":
+            return resume_task(t_id)
+        elif act in ("cancel", "stop", "abort"):
+            return cancel_task(t_id)
+        else:
+            return {"status": "error", "error": f"Unknown action '{act}'. Use 'pause', 'resume', or 'cancel'."}
+
+    elif tool_name in ("set_project_permission_policy", "set_project_policy"):
+        from backend.core.permission_controller import LocalPermissionController
+        p_name = str(args.get("project_name") or project_name).strip()
+        p_key = str(args.get("policy_key") or "require_approval").strip()
+        p_val = args.get("value", True)
+        return LocalPermissionController.set_project_policy(p_name, p_key, p_val)
+
+    elif tool_name in ("inspect_preflight_safety", "inspect_safety"):
+        from backend.core.preflight_inspector import inspect_command_safety, inspect_package_safety, inspect_url_safety
+        tgt = str(args.get("target") or "").strip()
+        t_type = str(args.get("target_type") or "").strip().lower()
+        if t_type == "package" or (not t_type and not (" " in tgt or "://" in tgt)):
+            return inspect_package_safety(tgt)
+        elif t_type == "url" or "://" in tgt:
+            return inspect_url_safety(tgt)
+        else:
+            return inspect_command_safety(tgt)
 
     else:
         # Check dynamic MCP (Model Context Protocol) tools

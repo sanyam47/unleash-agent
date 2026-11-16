@@ -295,7 +295,8 @@ class UnleashOrchestrator:
                 # Check fast-cache for known exception
                 cache = self.load_cache()
                 remediation_action = None
-                app_path = r"C:\Users\asopa\AppData\Local\Programs\antigravity"
+                local_app = os.environ.get("LOCALAPPDATA", "")
+                app_path = os.path.join(local_app, "Programs", "antigravity") if local_app else "antigravity"
                 
                 if "0x80000003" in diag["stdout"]:
                     rule = cache.get("0x80000003")

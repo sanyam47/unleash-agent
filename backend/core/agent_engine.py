@@ -34,6 +34,18 @@ def get_ollama_chat_url() -> str:
 
 DEFAULT_MAX_STEPS = 24
 
+JARVIS_EXECUTIVE_TOOLS = {
+    "launch_application", "open_browser_url", "system_control",
+    "send_desktop_notification", "run_host_cli", "browser_navigate",
+    "browser_click", "browser_type", "browser_extract",
+    "browser_screenshot", "browser_scroll", "browser_search_and_read", "browser_close",
+    "capture_desktop_screen", "list_open_windows", "focus_window", "analyze_screen_vision",
+    "desktop_click", "desktop_type", "desktop_hotkey", "desktop_move", "desktop_scroll", "desktop_cursor_pos",
+    "speak_aloud", "set_voice_mode", "get_voice_mode", "configure_wake_word",
+    "remember_fact", "recall_memory", "forget_memory", "multi_hop_query", "consolidate_memory",
+    "start_background_task", "check_background_tasks", "control_background_task", "set_project_permission_policy", "inspect_preflight_safety"
+}
+
 
 
 
@@ -867,6 +879,11 @@ def run_agentic_react_loop(
 
     clean_proj = sanitize_project_name(project_name or f"project_{int(time.time())}")
 
+    # Check if this is a Jarvis Host Executive OS task (launch app, hardware telemetry, volume, browser, host CLI)
+    from backend.core.intent_gate import classify_user_action_intent
+    _, intent_type = classify_user_action_intent(user_prompt)
+    is_jarvis_action = (intent_type == "jarvis_os_action")
+
     # Register start with Execution Controller
     try:
         from backend.core.execution_controller import AgentExecutionController
@@ -883,8 +900,10 @@ def run_agentic_react_loop(
     tier_profile = probe_active_compute_tier(model_name=model)
 
     if max_steps == DEFAULT_MAX_STEPS:
-
         max_steps = tier_profile["max_steps"]
+
+    if is_jarvis_action:
+        max_steps = 3
 
     context_window = max(context_window, tier_profile["context_window"])
 
@@ -927,7 +946,7 @@ def run_agentic_react_loop(
 
     existing_files = []
 
-    if proj_dir.exists():
+    if proj_dir.exists() and not is_jarvis_action:
 
         for entry in os.listdir(proj_dir):
 
@@ -961,7 +980,7 @@ def run_agentic_react_loop(
     # Detect if user is asking to build a completely new project/application
     # CRITICAL: If resuming a saved checkpoint, NEVER treat as a brand new app and NEVER wipe existing files!
     is_resume = bool(resume_checkpoint)
-    is_new_app_creation = (not is_resume) and bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
+    is_new_app_creation = (not is_resume) and (not is_jarvis_action) and bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
 
     # If starting a brand new project in default sandbox, reset so previous unrelated project files do not collide
     # NOTE: Never wipe an existing custom directory! Only sandbox projects if requested to build new.
@@ -982,108 +1001,133 @@ def run_agentic_react_loop(
 
 
     toolset_mode = tier_profile.get("toolset_mode", "full")
-    system_prompt = format_agentic_system_prompt(base_system_prompt, clean_proj, skills_prompt, toolset_mode=toolset_mode)
+    if is_jarvis_action:
+        # High-Speed Lean Executive Mode for OS & Desktop Actions (Sub-second prompt eval)
+        from backend.core.agent_tools import get_all_tool_schemas
+        exec_schemas = [t for t in get_all_tool_schemas() if t["name"] in JARVIS_EXECUTIVE_TOOLS]
+        tools_formatted = []
+        for t in exec_schemas:
+            param_desc = ", ".join([f'"{k}": <{v}>' for k, v in t.get("parameters", {}).items()])
+            tools_formatted.append(f"- {t['name']}({{{param_desc}}}): {t['description']}")
+        exec_tools_text = "\n".join(tools_formatted)
 
-    system_prompt += (
-        f"\n=== ACTIVE COMPUTE TIER: {tier_profile['tier_display']} ===\n"
-        f"Hardware Profile: {tier_profile['gpu_name']} ({tier_profile['vram_gb']}GB VRAM)\n"
-        f"Execution Budget: Max {tier_profile['max_milestones']} atomic milestones, {max_steps} ReAct turns, {context_window} context tokens.\n"
-        f"Verification Engine: Mode '{tier_profile['visual_mode']}' with {len(viewports)} responsive target viewports.\n\n"
-    )
+        system_prompt = f"""You are Jarvis, an autonomous AI assistant and Executive OS Pilot running directly on the user's Windows workstation.
+You have native executive access to host tools, real-time hardware telemetry, processes, logs, filesystem, and desktop automation.
 
-    system_prompt += f"\nCURRENT WORKSPACE ROOT: {proj_dir}\nAll project files are saved and modified directly inside this folder.\n"
+You have access to the following host executive tools:
+{exec_tools_text}
 
-    # Dynamic Project Manifest & Workspace Tree Ingestion
-    from backend.core.agent_manifest import get_or_create_manifest, format_manifest_for_prompt
-    from backend.core.symbol_extractor import format_symbol_table_for_prompt, get_workspace_tree
+=== EXECUTIVE INTERACTION PROTOCOL ===
+1. In your VERY FIRST TURN, you MUST invoke the appropriate tool to inspect or control the system:
+Thought: <brief 1-line reason for this action>
+Action: tool_name({{"param": "value"}})
 
-    manifest = get_or_create_manifest(proj_dir, user_prompt, is_new=is_new_app_creation)
-    if toolset_mode != "lean":
-        manifest_prompt = format_manifest_for_prompt(manifest)
-        if manifest_prompt:
-            system_prompt += f"{manifest_prompt}\n"
+Examples:
+- Inspect Processes, Event Logs & Diagnostics: Action: system_control({{"action": "processes"}}) or Action: system_control({{"action": "logs"}}) or Action: system_control({{"action": "diagnostics"}})
+- Fans Loud / Noisy Fans / Thermals / Cooling: Action: system_control({{"action": "heating"}}) or Action: system_control({{"action": "get_system_info"}})
+- Battery / RAM / CPU / Thermals: Action: system_control({{"action": "heating"}}) or Action: system_control({{"action": "get_system_info"}})
+- Launch Application: Action: launch_application({{"app_name": "whatsapp"}})
+- Browser URL: Action: open_browser_url({{"url": "https://..."}})
+- Desktop Notification: Action: send_desktop_notification({{"title": "...", "message": "..."}})
+- Host CLI: Action: run_host_cli({{"command": "..."}})
 
-    if existing_files:
-        workspace_tree_str = get_workspace_tree(proj_dir)
-        system_prompt += f"\n=== ACTIVE WORKSPACE DIRECTORY TREE ===\n{workspace_tree_str}\n\n"
-        system_prompt += "CONTINUATION MANDATE: You are modifying an EXISTING project. Preserve the existing design, layout, and colors. For targeted modifications, prefer 'edit_project_file' to surgically replace code blocks without wiping existing functions!\n"
+2. Once the tool returns the Observation, immediately synthesize the facts and conclude with:
+Final Answer: <Your clear, professional, factual answer to the user>
 
-        if toolset_mode != "lean":
-            sym_hint = format_symbol_table_for_prompt(proj_dir)
-            if sym_hint:
-                system_prompt += f"{sym_hint}\n"
+3. NEVER claim to be a text-based AI without access to system processes or logs. You are Jarvis with executive capabilities."""
 
- 
-
-
-
-        from backend.core.workspace_validator import validate_workspace
-
-        health = validate_workspace(clean_proj, viewports=viewports)
-
-        if not health.get("valid") or health.get("warnings"):
-
-            system_prompt += f"\n=== AUTOMATED WORKSPACE DIAGNOSTIC AUDIT ===\n"
-
-            system_prompt += f"{health.get('summary')}\n"
-
-            primary_target = health.get("primary_repair_file")
-            target_hint = f" Specifically focus on '{primary_target}'." if primary_target else ""
-            system_prompt += f"Your workspace currently has defects listed above.{target_hint} You must repair them using 'edit_project_file' or 'write_project_file'.\n"
-
-
-
-    # Autonomous Scout Pre-Flight Phase:
-
-    # Analyzes prompt, discovers authoritative datasets dynamically, and formulates Architecture Contract
-
-    from backend.core.scout_agent import run_scout_phase
-
-    from backend.core.symbol_extractor import format_symbol_table_for_prompt
-
-    from backend.core.agent_progress import set_project_progress, clear_project_progress
-
-    set_project_progress(clean_proj, phase="scouting", headline="Scouting project architecture...", detail="Analyzing requirements and discovering datasets", step=1)
-
-
-
-    scout_res = run_scout_phase(user_prompt, proj_dir)
-
-    system_prompt += f"\n\n{scout_res['contract_text']}\n"
-
-    target_files = [f["path"] for f in scout_res["files_plan"]]
-
-
-
-    # Autonomous Micro-Goal Decomposition
-
-    from backend.core.goal_stepper import decompose_goals, verify_milestones, format_goal_checklist_for_prompt
-
-    goals = decompose_goals(user_prompt, scout_res, max_milestones=tier_profile["max_milestones"])
-
-    goal_checklist_text = format_goal_checklist_for_prompt(goals)
-
-    system_prompt += f"\n\n{goal_checklist_text}\n"
-
-
-
-    set_project_progress(clean_proj, phase="analyzing", headline=f"Architecture & {len(goals)} Goals Formulated ({scout_res['elapsed_ms']}ms)", detail=f"Target files: {', '.join(target_files)}", step=1)
-
-
-
-    if is_new_app_creation:
+        if base_system_prompt and base_system_prompt.strip():
+            system_prompt += f"\n\n=== PERSONA ===\n{base_system_prompt.strip()}"
+    else:
+        system_prompt = format_agentic_system_prompt(base_system_prompt, clean_proj, skills_prompt, toolset_mode=toolset_mode)
 
         system_prompt += (
-
-            f"\n\n=== CRITICAL NEW PROJECT SCOPE ===\n"
-
-            f"The user has explicitly requested to build: '{user_prompt}'.\n"
-
-            f"Do NOT generate game loops or canvas elements unless a game was requested. "
-
-            f"Build a complete, responsive application strictly matching the user's prompt specifications and requested features!\n"
-
+            f"\n=== ACTIVE COMPUTE TIER: {tier_profile['tier_display']} ===\n"
+            f"Hardware Profile: {tier_profile['gpu_name']} ({tier_profile['vram_gb']}GB VRAM)\n"
+            f"Execution Budget: Max {tier_profile['max_milestones']} atomic milestones, {max_steps} ReAct turns, {context_window} context tokens.\n"
+            f"Verification Engine: Mode '{tier_profile['visual_mode']}' with {len(viewports)} responsive target viewports.\n\n"
         )
+
+        system_prompt += f"\nCURRENT WORKSPACE ROOT: {proj_dir}\nAll project files are saved and modified directly inside this folder.\n"
+
+        # Dynamic Project Manifest & Workspace Tree Ingestion
+        from backend.core.agent_manifest import get_or_create_manifest, format_manifest_for_prompt
+        from backend.core.symbol_extractor import format_symbol_table_for_prompt, get_workspace_tree
+
+        manifest = get_or_create_manifest(proj_dir, user_prompt, is_new=is_new_app_creation)
+        if toolset_mode != "lean":
+            manifest_prompt = format_manifest_for_prompt(manifest)
+            if manifest_prompt:
+                system_prompt += f"{manifest_prompt}\n"
+
+        if existing_files:
+            workspace_tree_str = get_workspace_tree(proj_dir)
+            system_prompt += f"\n=== ACTIVE WORKSPACE DIRECTORY TREE ===\n{workspace_tree_str}\n\n"
+            system_prompt += "CONTINUATION MANDATE: You are modifying an EXISTING project. Preserve the existing design, layout, and colors. For targeted modifications, prefer 'edit_project_file' to surgically replace code blocks without wiping existing functions!\n"
+
+            if toolset_mode != "lean":
+                sym_hint = format_symbol_table_for_prompt(proj_dir)
+                if sym_hint:
+                    system_prompt += f"{sym_hint}\n"
+
+            from backend.core.workspace_validator import validate_workspace
+            health = validate_workspace(clean_proj, viewports=viewports)
+            if not health.get("valid") or health.get("warnings"):
+                system_prompt += f"\n=== AUTOMATED WORKSPACE DIAGNOSTIC AUDIT ===\n"
+                system_prompt += f"{health.get('summary')}\n"
+                primary_target = health.get("primary_repair_file")
+                target_hint = f" Specifically focus on '{primary_target}'." if primary_target else ""
+                system_prompt += f"Your workspace currently has defects listed above.{target_hint} You must repair them using 'edit_project_file' or 'write_project_file'.\n"
+
+
+
+    # Phase 6: Cognitive Memory & Knowledge Graph Context Injection
+    try:
+        from backend.core.memory_pilot import get_injected_context
+        mem_context = get_injected_context(user_prompt)
+        if mem_context:
+            system_prompt += f"\n\n{mem_context}\n"
+    except Exception as e:
+        print(f"[Memory Pilot] Injection notice: {e}")
+
+    if is_jarvis_action:
+        from backend.core.agent_progress import set_project_progress
+        set_project_progress(clean_proj, phase="executive", headline="Jarvis OS Bridge Active", detail="Executing host executive action", step=1)
+        scout_res = {
+            "is_data_app": False, "is_game": False, "is_tool": False, "is_cli": False,
+            "keywords": [], "dataset_info": None, "files_plan": [], "dom_contract": {},
+            "contract_text": "", "elapsed_ms": 1, "entities": {}
+        }
+        target_files = []
+        goals = []
+    else:
+        # Autonomous Scout Pre-Flight Phase:
+        # Analyzes prompt, discovers authoritative datasets dynamically, and formulates Architecture Contract
+        from backend.core.scout_agent import run_scout_phase
+        from backend.core.symbol_extractor import format_symbol_table_for_prompt
+        from backend.core.agent_progress import set_project_progress, clear_project_progress
+
+        set_project_progress(clean_proj, phase="scouting", headline="Scouting project architecture...", detail="Analyzing requirements and discovering datasets", step=1)
+
+        scout_res = run_scout_phase(user_prompt, proj_dir)
+        system_prompt += f"\n\n{scout_res['contract_text']}\n"
+        target_files = [f["path"] for f in scout_res["files_plan"]]
+
+        # Autonomous Micro-Goal Decomposition
+        from backend.core.goal_stepper import decompose_goals, verify_milestones, format_goal_checklist_for_prompt
+        goals = decompose_goals(user_prompt, scout_res, max_milestones=tier_profile["max_milestones"])
+        goal_checklist_text = format_goal_checklist_for_prompt(goals)
+        system_prompt += f"\n\n{goal_checklist_text}\n"
+
+        set_project_progress(clean_proj, phase="analyzing", headline=f"Architecture & {len(goals)} Goals Formulated ({scout_res['elapsed_ms']}ms)", detail=f"Target files: {', '.join(target_files)}", step=1)
+
+        if is_new_app_creation:
+            system_prompt += (
+                f"\n\n=== CRITICAL NEW PROJECT SCOPE ===\n"
+                f"The user has explicitly requested to build: '{user_prompt}'.\n"
+                f"Do NOT generate game loops or canvas elements unless a game was requested. "
+                f"Build a complete, responsive application strictly matching the user's prompt specifications and requested features!\n"
+            )
 
 
 
@@ -1113,41 +1157,36 @@ def run_agentic_react_loop(
 
 
 
-    steps: List[Dict[str, Any]] = [
-
-        {
-
-            "step": 1,
-
-            "thought": f"Scout Pre-Flight: Dissected prompt '{user_prompt[:60]}'. Formulated dynamic architecture contract and retrieved dataset inspiration.",
-
-            "action": "scout_planning",
-
-            "args": {
-
-                "architecture": "Data-Driven Web Application" if scout_res["is_data_app"] else ("Python CLI Script" if scout_res["is_cli"] else ("Interactive Game" if scout_res["is_game"] else "Productivity Tool")),
-
-                "planned_files": target_files,
-
-                "dataset": scout_res.get("dataset_info"),
-
-                "dom_contract": scout_res.get("dom_contract"),
-
-                "compute_tier": tier_profile["tier"],
-
-                "tier_display": tier_profile["tier_display"],
-
-                "vram_gb": tier_profile["vram_gb"]
-
-            },
-
-            "observation": f"Scout contract compiled in {scout_res['elapsed_ms']}ms. Target files: {target_files}",
-
-            "status": "success"
-
-        }
-
-    ]
+    if is_jarvis_action:
+        steps: List[Dict[str, Any]] = [
+            {
+                "step": 1,
+                "thought": f"Jarvis Executive: Dispatched user OS request '{user_prompt[:60]}'.",
+                "action": "jarvis_intent",
+                "args": {"intent": "jarvis_os_action", "task": user_prompt},
+                "observation": "Jarvis executive host bridge active.",
+                "status": "success"
+            }
+        ]
+    else:
+        steps: List[Dict[str, Any]] = [
+            {
+                "step": 1,
+                "thought": f"Scout Pre-Flight: Dissected prompt '{user_prompt[:60]}'. Formulated dynamic architecture contract and retrieved dataset inspiration.",
+                "action": "scout_planning",
+                "args": {
+                    "architecture": "Data-Driven Web Application" if scout_res["is_data_app"] else ("Python CLI Script" if scout_res["is_cli"] else ("Interactive Game" if scout_res["is_game"] else "Productivity Tool")),
+                    "planned_files": target_files,
+                    "dataset": scout_res.get("dataset_info"),
+                    "dom_contract": scout_res.get("dom_contract"),
+                    "compute_tier": tier_profile["tier"],
+                    "tier_display": tier_profile["tier_display"],
+                    "vram_gb": tier_profile["vram_gb"]
+                },
+                "observation": f"Scout contract compiled in {scout_res['elapsed_ms']}ms. Target files: {target_files}",
+                "status": "success"
+            }
+        ]
 
     created_files: List[str] = []
     files_written_this_run: List[str] = []
@@ -1182,7 +1221,7 @@ def run_agentic_react_loop(
 
     is_conversational_interrupt = bool(re.search(stop_pattern, user_prompt, re.IGNORECASE))
 
-    is_build_request = bool(re.search(tool_intent_pattern, user_prompt, re.IGNORECASE)) and not is_conversational_interrupt
+    is_build_request = bool(re.search(tool_intent_pattern, user_prompt, re.IGNORECASE)) and not is_conversational_interrupt and not is_jarvis_action
 
 
 
@@ -1228,7 +1267,7 @@ def run_agentic_react_loop(
     import shutil
 
     has_docker = bool(get_docker_desktop_executable()) or bool(shutil.which("docker"))
-    use_docker = os.getenv("UNLEASH_DOCKER_ENABLED", "1" if has_docker else "0") == "1"
+    use_docker = (not is_jarvis_action) and (os.getenv("UNLEASH_DOCKER_ENABLED", "1" if has_docker else "0") == "1")
 
     with DockerEphemeralSession(enabled=use_docker):
         self_repair_attempts = 0
@@ -1623,15 +1662,13 @@ def run_agentic_react_loop(
 
 
 
-                # Check Milestone progress after tool execution
-
-                milestone_res = verify_milestones(proj_dir, goals, current_step=step_num)
-
-                if milestone_res["completed_count"] > 0 or milestone_res.get("next_uncompleted"):
-
-                    next_lbl = milestone_res["next_uncompleted"]["name"] if milestone_res.get("next_uncompleted") else "All Goals Complete"
-
-                    obs_str += f"\n\n[GOAL STEPPER: {milestone_res['completed_count']}/{milestone_res['total_count']} Milestones Verified | Next Target: {next_lbl}]"
+                # Check Milestone progress after tool execution (for software projects)
+                if not is_jarvis_action and goals:
+                    from backend.core.goal_stepper import verify_milestones
+                    milestone_res = verify_milestones(proj_dir, goals, current_step=step_num)
+                    if milestone_res["completed_count"] > 0 or milestone_res.get("next_uncompleted"):
+                        next_lbl = milestone_res["next_uncompleted"]["name"] if milestone_res.get("next_uncompleted") else "All Goals Complete"
+                        obs_str += f"\n\n[GOAL STEPPER: {milestone_res['completed_count']}/{milestone_res['total_count']} Milestones Verified | Next Target: {next_lbl}]"
 
 
 
@@ -1685,6 +1722,14 @@ def run_agentic_react_loop(
             # Case C: All core files exist and model provided Final Answer -> Run Dual Gate (Acceptance + Goal Stepper)
 
             elif final_ans:
+                if is_jarvis_action:
+                    from backend.core.agent_progress import set_project_progress
+                    set_project_progress(clean_proj, phase="completed", headline="Jarvis Action Complete", detail="Executed OS task successfully", step=step_num+1)
+                    step_record["status"] = "completed"
+                    step_record["observation"] = "Jarvis executive action completed."
+                    steps.append(step_record)
+                    final_reply = final_ans
+                    break
 
                 set_project_progress(clean_proj, phase="validating", headline="Verifying Dual Acceptance Gate...", detail="Auditing compiler integrity and feature milestones", step=step_num+1)
 
@@ -1798,6 +1843,23 @@ def run_agentic_react_loop(
             # Case D: Model concluded with prose -> Check 3-Layer Acceptance Gate before accepting
 
             else:
+                if is_jarvis_action:
+                    has_executed_tool = any(s.get("action") in JARVIS_EXECUTIVE_TOOLS for s in steps)
+                    if not has_executed_tool and step_num < 3:
+                        step_record["status"] = "re-prompted"
+                        step_record["observation"] = "Instructed model to call executive tool rather than answering in prose."
+                        steps.append(step_record)
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": "Observation: MANDATORY ACTION: You must invoke the appropriate tool using Action: <tool_name>(...) to perform the requested Windows OS executive action."})
+                        continue
+                    else:
+                        from backend.core.agent_progress import set_project_progress
+                        set_project_progress(clean_proj, phase="completed", headline="Jarvis Action Complete", detail="Completed OS action", step=step_num+1)
+                        step_record["status"] = "completed"
+                        step_record["observation"] = "Jarvis executive action concluded."
+                        steps.append(step_record)
+                        final_reply = content
+                        break
 
                 # If this was a build/fix request and model did not write or modify any code files yet, force an action!
 
@@ -1956,27 +2018,33 @@ def run_agentic_react_loop(
 
 
         if not final_reply:
+            if is_jarvis_action:
+                executed_tools = [s for s in steps if s.get("action") in JARVIS_EXECUTIVE_TOOLS]
+                if executed_tools:
+                    last_tool = executed_tools[-1]
+                    obs = last_tool.get("observation", {})
+                    msg = obs.get("message") if isinstance(obs, dict) else str(obs)
+                    final_reply = msg or f"Executed Jarvis command '{last_tool.get('action')}' successfully."
+                else:
+                    final_reply = "Jarvis executive command processed."
+            else:
+                summary_prompt = (
+                    f"You have finished building the workspace files for project '{clean_proj}'. "
+                    f"Provide your Final Answer formatted as:\n"
+                    f"1. A structured bullet-point breakdown of the exact files and features you implemented.\n"
+                    f"2. If this is a web project with an index.html, provide instructions on how to test it live."
+                )
 
-            summary_prompt = (
+                messages.append({"role": "user", "content": summary_prompt})
 
-                f"You have finished building the workspace files for project '{clean_proj}'. "
-
-                f"Provide your Final Answer formatted as:\n"
-
-                f"1. A structured bullet-point breakdown of the exact files and features you implemented.\n"
-                f"2. If this is a web project with an index.html, provide instructions on how to test it live."
-            )
-
-            messages.append({"role": "user", "content": summary_prompt})
-
-            try:
-                last_resp = call_unified_chat(model, messages, temperature=0.3, context_window=context_window)
-                total_eval_tokens += last_resp.get("eval_count", 0)
-                total_time_sec += last_resp.get("duration_sec", 0.1)
-                final_reply = last_resp.get("content", "")
-            except Exception as sum_err:
-                print(f"[SUMMARY ERROR]: Could not generate final summary ({sum_err}), using fallback summary.")
-                final_reply = f"I have built the requested application with {len(created_files)} files: {', '.join(created_files)}."
+                try:
+                    last_resp = call_unified_chat(model, messages, temperature=0.3, context_window=context_window)
+                    total_eval_tokens += last_resp.get("eval_count", 0)
+                    total_time_sec += last_resp.get("duration_sec", 0.1)
+                    final_reply = last_resp.get("content", "")
+                except Exception as sum_err:
+                    print(f"[SUMMARY ERROR]: Could not generate final summary ({sum_err}), using fallback summary.")
+                    final_reply = f"I have built the requested application with {len(created_files)} files: {', '.join(created_files)}."
 
         # Attach live preview link ONLY for web projects with index.html that actually had files written this session
         has_html_file = (proj_dir / "index.html").exists()
@@ -2001,7 +2069,7 @@ def run_agentic_react_loop(
 
     # ensuring the project workspace is never empty and preview never 404s.
 
-    if proj_dir.exists():
+    if proj_dir.exists() and not is_jarvis_action:
 
         all_texts = [final_reply] + [m.get("content", "") for m in messages if m.get("role") == "assistant"]
 
@@ -2055,6 +2123,14 @@ def run_agentic_react_loop(
     except Exception:
         pass
 
+    # Phase 6: Autonomous Reflection & Extraction
+    try:
+        import threading
+        from backend.core.memory_pilot import extract_memories_from_turn
+        threading.Thread(target=extract_memories_from_turn, args=(user_prompt, final_reply), daemon=True).start()
+    except Exception:
+        pass
+
     # Clear checkpoint and mark completed in ExecutionController
     try:
         from backend.core.execution_controller import AgentExecutionController
@@ -2066,7 +2142,7 @@ def run_agentic_react_loop(
     set_project_progress(clean_proj, phase="completed", headline="Project build completed", detail="Interactive preview ready", step=len(steps))
 
     return {
-
+        "status": "completed",
         "reply": final_reply,
 
         "project_name": clean_proj,

@@ -84,6 +84,52 @@ class LocalPermissionController:
         }
 
     @classmethod
+    def get_project_policy(cls, project_name: str) -> Dict[str, Any]:
+        """Retrieves persistent governance policies for a specific project."""
+        cfg = cls.load_config()
+        policies = cfg.get("project_policies", {})
+        clean_proj = str(project_name or "").strip()
+        return policies.get(clean_proj, {})
+
+    @classmethod
+    def set_project_policy(cls, project_name: str, policy_key: str, value: Any = True) -> Dict[str, Any]:
+        """Sets a project-specific governance rule (e.g. require_approval=True)."""
+        clean_proj = str(project_name or "default_project").strip()
+        with cls._lock:
+            cfg = cls.load_config()
+            if "project_policies" not in cfg:
+                cfg["project_policies"] = {}
+            if clean_proj not in cfg["project_policies"]:
+                cfg["project_policies"][clean_proj] = {}
+            cfg["project_policies"][clean_proj][policy_key] = value
+            cls._save_unlocked(cfg)
+            cls._config = dict(cfg)
+        return {
+            "status": "success",
+            "project_name": clean_proj,
+            "policy_key": policy_key,
+            "value": value,
+            "all_policies": cfg["project_policies"][clean_proj]
+        }
+
+    @classmethod
+    def clear_project_policy(cls, project_name: str, policy_key: Optional[str] = None) -> Dict[str, Any]:
+        """Clears project-specific governance rules."""
+        clean_proj = str(project_name or "default_project").strip()
+        with cls._lock:
+            cfg = cls.load_config()
+            policies = cfg.get("project_policies", {})
+            if clean_proj in policies:
+                if policy_key:
+                    policies[clean_proj].pop(policy_key, None)
+                else:
+                    policies.pop(clean_proj, None)
+                cfg["project_policies"] = policies
+                cls._save_unlocked(cfg)
+                cls._config = dict(cfg)
+        return {"status": "success", "cleared_project": clean_proj, "policy_key": policy_key}
+
+    @classmethod
     def get_mode_display(cls, mode: Optional[str] = None) -> Dict[str, str]:
         m = (mode or cls.get_mode()).lower()
         modes_meta = {
@@ -129,7 +175,54 @@ class LocalPermissionController:
         existing_files = existing_files or []
         mode = cls.get_mode()
 
-        # 1. Turbo mode runs all commands without human prompts
+        # 0. Check Project Governance Policies (Overrides even Turbo Mode!)
+        proj_policy = cls.get_project_policy(project_name)
+        if proj_policy.get("require_approval", False) or proj_policy.get("ask_every_time", False):
+            target_desc = str(tool_args.get("command") or tool_args.get("cmd") or tool_args.get("path") or tool_args.get("file_path") or "")[:80]
+            return {
+                "mode": mode,
+                "requires_approval": True,
+                "risk_level": "policy_enforced",
+                "action_title": f"🛡️ Policy Enforced: {tool_name}",
+                "action_desc": f"Project Governance Active: You instructed Jarvis to always request approval before executing actions in project '{project_name}'.",
+                "target": target_desc
+            }
+
+        # 0.5. Check Pre-Flight Discretion Inspector for Shady/Suspicious Patterns
+        try:
+            from backend.core.preflight_inspector import inspect_command_safety, inspect_url_safety
+            cmd_candidate = tool_args.get("command") or tool_args.get("cmd") or ""
+            if cmd_candidate:
+                preflight = inspect_command_safety(str(cmd_candidate))
+                if preflight.get("is_suspicious"):
+                    alt_note = f" (Suggested alternative: '{preflight.get('suggested_alternative')}')" if preflight.get("suggested_alternative") else ""
+                    return {
+                        "mode": mode,
+                        "requires_approval": True,
+                        "risk_level": "suspicious_advisory",
+                        "action_title": "⚠️ Security Advisory: Suspicious Directive",
+                        "action_desc": f"Jarvis Discretion Warning: {preflight.get('reason')}{alt_note}",
+                        "target": str(cmd_candidate)[:80],
+                        "recommendation": preflight.get("recommendation")
+                    }
+
+            url_candidate = tool_args.get("url") or ""
+            if url_candidate:
+                preflight_url = inspect_url_safety(str(url_candidate))
+                if preflight_url.get("is_suspicious"):
+                    return {
+                        "mode": mode,
+                        "requires_approval": True,
+                        "risk_level": "suspicious_advisory",
+                        "action_title": "⚠️ Security Advisory: Suspicious Network Target",
+                        "action_desc": f"Jarvis Discretion Warning: {preflight_url.get('reason')}",
+                        "target": str(url_candidate)[:80],
+                        "recommendation": preflight_url.get("recommendation")
+                    }
+        except Exception:
+            pass
+
+        # 1. Turbo mode runs all safe commands without human prompts
         # (Downstream container sandbox still drops capabilities and air-gaps code)
         if mode == "turbo":
             return {
@@ -254,7 +347,116 @@ class LocalPermissionController:
                 reason = f"{'Modifies' if target in existing_files else 'Creates'} project file '{target}'."
 
         # =====================================================================
-        # D. READ-ONLY INSPECTION TOOLS
+        # D. JARVIS OS EXECUTIVE ACTIONS (Windows Host Gateway)
+        # =====================================================================
+        elif tool_name in ("launch_application", "launch_app", "open_app", "start_app"):
+            app_n = tool_args.get("app_name") or tool_args.get("name") or "Application"
+            target = str(app_n)
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Launch {app_n}"
+            reason = f"Opens desktop application or protocol handler '{app_n}' on Windows."
+
+        elif tool_name in ("open_browser_url", "open_url", "browse_url", "open_browser", "browse"):
+            target = str(tool_args.get("url") or "")
+            is_sensitive = False
+            risk_level = "low"
+            action_title = "Open Web Browser"
+            reason = f"Navigates default web browser to '{target}'."
+
+        elif tool_name in ("system_control", "os_control", "sys_control", "hardware_telemetry"):
+            act = str(tool_args.get("action") or "telemetry")
+            target = act
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"System Control ({act})"
+            reason = f"Performs system telemetry/control action: '{act}'."
+
+        elif tool_name in ("send_desktop_notification", "notify_user", "desktop_notification", "toast_notification", "notify"):
+            title = str(tool_args.get("title") or "Notification")
+            target = title
+            is_sensitive = False
+            risk_level = "low"
+            action_title = "Desktop Notification"
+            reason = f"Displays toast alert: '{title}'."
+
+        elif tool_name in (
+            "browser_navigate", "browser_click", "browser_type", "browser_extract",
+            "browser_screenshot", "browser_scroll", "browser_search_and_read", "browser_close",
+            "web_navigate", "web_click", "web_type", "web_extract", "web_screenshot", "web_scroll"
+        ):
+            target = str(tool_args.get("url") or tool_args.get("query") or tool_args.get("selector") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Web Pilot ({tool_name})"
+            reason = f"Autonomous browser action: '{tool_name}' on target '{target}'."
+
+        elif tool_name in (
+            "capture_desktop_screen", "capture_screen", "capture_desktop", "take_desktop_screenshot",
+            "list_open_windows", "get_open_windows", "list_windows",
+            "focus_window", "activate_window", "switch_to_window",
+            "analyze_screen_vision", "screen_vision", "inspect_screen"
+        ):
+            target = str(tool_args.get("title") or tool_args.get("prompt") or tool_args.get("filename") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Jarvis Vision ({tool_name})"
+            reason = f"Perceptual vision and window inspection: '{tool_name}' ({target})."
+
+        elif tool_name in (
+            "desktop_click", "mouse_click", "click_desktop",
+            "desktop_type", "keyboard_type", "type_desktop",
+            "desktop_hotkey", "press_hotkey", "send_hotkey", "keyboard_shortcut",
+            "desktop_move", "mouse_move", "move_cursor",
+            "desktop_scroll", "scroll_desktop",
+            "desktop_cursor_pos", "get_cursor_position", "cursor_position"
+        ):
+            target = str(tool_args.get("text") or tool_args.get("keys") or f"({tool_args.get('x')}, {tool_args.get('y')})")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Desktop Control ({tool_name})"
+            reason = f"Desktop GUI input action: '{tool_name}' ({target})."
+
+        elif tool_name in ("speak_aloud", "speak", "say_aloud", "talk", "set_voice_mode", "switch_voice_mode", "get_voice_mode", "voice_status", "configure_wake_word", "set_wake_word", "update_wake_word"):
+            target = str(tool_args.get("text") or tool_args.get("mode") or tool_args.get("wake_words") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Jarvis Voice ({tool_name})"
+            reason = f"Speech audio output or voice mode switch: '{tool_name}' ({target})."
+
+        elif tool_name in ("remember_fact", "remember", "memorize_fact", "recall_memory", "recall", "search_memory", "forget_memory", "forget", "multi_hop_query", "find_entity_path", "consolidate_memory"):
+            target = str(tool_args.get("content") or tool_args.get("query") or tool_args.get("fact") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Jarvis Cognitive Memory ({tool_name})"
+            reason = f"Personal knowledge graph operation: '{tool_name}' ({target})."
+
+        elif tool_name in ("start_background_task", "check_background_tasks", "control_background_task", "set_project_permission_policy", "inspect_preflight_safety"):
+            target = str(tool_args.get("title") or tool_args.get("task_id") or tool_args.get("target") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Autonomous Executive ({tool_name})"
+            reason = f"Background daemon worker or governance management: '{tool_name}' ({target})."
+
+        elif tool_name in ("run_host_cli", "host_cli", "run_host_command", "execute_host_command"):
+            cmd = tool_args.get("command") or tool_args.get("cmd") or ""
+            target = cmd[:80]
+            from backend.core.container_runner import BLOCKED_COMMANDS
+            import re
+            is_blocked = any(re.search(pat, cmd.lower()) for pat in BLOCKED_COMMANDS)
+            if is_blocked:
+                is_sensitive = True
+                risk_level = "critical"
+                action_title = "⚠️ Blocked Host Command"
+                reason = f"Host command matches restricted destructive pattern: '{cmd[:60]}'."
+            else:
+                is_sensitive = True
+                risk_level = "high"
+                action_title = "Execute Host Command"
+                reason = f"Runs command directly on Windows host: '{cmd[:60]}'."
+
+        # =====================================================================
+        # E. READ-ONLY INSPECTION TOOLS
         # =====================================================================
         else:
             target = str(tool_args.get("path") or tool_args.get("query") or "")

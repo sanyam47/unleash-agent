@@ -767,3 +767,74 @@ def cleanup_old_sandboxes(max_age_hours: float = 2.0):
                     pass
     except Exception:
         pass
+
+
+def evaluate_command_impact(command: str) -> Dict[str, Any]:
+    """
+    Pre-Execution Impact Verifier (Blast Radius & Consequence Analysis):
+    Evaluates shell and terminal commands prior to host execution to detect destructive
+    vectors, unintended file modifications, or dangerous administrative operations.
+    """
+    cmd = (command or "").strip()
+    if not cmd:
+        return {"safe": True, "risk": "NONE", "message": "Empty command."}
+
+    # 1. Critical Destructive Patterns (Format, Disk Wipe, Partition, Shutdown, Shadow Copy)
+    for pattern in PROHIBITED_HOST_PATTERNS:
+        match = re.search(pattern, cmd, re.IGNORECASE | re.MULTILINE)
+        if match:
+            return {
+                "safe": False,
+                "risk": "CRITICAL",
+                "blocked": True,
+                "reason": f"Destructive command detected ('{match.group(0).strip()}'). Execution strictly blocked.",
+                "blast_radius": "System / Drive Destruction"
+            }
+
+    # 2. High Risk Patterns (Process killing, registry changes, git hard resets, recursive deletes)
+    high_risk_patterns = [
+        (r"\brmdir\s+/[sS]\b", "Recursive directory deletion on host filesystem"),
+        (r"\bdel\s+/[sS]\b", "Recursive file purge on host filesystem"),
+        (r"\brm\s+-rf\b", "Recursive Unix/PowerShell file purge"),
+        (r"\btaskkill\s+/[fF]\b", "Forced process termination"),
+        (r"\breg\s+(delete|add)\b", "Windows Registry modification"),
+        (r"\bgit\s+reset\s+--hard\b", "Destructive git reset: uncommitted work will be permanently erased"),
+        (r"\bgit\s+clean\s+-[fF]d\b", "Destructive git clean: untracked files will be permanently deleted"),
+        (r"\bdrop\s+database\b", "Database deletion"),
+        (r"\bnet\s+stop\b", "Stopping Windows system service")
+    ]
+    for pat, desc in high_risk_patterns:
+        if re.search(pat, cmd, re.IGNORECASE):
+            return {
+                "safe": True,
+                "risk": "HIGH",
+                "blocked": False,
+                "warning": desc,
+                "requires_confirmation": True,
+                "blast_radius": "Process / State Loss"
+            }
+
+    # 3. Medium Risk Patterns (Installing packages, downloading remote scripts)
+    medium_risk_patterns = [
+        (r"\bpip\s+install\b", "Python environment modification"),
+        (r"\bnpm\s+install\b", "Node module installation"),
+        (r"\bcurl\b.*\b\|\s*(?:bash|powershell|cmd)\b", "Executing remote web script directly in shell"),
+        (r"\biwr\b.*\b\|\s*iex\b", "PowerShell web script download and immediate execution")
+    ]
+    for pat, desc in medium_risk_patterns:
+        if re.search(pat, cmd, re.IGNORECASE):
+            return {
+                "safe": True,
+                "risk": "MEDIUM",
+                "blocked": False,
+                "warning": desc,
+                "requires_confirmation": False,
+                "blast_radius": "Environment Change"
+            }
+
+    return {
+        "safe": True,
+        "risk": "LOW",
+        "blocked": False,
+        "blast_radius": "Standard Execution"
+    }

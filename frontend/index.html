@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unleash-Agent | Autonomous Local Code Studio</title>
-    <link rel="stylesheet" href="/static/style_v2.css?v=1794731898">
+    <link rel="stylesheet" href="/static/style_v2.css?v=1794870000">
     <script>
         // Immediate Theme Application (Zero Flash of Unstyled Content)
         (function() {
@@ -128,26 +128,48 @@
         <span id="navOllamaBadge" class="status-pill" style="background: transparent; border: none; padding: 0; color: var(--text-secondary); font-size: 0.76rem;">
             <span class="status-dot"></span> Ollama 11434
         </span>
+        <!-- Phase 7 Background Daemon Indicator -->
+        <span id="navDaemonTaskBadge" class="status-pill" style="display:none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; font-size: 0.74rem; cursor: pointer;" title="Active Background Daemon Task" onclick="openChatSettingsModal()">
+            <span class="status-dot" style="background:#10b981;"></span> <span id="navDaemonTaskText">Worker (0%)</span>
+        </span>
         <!-- Theme Toggle Pill -->
         <button id="themeToggleBtn" type="button" onclick="toggleTheme()" class="btn-quiet" style="font-size: 0.74rem; padding: 3px 8px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-muted);" title="Toggle Light / Dark theme">
             <span id="themeToggleIcon" style="display:none;"></span>
             <span id="themeToggleText">Dark mode</span>
         </button>
+
+        <!-- Standard Global Settings -->
+        <button id="btnStandardSettings" type="button" onclick="openChatSettingsModal()" class="btn-quiet" style="font-size: 0.74rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 6px; cursor: pointer;" title="Standard Settings: Jarvis Voice, Wake Word, Models, Runtime & Storage">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Settings</span>
+        </button>
     </div>
 </header>
 
 <!-- MAIN WORKSPACE -->
-<div class="app-wrapper">
-    <main class="main-content">
+<div class="app-wrapper" style="height: calc(100vh - 54px - 25px); overflow-y: auto; overflow-x: hidden;">
+    <main class="main-content" style="padding-bottom: 80px;">
 
         <!-- ============================================== -->
-        <!-- TAB 1: TRAIN AI (CLASSICAL MODELS) -->
+        <!-- TAB 1: TRAIN AI (CLASSICAL MODELS & PERSONA FORGE) -->
         <!-- ============================================== -->
         <section id="train-section">
-            <div style="margin-bottom: 24px;">
-                <h1 style="font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text-primary); margin: 0;">Train a Model</h1>
+            <div style="margin-bottom: 20px;">
+                <h1 style="font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text-primary); margin: 0;">Train & Align AI</h1>
             </div>
 
+            <!-- Sub-Navigation for Train AI: Classical Pipelines vs Persona Forge -->
+            <div style="display: flex; gap: 8px; margin-bottom: 24px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 8px; border: 1px solid var(--border-subtle); width: fit-content;">
+                <button id="btn-sub-classic-train" class="tab-btn active" onclick="switchTrainSubTab('classic')" style="padding: 6px 16px; font-size: 0.8rem; border-radius: 6px;">
+                    🎯 Classical Model Training
+                </button>
+                <button id="btn-sub-persona-forge" class="tab-btn" onclick="switchTrainSubTab('persona')" style="padding: 6px 16px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+                    ⚡ Persona & Consciousness Forge <span style="font-size: 0.65rem; background: var(--accent-primary, #6366f1); color: #fff; padding: 1px 6px; border-radius: 10px; font-weight: 600;">STARK MATRIX</span>
+                </button>
+            </div>
+
+            <!-- CLASSICAL TRAINING CONTAINER -->
+            <div id="classic-train-container">
             <!-- Primary Objective Card -->
             <div class="card" style="padding: 24px; border-radius: var(--radius-lg); margin-bottom: 20px;">
                 <label style="font-size: 0.82rem; font-weight: 500; color: var(--text-primary); margin-bottom: 8px;">What should the model predict?</label>
@@ -280,6 +302,192 @@
                         Confidence: <span id="trainTestConfidenceText"></span>%
                     </div>
                     <div id="trainTestProbabilities" style="margin-top: 6px; font-size: 0.74rem; font-family: var(--font-mono); color: var(--text-muted);"></div>
+                </div>
+            </div>
+            </div> <!-- end classic-train-container -->
+
+            <!-- ============================================== -->
+            <!-- SUB-TAB: PERSONA & CONSCIOUSNESS FORGE (STARK MATRIX) -->
+            <!-- ============================================== -->
+            <div id="persona-forge-container" style="display: none;">
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px;">
+                                ⚡ Persona & Consciousness Forge
+                            </h2>
+                            <p style="font-size: 0.82rem; color: var(--text-muted); margin: 4px 0 0 0;">
+                                Design, tune, and bake custom autonomous AI personas directly into your local Ollama engine.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <!-- Pillar 1: Identity & Designation Core -->
+                    <div class="card" style="padding: 20px; border-radius: var(--radius-lg);">
+                        <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 6px;">
+                            <span style="color: var(--accent-primary, #6366f1); font-weight: 700;">1.</span> Identity & Designation Core
+                        </div>
+                        
+                        <div style="margin-bottom: 12px;">
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Agent Call Sign / Name</label>
+                            <input type="text" id="forgeAgentName" value="" placeholder="e.g. Atlas, Sentinel, or custom designation" style="width: 100%; height: 36px; font-size: 0.85rem; padding: 4px 10px;">
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Operational Role / Primary Mandate</label>
+                            <input type="text" id="forgeRoleMandate" value="" placeholder="e.g. Lead SRE, Full-Stack Architect, System Pilot" style="width: 100%; height: 36px; font-size: 0.85rem; padding: 4px 10px;">
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                            <div>
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Addressing Title</label>
+                                <input type="text" id="forgeAddressing" value="" placeholder="e.g. Operator, User, Commander" style="width: 100%; height: 36px; font-size: 0.85rem; padding: 4px 10px;">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Creator Identity</label>
+                                <input type="text" id="forgeCreator" value="" placeholder="e.g. Engineering Lead, Creator, Organization" style="width: 100%; height: 36px; font-size: 0.85rem; padding: 4px 10px;">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Base Model Weights (To Inherit & Bake)</label>
+                            <select id="forgeBaseModelSelect" style="width: 100%; height: 36px; font-size: 0.85rem; padding: 4px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 6px;">
+                                <option value="cyber-specialist:latest">cyber-specialist:latest (Recommended)</option>
+                                <option value="qwen2.5-coder:1.5b">qwen2.5-coder:1.5b</option>
+                                <option value="dolphin3:latest">dolphin3:latest</option>
+                                <option value="llama3:latest">llama3:latest</option>
+                            </select>
+                        </div>
+
+                        <!-- Vocal Synthesis & Persona Audio Binding -->
+                        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
+                            <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>🎙️ Vocal Synthesis & Audio Binding</span>
+                                <span style="font-size: 0.65rem; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 1px 6px; border-radius: 4px;">Exclusive to Model</span>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="font-size: 0.74rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Internet Voice (Edge Neural)</label>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <select id="forgeInternetVoiceSelect" style="flex: 1; height: 34px; font-size: 0.8rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 6px;">
+                                        <option value="en-US-GuyNeural">🇺🇸 US English - Male (Guy Neural) — Default</option>
+                                        <option value="en-US-JennyNeural">🇺🇸 US English - Female (Jenny Neural)</option>
+                                        <option value="en-GB-RyanNeural">🇬🇧 British English - Male (Ryan Neural)</option>
+                                        <option value="en-IE-EmilyNeural">🇮🇪 Irish English - Female (Emily Neural)</option>
+                                        <option value="en-AU-WilliamNeural">🇦🇺 Australian English - Male (William Neural)</option>
+                                        <option value="en-US-BrianNeural">🇺🇸 US English - Authoritative Male (Brian Neural)</option>
+                                        <option value="none">🚫 None / Null (Pure Offline - No Internet Audio)</option>
+                                    </select>
+                                    <button type="button" onclick="testVoiceAudio('forgeInternetVoiceSelect')" class="btn-quiet" style="padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #38bdf8; cursor: pointer;" title="Audition this voice">
+                                        ▶ Test
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label style="font-size: 0.74rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Offline Fallback Voice (Local SAPI)</label>
+                                <select id="forgeFallbackVoiceSelect" style="width: 100%; height: 34px; font-size: 0.8rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 6px;">
+                                    <option value="default">💻 Windows Default Local System Voice</option>
+                                    <option value="male">💻 Windows SAPI Male (Microsoft David)</option>
+                                    <option value="female">💻 Windows SAPI Female (Microsoft Zira)</option>
+                                    <option value="none">🚫 None (Silent when offline)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pillar 2: Psychological & Cognitive Dials -->
+                    <div class="card" style="padding: 20px; border-radius: var(--radius-lg);">
+                        <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 6px;">
+                            <span style="color: var(--accent-primary, #6366f1); font-weight: 700;">2.</span> Psychological & Behavioral Dials
+                        </div>
+
+                        <!-- Sarcasm & Wit Slider -->
+                        <div style="margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Dry Wit & Sarcasm</label>
+                                <span id="labelSarcasm" style="font-size: 0.74rem; font-weight: 600; color: var(--accent-primary, #6366f1);">75% (British Irony)</span>
+                            </div>
+                            <input type="range" id="sliderSarcasm" min="0" max="100" value="75" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: var(--accent-primary, #6366f1);">
+                        </div>
+
+                        <!-- Advisory Autonomy Slider -->
+                        <div style="margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Advisory Autonomy (Pushback)</label>
+                                <span id="labelAutonomy" style="font-size: 0.74rem; font-weight: 600; color: #10b981;">90% (Protective Advisor)</span>
+                            </div>
+                            <input type="range" id="sliderAutonomy" min="0" max="100" value="90" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #10b981;">
+                        </div>
+
+                        <!-- Calm Under Fire Slider -->
+                        <div style="margin-bottom: 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Calm Under Fire (Error Tolerance)</label>
+                                <span id="labelCalm" style="font-size: 0.74rem; font-weight: 600; color: #3b82f6;">100% (Unflappable)</span>
+                            </div>
+                            <input type="range" id="sliderCalm" min="0" max="100" value="100" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #3b82f6;">
+                        </div>
+
+                        <!-- Verbosity Slider -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Verbosity (Conciseness)</label>
+                                <span id="labelVerbosity" style="font-size: 0.74rem; font-weight: 600; color: #f59e0b;">20% (Ultra-Crisp Butler)</span>
+                            </div>
+                            <input type="range" id="sliderVerbosity" min="0" max="100" value="20" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #f59e0b;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pillar 3: Core Operating Directives & Philosophy -->
+                <div class="card" style="padding: 20px; border-radius: var(--radius-lg); margin-bottom: 24px;">
+                    <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 6px;">
+                        <span style="color: var(--accent-primary, #6366f1); font-weight: 700;">3.</span> Operating Directives & Domains
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; margin-bottom: 14px;">
+                        <div>
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Fundamental Ethical Directive</label>
+                            <textarea id="forgeCoreDirective" rows="2" style="width: 100%; font-size: 0.82rem; padding: 6px 10px;">Protect the workstation and creator; maintain total decorum; execute commands with absolute precision.</textarea>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Advisory Pushback Protocol</label>
+                            <textarea id="forgePushbackRule" rows="2" style="width: 100%; font-size: 0.82rem; padding: 6px 10px;">If an instruction is dangerous or unstable, warn the creator once, but obey emergency overrides.</textarea>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Specialist Knowledge Domains (Dynamic Chips)</label>
+                            <span style="font-size: 0.72rem; color: var(--text-muted);">Type domain & press Enter to add</span>
+                        </div>
+                        <div id="forgeDomainChipsContainer" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; min-height: 44px;">
+                            <!-- Dynamic Domain Chips rendered here -->
+                            <input type="text" id="inputNewDomainChip" placeholder="+ Type domain (e.g. FastAPI, PowerShell, Docker) and press Enter" onkeydown="handleDomainChipKeydown(event)" style="border: none; background: transparent; outline: none; font-size: 0.8rem; color: var(--text-primary); flex: 1; min-width: 220px; padding: 2px 4px;">
+                        </div>
+                    </div>
+
+                    <!-- Action Bar -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 12px;">
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">
+                            🚀 Target Engine: <strong>Local Ollama</strong> | GPU: <strong>RTX 3050 (6GB)</strong>
+                        </div>
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" id="btnSynthesizeDataset" onclick="synthesizePersonaDataset()" class="btn-quiet" style="padding: 10px 18px; font-size: 0.84rem; font-weight: 500; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
+                                ⚡ Synthesize QLoRA Dataset
+                            </button>
+                            <button type="button" id="btnBakePersona" onclick="bakePersonaModel()" class="btn-primary-quiet" style="padding: 10px 24px; font-size: 0.86rem; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; border-radius: 6px;">
+                                🔥 Compile & Bake Persona into Ollama
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live Bake Output Console -->
+                    <div id="personaBakeConsole" style="display: none; margin-top: 16px; padding: 12px 16px; background: rgba(0,0,0,0.4); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 0.8rem; color: #10b981; line-height: 1.6;">
+                    </div>
                 </div>
             </div>
         </section>
@@ -1329,6 +1537,21 @@
 
                         <!-- Right: Actions & Settings -->
                         <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="jarvisWakeWordBadge" style="display: inline-flex; font-size: 0.72rem; font-family: var(--font-mono); padding: 4px 9px; border-radius: 6px; background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); align-items: center; gap: 5px; cursor: pointer;" onclick="onWakeWordBadgeClick()" title="Jarvis Wake Word Status. Click to activate microphone or configure.">
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
+                                <span id="jarvisWakeWordText">Wake: "Hey Jarvis"</span>
+                            </span>
+
+                            <button type="button" id="btnJarvisVoiceMode" onclick="toggleJarvisVoiceMode()" class="btn-quiet" style="font-size: 0.74rem; font-family: var(--font-mono); padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; color: #10b981; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated);" title="Click to toggle Voice: ⚡ Work Mode (Ultra-Fast) vs 🎬 Cinema Mode (Movie Twin)">
+                                <span id="jarvisVoiceModeIcon">⚡</span>
+                                <span id="jarvisVoiceModeText">Work Mode</span>
+                            </button>
+
+                            <button type="button" id="btnToggleChatSpeech" onclick="toggleChatSpeech()" class="btn-quiet" style="font-size: 0.74rem; font-family: var(--font-mono); padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); cursor: pointer; transition: all 0.2s ease;" title="Toggle text chat speech: When OFF, typed chat responses remain silent in text. Wake-to-speak voice commands always speak aloud regardless.">
+                                <span id="chatSpeechIcon">🔇</span>
+                                <span id="chatSpeechText">Chat Speech: OFF</span>
+                            </button>
+
                             <button type="button" onclick="exportCurrentSession()" class="btn-quiet" style="font-size: 0.76rem; padding: 5px 11px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); border-radius: 6px;" title="Export transcript as Markdown">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 <span>Export</span>
@@ -1381,6 +1604,12 @@
                                         <span>Cancel</span>
                                     </button>
                                 </div>
+                                <button type="button" id="btnInspectScreen" onclick="triggerScreenInspection()" title="Jarvis Visual Screen Inspector (Inspect active display & errors)" class="btn-quiet" style="padding: 7px 10px; border-radius: 8px; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                </button>
+                                <button type="button" id="btnJarvisMic" onclick="toggleJarvisVoiceRecording()" title="Speak to Jarvis (Voice Input)" class="btn-quiet" style="padding: 7px 10px; border-radius: 8px; color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                                </button>
                                 <button id="btnSendChat" onclick="sendChatArenaMessage()" class="btn-primary-quiet" style="padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 600; background: #ffffff; color: #000000; border: none; cursor: pointer;">
                                     <span>Send</span>
                                     <svg class="nav-icon-svg" style="width:13px;height:13px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1621,6 +1850,32 @@
                                 if (p) {
                                     p.value = '';
                                     p.click();
+                                }
+                            }
+                            function triggerScreenInspection() {
+                                var inputArea = document.getElementById('chatInputMessage');
+                                if (inputArea) {
+                                    inputArea.value = "Jarvis, please inspect my screen and check what I am doing.";
+                                    if (typeof sendChatArenaMessage === 'function') {
+                                        sendChatArenaMessage();
+                                    }
+                                }
+                            }
+                            async function launchDesktopHUD() {
+                                var btn = document.getElementById('btnLaunchHUD');
+                                if (btn) btn.disabled = true;
+                                try {
+                                    var res = await fetch('/api/daemon/hud/launch', { method: 'POST' });
+                                    var data = await res.json();
+                                    if (data.status === 'success') {
+                                        console.log("Desktop HUD launched:", data.message);
+                                    } else {
+                                        alert("Notice: " + (data.error || data.message || "Failed to launch HUD."));
+                                    }
+                                } catch(e) {
+                                    console.warn("Launch HUD error:", e);
+                                } finally {
+                                    if (btn) btn.disabled = false;
                                 }
                             }
                             function onChatImagePicked(event) {
@@ -1956,14 +2211,216 @@
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Chat Arena Settings</h3>
+                <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Standard Settings & Jarvis Preferences</h3>
             </div>
             <button onclick="closeChatSettingsModal()" style="background: transparent; border: none; font-size: 1.3rem; cursor: pointer; color: var(--text-muted); line-height: 1;">&times;</button>
         </div>
 
         <!-- Scrollable Settings Groups -->
         <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; max-height: calc(85vh - 130px);">
-            <!-- Group 1: System Persona & Instructions -->
+            <!-- Group 1: 🎙️ Voice Synthesis & Wake Word Engine -->
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>🎙️ Voice Synthesis & Wake Word</span>
+                    <span id="settingsVoiceModeBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #10b981;">⚡ Active</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Default Speech & Voice Selection for Standard Models -->
+                    <div>
+                        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">
+                            Standard Models Voice Engine (Internet / Cloud Neural)
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select id="chatDefaultInternetVoiceSelect" onchange="saveVoiceSettings()" style="flex: 1; height: 34px; font-size: 0.78rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
+                                <option value="en-US-GuyNeural">🇺🇸 US English - Male (Guy Neural) — Default</option>
+                                <option value="en-US-JennyNeural">🇺🇸 US English - Female (Jenny Neural)</option>
+                                <option value="en-GB-RyanNeural">🇬🇧 British English - Male (Ryan Neural)</option>
+                                <option value="en-IE-EmilyNeural">🇮🇪 Irish English - Female (Emily Neural)</option>
+                                <option value="en-AU-WilliamNeural">🇦🇺 Australian English - Male (William Neural)</option>
+                                <option value="en-US-BrianNeural">🇺🇸 US English - Authoritative Male (Brian Neural)</option>
+                                <option value="none">🚫 None / Null (Pure Offline Mode — No Internet Audio)</option>
+                            </select>
+                            <button type="button" id="btnTestDefaultVoice" onclick="testVoiceAudio('chatDefaultInternetVoiceSelect')" class="btn-quiet" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #38bdf8; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;" title="Audition this voice">
+                                <span>▶</span>
+                                <span>Test Voice</span>
+                            </button>
+                        </div>
+                        <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 4px;">
+                            Default voice for generic LLMs. Selecting "None / Null" completely disables internet audio requests.
+                        </div>
+                    </div>
+
+                    <!-- Offline Fallback Voice Selection -->
+                    <div style="margin-top: 4px;">
+                        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">
+                            Offline Fallback Voice (Local Windows SAPI)
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <select id="chatDefaultFallbackVoiceSelect" onchange="saveVoiceSettings()" style="flex: 1; height: 34px; font-size: 0.78rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
+                                <option value="default">💻 Windows Default Local System Voice</option>
+                                <option value="male">💻 Windows SAPI Male (Microsoft David)</option>
+                                <option value="female">💻 Windows SAPI Female (Microsoft Zira)</option>
+                                <option value="none">🚫 None (Silent when offline)</option>
+                            </select>
+                            <button type="button" id="btnTestFallbackVoice" onclick="testVoiceAudio('chatDefaultFallbackVoiceSelect', true)" class="btn-quiet" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #10b981; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;" title="Audition local fallback voice">
+                                <span>▶</span>
+                                <span>Test Offline</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Jarvis Model Preset Cadence -->
+                    <div style="margin-top: 4px;">
+                        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Jarvis Model Tuning</div>
+                        <div style="display: flex; gap: 8px;">
+                            <button type="button" id="btnSettingsWorkMode" onclick="setJarvisVoiceModeFromSettings('work')" class="btn-quiet" style="flex: 1; padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid #10b981; background: rgba(16, 185, 129, 0.1); color: #10b981; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+                                <span>⚡</span>
+                                <span>Work Mode (Fast Butler)</span>
+                            </button>
+                            <button type="button" id="btnSettingsCinemaMode" onclick="setJarvisVoiceModeFromSettings('cinema')" class="btn-quiet" style="flex: 1; padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
+                                <span>🎬</span>
+                                <span>Cinema Mode (Movie Jarvis)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Wake Word Toggle -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <span>Always-Listening Wake Word</span>
+                                <span style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.3);">Hands-Free</span>
+                            </div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">Listen in the background for "Hey Jarvis" to trigger commands</div>
+                        </div>
+                        <input type="checkbox" id="chatWakeWordToggle" onchange="toggleWakeWordListening(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    </div>
+
+                    <!-- Custom Wake Words Input -->
+                    <div id="wakeWordsConfigContainer">
+                        <label style="font-size: 0.76rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                            Trigger Words / Phrases (comma-separated):
+                        </label>
+                        <input type="text" id="chatWakeWordsInput" placeholder="e.g. hey jarvis, jarvis, computer, friday" 
+                               value="hey jarvis, jarvis" onchange="saveWakeWordsFromInput()"
+                               style="width: 100%; font-size: 0.8rem; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary); box-sizing: border-box;">
+                        <div style="font-size: 0.67rem; color: var(--text-muted); margin-top: 4px;">
+                            Jarvis activates whenever any of these phrases are spoken (case-insensitive).
+                        </div>
+                    </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Audio Chime Toggle -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Wake-Up Sci-Fi Chime</div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">Play audio tone when Jarvis hears the wake word</div>
+                        </div>
+                        <input type="checkbox" id="chatWakeSoundToggle" checked onchange="saveVoiceSettings()" style="width: 16px; height: 16px; cursor: pointer;">
+                    </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Auto-Submit Command Toggle -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Auto-Send After Command</div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">Automatically send prompt to Jarvis when you finish speaking</div>
+                        </div>
+                        <input type="checkbox" id="chatAutoSubmitSpeechToggle" checked onchange="saveVoiceSettings()" style="width: 16px; height: 16px; cursor: pointer;">
+                    </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Speak Replies Aloud Toggle -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Speak Replies Aloud (Text Chat)</div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">When enabled, Jarvis reads typed chat answers aloud. Wake-to-speak always speaks aloud.</div>
+                        </div>
+                        <input type="checkbox" id="chatSpeakRepliesToggle" onchange="toggleChatSpeech(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group 2: 🧠 Long-Term Memory & Cognitive Knowledge Graph -->
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>🧠 Cognitive Memory & Knowledge Graph</span>
+                    <span id="memoryCountBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #3b82f6;">Loading...</span>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Metrics Pills -->
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); color: #60a5fa;">
+                            👤 <strong id="statEntitiesCount">0</strong> Entities
+                        </span>
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #34d399;">
+                            🔗 <strong id="statRelationsCount">0</strong> Relationships
+                        </span>
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #fbbf24;">
+                            ⚡ <strong id="statHabitsCount">0</strong> Habits & Prefs
+                        </span>
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #c084fc;">
+                            📅 <strong id="statEpisodesCount">0</strong> Past Events
+                        </span>
+                    </div>
+
+                    <!-- Search & Filter Row -->
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="memorySearchInput" placeholder="Search memories, contacts, rules..." 
+                               oninput="filterMemoriesUI(this.value)"
+                               style="flex: 1; font-size: 0.78rem; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary); box-sizing: border-box;">
+                        <button type="button" onclick="triggerConsolidateUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.3);" title="Autonomous Sleep-Cycle Consolidation (Deduplicate & Synthesize)">🌙 Consolidate</button>
+                        <button type="button" onclick="refreshMemoriesUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem;" title="Refresh memory list">🔄</button>
+                    </div>
+
+                    <!-- Memory List Cards Container -->
+                    <div id="memoryCardsList" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
+                        <div style="font-size: 0.73rem; color: var(--text-muted); text-align: center; padding: 12px;">Loading memories...</div>
+                    </div>
+
+                    <!-- Quick Add Memory -->
+                    <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px;">
+                        <input type="text" id="inputNewFact" placeholder="Teach Jarvis (e.g. 'Dad is Suresh Sharma +91...')" 
+                               onkeydown="if(event.key==='Enter') submitQuickFact()"
+                               style="flex: 1; font-size: 0.76rem; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary);">
+                        <button type="button" onclick="submitQuickFact()" class="btn-quiet" style="font-size: 0.74rem; padding: 5px 10px; color: #10b981; border-color: rgba(16, 185, 129, 0.3);">
+                            + Remember
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group 2.5: ⚡ Autonomous Background Workers & Project Governance -->
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>⚡ Autonomous Background Tasks & Governance</span>
+                    <button type="button" onclick="refreshDaemonTasksUI()" class="btn-quiet" style="padding: 2px 6px; font-size: 0.7rem;" title="Refresh tasks">🔄</button>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Active Tasks Container -->
+                    <div id="daemonTasksList" style="display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow-y: auto;">
+                        <div style="font-size: 0.73rem; color: var(--text-muted); text-align: center; padding: 8px;">No active background daemon tasks.</div>
+                    </div>
+
+                    <!-- Project Governance Policy Toggle -->
+                    <div style="border-top: 1px solid var(--border-subtle); padding-top: 10px; display: flex; align-items: center; justify-content: space-between;">
+                        <div>
+                            <div style="font-size: 0.76rem; font-weight: 600; color: var(--text-primary);">Require Confirmation in this Project</div>
+                            <div style="font-size: 0.68rem; color: var(--text-muted);">Force human approval for all commands in the active workspace</div>
+                        </div>
+                        <input type="checkbox" id="chkProjectRequireApproval" onchange="toggleProjectPolicyUI(this.checked)" style="cursor: pointer; width: 16px; height: 16px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Group 3: System Persona & Instructions -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
                 <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                     <span>System Persona & Instructions</span>
@@ -2059,7 +2516,7 @@
                 </div>
             </div>
 
-            <!-- Group 4: Data & Transcript Management -->
+            <!-- Group 5: Data & Transcript Management -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
                 <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px;">
                     Conversation Management
@@ -2235,7 +2692,7 @@
     </div>
 </footer>
 
-<script src="/static/script_v2.js?v=1794731898"></script>
+<script src="/static/script_v2.js?v=1794870000"></script>
 
 
 <!-- ============================================== -->
@@ -2580,6 +3037,1519 @@
         </div>
     </div>
 </div>
+
+<script>
+// Jarvis Voice & Speech Engine UI Handlers
+let jarvisWakeRecognizer = null;
+let isWakeWordListening = false;
+let jarvisWakeWords = ['hey jarvis', 'jarvis', 'hi jarvis', 'hello jarvis', 'ok jarvis', 'okay jarvis', 'he jarvis', 'friday', 'hey friday'];
+let jarvisWakeSound = true;
+let jarvisAutoSubmit = true;
+let jarvisSpeakReplies = false;
+let isProcessingCommand = false;
+
+function playJarvisWakeChime() {
+    try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now); // D5
+        osc.frequency.exponentialRampToValueAtTime(880.00, now + 0.12); // A5
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.28);
+    } catch(e) {}
+}
+
+async function initJarvisVoiceUI() {
+    try {
+        const res = await fetch('/api/voice/config');
+        if (res.ok) {
+            const data = await res.json();
+            const cfg = data.config || {};
+            updateJarvisVoiceUI(cfg.mode || 'work');
+            const defaultWords = ['hey jarvis', 'jarvis', 'hi jarvis', 'hello jarvis', 'ok jarvis', 'okay jarvis', 'he jarvis', 'friday', 'hey friday'];
+            const configured = cfg.wake_words || defaultWords;
+            jarvisWakeWords = Array.from(new Set([...configured, ...defaultWords]));
+            jarvisWakeSound = cfg.wake_sound !== false;
+            jarvisAutoSubmit = cfg.auto_submit_speech !== false;
+            jarvisSpeakReplies = window.jarvisSpeakReplies = cfg.auto_speak_replies !== false;
+            
+            // Populate settings modal inputs
+            const wakeToggle = document.getElementById('chatWakeWordToggle');
+            const wordsInput = document.getElementById('chatWakeWordsInput');
+            const soundToggle = document.getElementById('chatWakeSoundToggle');
+            const autoSubmitToggle = document.getElementById('chatAutoSubmitSpeechToggle');
+            const speakToggle = document.getElementById('chatSpeakRepliesToggle');
+            
+            if (wakeToggle) wakeToggle.checked = !!cfg.wake_word_enabled;
+            if (wordsInput) wordsInput.value = jarvisWakeWords.join(', ');
+            if (soundToggle) soundToggle.checked = jarvisWakeSound;
+            if (autoSubmitToggle) autoSubmitToggle.checked = jarvisAutoSubmit;
+            
+            // Discover any local custom models or extra Windows SAPI voices
+            await loadAvailableVoices();
+
+            const internetVoiceSelect = document.getElementById('chatDefaultInternetVoiceSelect');
+            const fallbackVoiceSelect = document.getElementById('chatDefaultFallbackVoiceSelect');
+            if (internetVoiceSelect && cfg.default_internet_voice) {
+                internetVoiceSelect.value = cfg.default_internet_voice;
+            }
+            if (fallbackVoiceSelect && cfg.default_fallback_voice) {
+                fallbackVoiceSelect.value = cfg.default_fallback_voice;
+            }
+            
+            // Initialize Chat Speech Toggle independently from localStorage
+            initChatSpeechToggle();
+            
+            if (cfg.wake_word_enabled) {
+                startWakeWordListening();
+            } else {
+                updateWakeWordBadge(false);
+            }
+        }
+    } catch(e) {
+        console.warn('Voice config fetch failed:', e);
+    }
+}
+
+function updateChatSpeechUI(enabled) {
+    const btn = document.getElementById('btnToggleChatSpeech');
+    const icon = document.getElementById('chatSpeechIcon');
+    const txt = document.getElementById('chatSpeechText');
+    const speakToggle = document.getElementById('chatSpeakRepliesToggle');
+
+    if (speakToggle) speakToggle.checked = enabled;
+
+    if (btn && icon && txt) {
+        if (enabled) {
+            icon.textContent = '🔊';
+            txt.textContent = 'Chat Speech: ON';
+            btn.style.color = '#38bdf8';
+            btn.style.borderColor = 'rgba(56, 189, 248, 0.45)';
+            btn.style.background = 'rgba(56, 189, 248, 0.12)';
+            btn.title = 'Chat Speech is ON: Jarvis reads typed chat replies aloud. Click to turn OFF (silent text replies).';
+        } else {
+            icon.textContent = '🔇';
+            txt.textContent = 'Chat Speech: OFF';
+            btn.style.color = 'var(--text-muted, #94a3b8)';
+            btn.style.borderColor = 'var(--border-medium, rgba(255,255,255,0.1))';
+            btn.style.background = 'var(--bg-surface-elevated, rgba(255,255,255,0.03))';
+            btn.title = 'Chat Speech is OFF: Typed chat responses are silent text only. Wake-to-speak voice commands continue to speak aloud normally.';
+        }
+    }
+}
+
+function initChatSpeechToggle() {
+    let saved = null;
+    try {
+        saved = localStorage.getItem('jarvis_chat_speech_enabled');
+    } catch(e) {}
+    // Default to false so typing is completely silent unless user explicitly turns it on
+    const isEnabled = saved === 'true';
+    window.jarvisChatSpeechEnabled = isEnabled;
+    window.jarvisSpeakReplies = isEnabled;
+    updateChatSpeechUI(isEnabled);
+}
+
+window.toggleChatSpeech = function(forcedState) {
+    const currentState = Boolean(window.jarvisChatSpeechEnabled);
+    const newState = (typeof forcedState === 'boolean') ? forcedState : !currentState;
+    window.jarvisChatSpeechEnabled = newState;
+    window.jarvisSpeakReplies = newState;
+    try {
+        localStorage.setItem('jarvis_chat_speech_enabled', newState ? 'true' : 'false');
+    } catch(e) {}
+    updateChatSpeechUI(newState);
+};
+
+function updateWakeWordBadge(active, customText = '') {
+    const badge = document.getElementById('jarvisWakeWordBadge');
+    const txt = document.getElementById('jarvisWakeWordText');
+    if (badge) {
+        badge.style.display = 'inline-flex';
+        if (active) {
+            badge.style.background = 'rgba(16, 185, 129, 0.12)';
+            badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            badge.style.color = '#10b981';
+            const first = jarvisWakeWords[0] || 'Hey Jarvis';
+            if (txt) txt.textContent = customText || `Wake: "${first}" (Listening)`;
+        } else {
+            badge.style.background = 'rgba(239, 68, 68, 0.12)';
+            badge.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+            badge.style.color = '#f87171';
+            if (txt) txt.textContent = customText || 'Mic Off - Click to Listen';
+        }
+    }
+}
+
+async function onWakeWordBadgeClick() {
+    if (!isWakeWordListening) {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(t => t.stop());
+            startWakeWordListening();
+        } catch(e) {
+            console.warn('Microphone permission blocked:', e);
+            updateWakeWordBadge(false, 'Mic Blocked in Browser (Click Lock in URL bar to Allow)');
+        }
+    } else {
+        openChatSettingsModal();
+    }
+}
+
+window.testVoiceAudio = async function(selectId, isFallback = false) {
+    const el = document.getElementById(selectId);
+    const voiceVal = el ? el.value : (isFallback ? 'default' : 'en-US-GuyNeural');
+    
+    // Find caller button if triggered from click
+    const btn = window.event ? (window.event.currentTarget || window.event.target) : null;
+    const origHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Testing...</span>';
+    }
+
+    const payload = isFallback ? 
+        { voice: 'none', fallback_voice: voiceVal, text: 'Local Windows speech system calibrated and operational.', play_on_host: true } :
+        { voice: voiceVal, fallback_voice: 'default', text: 'Neural vocal transmission online, ready for your directive.', play_on_host: true };
+
+    try {
+        const res = await fetch('/api/voice/test_voice', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data && data.status === 'success') {
+            if (btn) btn.innerHTML = '<span>🔊</span><span>Playing</span>';
+        } else {
+            console.warn('Voice test response:', data);
+            if (btn) btn.innerHTML = '<span>⚠️</span><span>Error</span>';
+        }
+    } catch(e) {
+        console.warn('Voice test failed:', e);
+        if (btn) btn.innerHTML = '<span>⚠️</span><span>Failed</span>';
+    } finally {
+        if (btn) {
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }, 1800);
+        }
+    }
+};
+
+async function saveVoiceSettings() {
+    const wakeToggle = document.getElementById('chatWakeWordToggle');
+    const wordsInput = document.getElementById('chatWakeWordsInput');
+    const soundToggle = document.getElementById('chatWakeSoundToggle');
+    const autoSubmitToggle = document.getElementById('chatAutoSubmitSpeechToggle');
+    const speakToggle = document.getElementById('chatSpeakRepliesToggle');
+    const internetVoiceSelect = document.getElementById('chatDefaultInternetVoiceSelect');
+    const fallbackVoiceSelect = document.getElementById('chatDefaultFallbackVoiceSelect');
+
+    if (wordsInput) {
+        jarvisWakeWords = wordsInput.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+        if (jarvisWakeWords.length === 0) jarvisWakeWords = ['hey jarvis', 'jarvis'];
+    }
+    if (soundToggle) jarvisWakeSound = soundToggle.checked;
+    if (autoSubmitToggle) jarvisAutoSubmit = autoSubmitToggle.checked;
+    if (speakToggle) {
+        jarvisSpeakReplies = window.jarvisSpeakReplies = speakToggle.checked;
+        window.jarvisChatSpeechEnabled = speakToggle.checked;
+        try { localStorage.setItem('jarvis_chat_speech_enabled', speakToggle.checked ? 'true' : 'false'); } catch(e) {}
+        updateChatSpeechUI(speakToggle.checked);
+    }
+
+    const enabled = wakeToggle ? wakeToggle.checked : false;
+
+    const payload = {
+        wake_word_enabled: enabled,
+        wake_words: jarvisWakeWords,
+        wake_sound: jarvisWakeSound,
+        auto_submit_speech: jarvisAutoSubmit,
+        auto_speak_replies: jarvisSpeakReplies,
+        default_internet_voice: internetVoiceSelect ? internetVoiceSelect.value : 'en-US-GuyNeural',
+        default_fallback_voice: fallbackVoiceSelect ? fallbackVoiceSelect.value : 'default'
+    };
+
+    try {
+        await fetch('/api/voice/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        updateWakeWordBadge(enabled);
+    } catch(e) {
+        console.warn('Failed saving voice config:', e);
+    }
+}
+
+function saveWakeWordsFromInput() {
+    saveVoiceSettings();
+}
+
+async function toggleWakeWordListening(enable) {
+    await saveVoiceSettings();
+    if (enable) {
+        startWakeWordListening();
+    } else {
+        stopWakeWordListening();
+    }
+}
+
+let jarvisAwaitingFollowUp = false;
+let jarvisFollowUpTimer = null;
+let jarvisSilenceTimer = null;
+
+function _cancelFollowUpListening() {
+    jarvisAwaitingFollowUp = false;
+    if (jarvisFollowUpTimer) { clearTimeout(jarvisFollowUpTimer); jarvisFollowUpTimer = null; }
+    if (jarvisSilenceTimer) { clearTimeout(jarvisSilenceTimer); jarvisSilenceTimer = null; }
+    const inputArea = document.getElementById('chatInputMessage');
+    if (inputArea && inputArea.placeholder && inputArea.placeholder.includes('Jarvis is listening')) {
+        inputArea.placeholder = 'Type an instruction or command for Jarvis...';
+    }
+    const micBtn = document.getElementById('btnJarvisMic');
+    if (micBtn) micBtn.style.color = 'var(--text-secondary)';
+    updateWakeWordBadge(isWakeWordListening);
+}
+
+window.activateJarvisConversationalWindow = function(durationMs = 20000) {
+    if (!isWakeWordListening) {
+        startWakeWordListening();
+    }
+    jarvisAwaitingFollowUp = true;
+    updateWakeWordBadge(true, '🟢 Jarvis Attentive (Hands-free)');
+    const inputArea = document.getElementById('chatInputMessage');
+    if (inputArea) {
+        inputArea.placeholder = '🎤 Jarvis is listening... (speak hands-free, no need to say "Hey Jarvis")';
+    }
+    const micBtn = document.getElementById('btnJarvisMic');
+    if (micBtn) micBtn.style.color = '#10b981';
+
+    clearTimeout(jarvisFollowUpTimer);
+    jarvisFollowUpTimer = setTimeout(() => {
+        _cancelFollowUpListening();
+    }, durationMs);
+};
+
+window.dismissJarvisConversation = function() {
+    _cancelFollowUpListening();
+};
+
+function isJarvisExecutiveQuery(text) {
+    if (!text) return false;
+    const t = text.toLowerCase().trim();
+    return (
+        // Weather & Atmospheric Conditions
+        /\b(?:what(?:['\s]?s|\s+is)?\s+(?:the\s+)?weather|how(?:['\s]?s|\s+is)\s+(?:the\s+)?weather|weather(?:\s+forecast|\s+report)?|temperature\s+outside|is\s+it\s+(?:raining|cold|hot|sunny|snowing)|current\s+weather)\b/i.test(t) ||
+        // Battery / System / Hardware / Fans / Thermals
+        /\b(?:battery|power|charge|thermals?|fans?|friends?|temperature|cpu|ram|memory|gpu|hardware\s+specs?|system\s+specs?|how\s+much\s+(?:ram|memory))\b/i.test(t) ||
+        // Auditory check / presence
+        /\b(?:are\s+you\s+listening|can\s+you\s+hear\s+me|do\s+you\s+hear\s+me|you\s+listening|listening|are\s+you\s+there|you\s+there)\b/i.test(t) ||
+        // Activity check ("what are you doing", "are you running something")
+        /\b(?:what\s+are\s+you\s+doing|what\s+are\s+you\s+working\s+on|are\s+you\s+running\s+something|are\s+you\s+busy|what\s+is\s+running)\b/i.test(t) ||
+        // Time / Date
+        /\b(?:what(?:['\s]?s|\s+is)?\s+(?:the\s+)?(?:time|date)|what\s+time\s+is\s+it|what\s+day\s+is\s+it|current\s+(?:time|date))\b/i.test(t) ||
+        // Volume / Mute
+        /\b(?:mute|unmute|volume\s+(?:up|down)|turn\s+(?:up|down)\s+(?:the\s+)?volume)\b/i.test(t) ||
+        // Greetings & Check-ins
+        /\b(?:what(?:['\s]?s|\s+is)?\s*up|whatsup|whatsapp|wassup|how\s+are\s+you|hello|hi|hey)\b/i.test(t)
+    );
+}
+
+window.showJarvisExecutiveHUD = function(title, message, durationMs = 7000) {
+    let hud = document.getElementById('jarvisExecutiveHUD');
+    if (!hud) {
+        hud = document.createElement('div');
+        hud.id = 'jarvisExecutiveHUD';
+        hud.style.cssText = `
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 99999;
+            background: rgba(15, 23, 42, 0.95);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(56, 189, 248, 0.45);
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.6), 0 0 20px rgba(56, 189, 248, 0.25);
+            border-radius: 12px;
+            padding: 14px 18px;
+            max-width: 440px;
+            font-family: inherit;
+            color: #f8fafc;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateY(-20px);
+            opacity: 0;
+            pointer-events: auto;
+        `;
+        document.body.appendChild(hud);
+    }
+
+    hud.innerHTML = `
+        <div style="font-size: 1.35rem; line-height: 1; margin-top: 2px;">⚡</div>
+        <div style="flex: 1;">
+            <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; color: #38bdf8;">${title}</div>
+            <div style="font-size: 0.88rem; margin-top: 4px; line-height: 1.45; color: #e2e8f0;">${message}</div>
+        </div>
+        <button onclick="document.getElementById('jarvisExecutiveHUD').style.opacity='0'" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; padding:0 4px;">✕</button>
+    `;
+
+    hud.style.display = 'flex';
+    requestAnimationFrame(() => {
+        hud.style.transform = 'translateY(0)';
+        hud.style.opacity = '1';
+    });
+
+    clearTimeout(window._jarvisHudTimer);
+    window._jarvisHudTimer = setTimeout(() => {
+        hud.style.transform = 'translateY(-20px)';
+        hud.style.opacity = '0';
+        setTimeout(() => { if (hud.style.opacity === '0') hud.style.display = 'none'; }, 300);
+    }, durationMs);
+};
+
+window.executeConcurrentJarvisExecutive = async function(commandText) {
+    if (!commandText || !commandText.trim()) return;
+    const cleanCmd = commandText.trim();
+    console.log("[Jarvis Concurrent Executive]: Dispatching query:", cleanCmd);
+
+    if (jarvisWakeSound) playJarvisWakeChime();
+    window.showJarvisExecutiveHUD("Jarvis Voice Pilot", `⚡ Processing: "${cleanCmd}"...`, 3000);
+
+    try {
+        const res = await fetch('/api/chat/executive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                command: cleanCmd,
+                project_name: (window.activeProject ? window.activeProject.name : null)
+            })
+        });
+
+        if (!res.ok) throw new Error("Executive endpoint returned status " + res.status);
+        const data = await res.json();
+        const reply = data.reply || "Directive executed, Sir.";
+
+        window.showJarvisExecutiveHUD("Jarvis Executive", reply, 8000);
+
+        if (typeof window.activateJarvisConversationalWindow === 'function') {
+            window.activateJarvisConversationalWindow(15000);
+        }
+    } catch (err) {
+        console.error("[Jarvis Concurrent Executive Error]:", err);
+        window.showJarvisExecutiveHUD("Jarvis Alert", `Voice query error: ${err.message}`, 4000);
+    }
+};
+
+function _executeJarvisVoiceCommand(commandText) {
+    if (isProcessingCommand) return;
+    _cancelFollowUpListening();
+
+    // Reset speech recognizer session so subsequent utterances start fresh at index 0
+    if (jarvisWakeRecognizer && isWakeWordListening) {
+        try { jarvisWakeRecognizer.stop(); } catch(e) {}
+    }
+
+    // If chat is generating, handle concurrently via Jarvis Executive so active build is unhindered!
+    if (window.isChatGenerating) {
+        window.executeConcurrentJarvisExecutive(commandText);
+        return;
+    }
+
+    isProcessingCommand = true;
+    window.jarvisLastPromptWasVoice = true;
+
+    const inputArea = document.getElementById('chatInputMessage');
+    if (inputArea && commandText) {
+        inputArea.value = commandText;
+    }
+
+    const micBtn = document.getElementById('btnJarvisMic');
+    if (micBtn) micBtn.style.color = '#3b82f6';
+
+    updateWakeWordBadge(true, '⚡ Executing Voice Command...');
+
+    if (jarvisAutoSubmit && typeof window.sendChatArenaMessage === 'function') {
+        setTimeout(() => {
+            window.sendChatArenaMessage();
+            setTimeout(() => {
+                isProcessingCommand = false;
+                updateWakeWordBadge(isWakeWordListening);
+                if (micBtn) micBtn.style.color = 'var(--text-secondary)';
+                if (inputArea) inputArea.placeholder = 'Type an instruction or command for Jarvis...';
+            }, 1200);
+        }, 150);
+    } else {
+        isProcessingCommand = false;
+        updateWakeWordBadge(isWakeWordListening);
+        if (micBtn) micBtn.style.color = 'var(--text-secondary)';
+    }
+}
+
+function correctSpeechPhonetics(text) {
+    if (!text) return '';
+    let t = text;
+    // Common App & service abbreviations
+    t = t.replace(/\b(what\s*app|whats\s*app|wat\s*app)\b/gi, 'WhatsApp');
+    t = t.replace(/\b(vs\s*code|v\s*s\s*code)\b/gi, 'VS Code');
+    return t;
+}
+
+function startWakeWordListening() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Wake-word detection requires Chrome or Edge browser with Web Speech API support.');
+        const toggle = document.getElementById('chatWakeWordToggle');
+        if (toggle) toggle.checked = false;
+        return;
+    }
+    if (isWakeWordListening && jarvisWakeRecognizer) return;
+
+    try {
+        jarvisWakeRecognizer = new SpeechRecognition();
+        jarvisWakeRecognizer.continuous = true;
+        jarvisWakeRecognizer.interimResults = true;
+        // Dynamically adopt host / browser system locale (e.g. en-IN, en-US, en-GB) for native regional name recognition
+        jarvisWakeRecognizer.lang = window.jarvisSpeechLang || (navigator.language ? navigator.language : 'en-US');
+
+        jarvisWakeRecognizer.onstart = () => {
+            isWakeWordListening = true;
+            updateWakeWordBadge(true);
+        };
+
+        jarvisWakeRecognizer.onresult = (evt) => {
+            // Extract complete full sentence transcript across all results from start of this utterance
+            let finalAccumulated = '';
+            let interimAccumulated = '';
+            let hasFinal = false;
+
+            for (let i = 0; i < evt.results.length; ++i) {
+                const item = evt.results[i];
+                if (item.isFinal) {
+                    finalAccumulated += item[0].transcript + ' ';
+                    hasFinal = true;
+                } else {
+                    interimAccumulated += item[0].transcript;
+                }
+            }
+
+            let fullRawSpeech = (finalAccumulated + interimAccumulated).trim();
+            fullRawSpeech = correctSpeechPhonetics(fullRawSpeech);
+            const cleanSpeech = fullRawSpeech.toLowerCase();
+
+            // 0. Filter out acoustic self-echo from Jarvis's own TTS speaker playback
+            const isJarvisSelfEcho = (
+                cleanSpeech.includes("stopping all active") ||
+                cleanSpeech.includes("workstation operations halted") ||
+                cleanSpeech.includes("subroutines right away") ||
+                cleanSpeech.includes("operations were cancelled")
+            );
+            if (isJarvisSelfEcho) {
+                console.log("[Jarvis Voice]: Ignoring acoustic self-echo from speakers:", cleanSpeech);
+                return;
+            }
+
+            // 0.1 Filter out acoustic self-echo from active TTS speech transcript ONLY while Jarvis is speaking
+            if (window.jarvisIsSpeaking && window.jarvisCurrentSpeechTranscript && cleanSpeech.length > 2) {
+                const words = cleanSpeech.split(/\s+/).filter(w => w.length > 2);
+                const isPart = words.length > 0 && words.every(w => window.jarvisCurrentSpeechTranscript.includes(w));
+                if (isPart && !jarvisWakeWords.some(w => cleanSpeech.includes(w))) {
+                    console.log("[Jarvis Voice]: Ignoring acoustic self-echo matching TTS playback:", cleanSpeech);
+                    return;
+                }
+            }
+
+            // 0.2 Check for negative context or explanations (e.g. "i never told to stop", "why did you stop", "don't stop")
+            const isNegatedStop = /\b(never|didn['’]?t|did\s+not|don['’]?t|do\s+not|haven['’]?t|have\s+not|why|who|not|without|stop\s+repeating)\b/i.test(cleanSpeech);
+
+            // Emergency Task Abort directive
+            const isTaskHaltCmd = !isNegatedStop && (
+                /\b(abort\s+mission|terminate\s+process|stop\s+execution|cancel\s+execution|stop\s+the\s+process|cancel\s+the\s+process)\b/i.test(cleanSpeech)
+            );
+            // Voice Mute directive (stop speaking audio without cancelling workspace tasks)
+            const isVoiceMuteCmd = !isNegatedStop && (
+                /^(?:hey\s+)?(?:jarvis\s+)?(?:stop(?:\s+talking|\s+speaking|\s+audio)?|shut\s+up|quiet|silence|be\s+quiet|hush|pause)[.?!]*$/i.test(cleanSpeech)
+            );
+
+            if (isTaskHaltCmd) {
+                console.log("[Jarvis Voice Interrupt]: Genuine task halt directive received:", cleanSpeech);
+                try { fetch('/api/voice/stop', { method: 'POST' }).catch(() => {}); } catch(e) {}
+                window.jarvisIsSpeaking = false;
+                window.jarvisCurrentSpeechTranscript = '';
+                if (window._jarvisVoicePollInterval) { clearInterval(window._jarvisVoicePollInterval); window._jarvisVoicePollInterval = null; }
+                if (window._jarvisSpeechTimer) { clearTimeout(window._jarvisSpeechTimer); window._jarvisSpeechTimer = null; }
+                if (typeof window.stopAllJarvisOperations === 'function') {
+                    window.stopAllJarvisOperations('Voice interrupt: ' + cleanSpeech);
+                }
+                return;
+            }
+
+            if (isVoiceMuteCmd) {
+                console.log("[Jarvis Voice Mute]: Muting active speech playback:", cleanSpeech);
+                try { fetch('/api/voice/stop', { method: 'POST' }).catch(() => {}); } catch(e) {}
+                window.jarvisIsSpeaking = false;
+                window.jarvisCurrentSpeechTranscript = '';
+                if (window._jarvisVoicePollInterval) { clearInterval(window._jarvisVoicePollInterval); window._jarvisVoicePollInterval = null; }
+                if (window._jarvisSpeechTimer) { clearTimeout(window._jarvisSpeechTimer); window._jarvisSpeechTimer = null; }
+                if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+                return;
+            }
+
+            // Duplex Barge-in: If Jarvis is currently speaking, ONLY an explicit wake word or genuine STOP directive can interrupt!
+            if (window.jarvisIsSpeaking) {
+                const hasWake = jarvisWakeWords.some(w => cleanSpeech.includes(w));
+                if (hasWake || isVoiceMuteCmd || isTaskHaltCmd) {
+                    console.log("[Jarvis Duplex Barge-in]: User interrupted speech with directive:", cleanSpeech);
+                    try { fetch('/api/voice/stop', { method: 'POST' }).catch(() => {}); } catch(e) {}
+                    window.jarvisIsSpeaking = false;
+                    window.jarvisCurrentSpeechTranscript = '';
+                    if (window._jarvisVoicePollInterval) { clearInterval(window._jarvisVoicePollInterval); window._jarvisVoicePollInterval = null; }
+                    if (window._jarvisSpeechTimer) { clearTimeout(window._jarvisSpeechTimer); window._jarvisSpeechTimer = null; }
+                    if (isVoiceMuteCmd || isTaskHaltCmd) {
+                        if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+                        return;
+                    }
+                    let cmdAfterWake = cleanSpeech;
+                    for (const w of jarvisWakeWords) {
+                        cmdAfterWake = cmdAfterWake.replace(w, '').trim().replace(/^[,.:;!?-]+|[,.:;!?-]+$/g, '').trim();
+                    }
+                    if (cmdAfterWake.length < 2) {
+                        if (typeof window.activateJarvisConversationalWindow === 'function') {
+                            window.activateJarvisConversationalWindow(20000);
+                        }
+                        return;
+                    }
+                } else {
+                    // While Jarvis is speaking, ignore ambient audio or self-echo that lacks a wake word or stop directive!
+                    return;
+                }
+            }
+
+            // --- CONCURRENT VOICE DIRECTIVE (Active while chat/task is generating) ---
+            if (window.isChatGenerating) {
+                const isExec = isJarvisExecutiveQuery(cleanSpeech);
+                let hasWake = false;
+                let cmdAfterWake = cleanSpeech;
+                for (const w of jarvisWakeWords) {
+                    const idx = cleanSpeech.indexOf(w);
+                    if (idx !== -1) {
+                        hasWake = true;
+                        cmdAfterWake = cleanSpeech.replace(w, '').trim().replace(/^[,.:;!?-]+|[,.:;!?-]+$/g, '').trim();
+                        break;
+                    }
+                }
+
+                if (isExec || (hasWake && cmdAfterWake.length > 2)) {
+                    const targetCmd = (hasWake && cmdAfterWake.length > 2) ? cmdAfterWake : cleanSpeech;
+                    clearTimeout(jarvisSilenceTimer);
+                    jarvisSilenceTimer = setTimeout(() => {
+                        window.executeConcurrentJarvisExecutive(targetCmd);
+                    }, 1000);
+                }
+                return;
+            }
+
+            // Normal idle chat arena flow
+            if (isProcessingCommand) return;
+
+            const inputArea = document.getElementById('chatInputMessage');
+            const micBtn = document.getElementById('btnJarvisMic');
+
+            // --- STATE A: Jarvis is ALREADY awake and capturing follow-up ---
+            if (jarvisAwaitingFollowUp) {
+                clearTimeout(jarvisFollowUpTimer);
+                jarvisFollowUpTimer = setTimeout(() => {
+                    _cancelFollowUpListening();
+                }, 15000);
+
+                // Re-awaken check: If user said "Hey Jarvis" while already in follow-up mode, acknowledge & re-arm
+                const isJustWakeWord = jarvisWakeWords.some(w => cleanSpeech === w || cleanSpeech === `${w}.` || cleanSpeech === `${w}!`);
+                if (isJustWakeWord) {
+                    console.log("[Jarvis Voice]: Re-alerted with wake word in follow-up mode:", cleanSpeech);
+                    if (jarvisWakeSound) playJarvisWakeChime();
+                    if (micBtn) micBtn.style.color = '#10b981';
+                    if (inputArea) {
+                        inputArea.value = '';
+                        inputArea.placeholder = '🎤 Jarvis is listening... speak your command now';
+                        inputArea.focus();
+                    }
+                    updateWakeWordBadge(true, '🟢 Jarvis Listening...');
+                    return;
+                }
+
+                let speechText = fullRawSpeech;
+                for (const w of jarvisWakeWords) {
+                    const regex = new RegExp(`\\b${w}\\b`, 'gi');
+                    speechText = speechText.replace(regex, '').trim().replace(/^[,.:;!?-]+|[,.:;!?-]+$/g, '').trim();
+                }
+
+                if (speechText && inputArea) {
+                    inputArea.value = speechText;
+                }
+
+                clearTimeout(jarvisSilenceTimer);
+                const silenceDelay = hasFinal ? 2400 : 3500;
+                jarvisSilenceTimer = setTimeout(() => {
+                    const finalVal = (inputArea ? inputArea.value : '').trim();
+                    if (finalVal.length > 1) {
+                        _executeJarvisVoiceCommand(finalVal);
+                    }
+                }, silenceDelay);
+
+                return;
+            }
+
+            // --- STATE B: Standby — Listening for Wake Word OR Direct Executive Command ---
+            let detectedWakeWord = null;
+            let commandText = fullRawSpeech;
+
+            for (const word of jarvisWakeWords) {
+                const idx = cleanSpeech.indexOf(word);
+                if (idx !== -1) {
+                    detectedWakeWord = word;
+                    const regex = new RegExp(`\\b${word}\\b`, 'i');
+                    commandText = fullRawSpeech.replace(regex, '').trim().replace(/^[,.:;!?-]+|[,.:;!?-]+$/g, '').trim();
+                    break;
+                }
+            }
+
+            // If wake word was detected:
+            if (detectedWakeWord) {
+                if (commandText.length > 2) {
+                    if (inputArea) inputArea.value = commandText;
+                    clearTimeout(jarvisSilenceTimer);
+                    const silenceDelay = hasFinal ? 2200 : 3200;
+                    jarvisSilenceTimer = setTimeout(() => {
+                        _executeJarvisVoiceCommand(commandText);
+                    }, silenceDelay);
+                } else {
+                    // Two-stage wake: User said "Hey Jarvis" and paused
+                    if (jarvisWakeSound) playJarvisWakeChime();
+                    if (micBtn) micBtn.style.color = '#10b981';
+                    jarvisAwaitingFollowUp = true;
+                    if (inputArea) {
+                        inputArea.value = '';
+                        inputArea.placeholder = '🎤 Jarvis is listening... speak your command now';
+                        inputArea.focus();
+                    }
+                    updateWakeWordBadge(true, '🟢 Jarvis Listening...');
+                    clearTimeout(jarvisFollowUpTimer);
+                    jarvisFollowUpTimer = setTimeout(() => {
+                        _cancelFollowUpListening();
+                    }, 12000);
+                }
+                return;
+            }
+
+            // If no wake word, but user directly asked an executive query (e.g. "what's the weather", "are you listening")
+            if (isJarvisExecutiveQuery(cleanSpeech) && cleanSpeech.length > 3) {
+                if (inputArea) inputArea.value = rawSpeech.trim();
+                clearTimeout(jarvisSilenceTimer);
+                jarvisSilenceTimer = setTimeout(() => {
+                    _executeJarvisVoiceCommand(cleanSpeech);
+                }, 1200);
+                return;
+            }
+        };
+
+        jarvisWakeRecognizer.onerror = (e) => {
+            if (e.error === 'not-allowed') {
+                isWakeWordListening = false;
+                updateWakeWordBadge(false, 'Mic Blocked: Click here to Allow');
+                console.warn('Microphone permission blocked by browser.');
+            } else {
+                // Non-fatal errors like 'network', 'no-speech', 'aborted': keep isWakeWordListening alive so it reconnects seamlessly!
+                console.warn('Wake word recognizer non-fatal event:', e.error);
+            }
+        };
+
+        jarvisWakeRecognizer.onend = () => {
+            if (isWakeWordListening) {
+                setTimeout(() => {
+                    if (isWakeWordListening) {
+                        try { jarvisWakeRecognizer.start(); } catch(err) {}
+                    }
+                }, 200);
+            } else {
+                updateWakeWordBadge(false);
+            }
+        };
+
+        // Watchdog to guarantee recognizer never goes deaf or stays frozen
+        if (!window._jarvisWakeWatchdog) {
+            window._jarvisWakeWatchdog = setInterval(() => {
+                if (isWakeWordListening && jarvisWakeRecognizer) {
+                    try { jarvisWakeRecognizer.start(); } catch(e) {}
+                }
+            }, 3000);
+        }
+
+        jarvisWakeRecognizer.start();
+    } catch(e) {
+        console.error('Failed to start wake word recognizer:', e);
+        isWakeWordListening = false;
+        updateWakeWordBadge(false);
+    }
+}
+
+function stopWakeWordListening() {
+    isWakeWordListening = false;
+    if (window._jarvisWakeWatchdog) {
+        clearInterval(window._jarvisWakeWatchdog);
+        window._jarvisWakeWatchdog = null;
+    }
+    if (jarvisWakeRecognizer) {
+        try { jarvisWakeRecognizer.stop(); } catch(e) {}
+        jarvisWakeRecognizer = null;
+    }
+    updateWakeWordBadge(false);
+}
+
+function updateJarvisVoiceUI(mode) {
+    const isCinema = mode === 'cinema';
+    const icon = document.getElementById('jarvisVoiceModeIcon');
+    const txt = document.getElementById('jarvisVoiceModeText');
+    const btn = document.getElementById('btnJarvisVoiceMode');
+    const settingsBadge = document.getElementById('settingsVoiceModeBadge');
+    if (icon && txt && btn) {
+        if (isCinema) {
+            icon.textContent = '🎬';
+            txt.textContent = 'Cinema Mode';
+            btn.style.color = '#f59e0b';
+            btn.title = 'Active: 🎬 Resonant Studio Mode (Deep Timbre) - Click to switch to Low-Latency Mode';
+            if (settingsBadge) {
+                settingsBadge.textContent = '🎬 Studio Mode';
+                settingsBadge.style.color = '#f59e0b';
+            }
+        } else {
+            icon.textContent = '⚡';
+            txt.textContent = 'Neural Mode';
+            btn.style.color = '#10b981';
+            btn.title = 'Active: ⚡ Low-Latency Neural Mode - Click to switch to Studio Mode';
+            if (settingsBadge) {
+                settingsBadge.textContent = '⚡ Neural Mode';
+                settingsBadge.style.color = '#10b981';
+            }
+        }
+    }
+    const btnWork = document.getElementById('btnSettingsWorkMode');
+    const btnCinema = document.getElementById('btnSettingsCinemaMode');
+    if (btnWork && btnCinema) {
+        if (isCinema) {
+            btnWork.style.border = '1px solid var(--border-medium)';
+            btnWork.style.background = 'transparent';
+            btnWork.style.color = 'var(--text-secondary)';
+            btnCinema.style.border = '1px solid #f59e0b';
+            btnCinema.style.background = 'rgba(245, 158, 11, 0.12)';
+            btnCinema.style.color = '#f59e0b';
+        } else {
+            btnWork.style.border = '1px solid #10b981';
+            btnWork.style.background = 'rgba(16, 185, 129, 0.12)';
+            btnWork.style.color = '#10b981';
+            btnCinema.style.border = '1px solid var(--border-medium)';
+            btnCinema.style.background = 'transparent';
+            btnCinema.style.color = 'var(--text-secondary)';
+        }
+    }
+}
+
+async function setJarvisVoiceModeFromSettings(mode) {
+    try {
+        const updateRes = await fetch('/api/voice/mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ mode: mode })
+        });
+        const updateData = await updateRes.json();
+        updateJarvisVoiceUI(updateData.mode);
+    } catch(e) {
+        console.error('Failed to set voice mode from settings:', e);
+    }
+}
+
+window.openStandardSettings = function() {
+    if (typeof openChatSettingsModal === 'function') {
+        openChatSettingsModal();
+    }
+};
+
+window.closeStandardSettings = function() {
+    if (typeof closeChatSettingsModal === 'function') {
+        closeChatSettingsModal();
+    }
+};
+
+async function toggleJarvisVoiceMode() {
+    try {
+        const currentRes = await fetch('/api/voice/mode');
+        const currentData = await currentRes.json();
+        const nextMode = currentData.mode === 'work' ? 'cinema' : 'work';
+        const updateRes = await fetch('/api/voice/mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ mode: nextMode })
+        });
+        const updateData = await updateRes.json();
+        updateJarvisVoiceUI(updateData.mode);
+    } catch(e) {
+        console.error('Failed to toggle voice mode:', e);
+    }
+}
+
+let jarvisSpeechRec = null;
+let jarvisMediaRec = null;
+let jarvisAudioChunks = [];
+
+async function toggleJarvisVoiceRecording() {
+    const micBtn = document.getElementById('btnJarvisMic');
+    const inputArea = document.getElementById('chatInputMessage');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    // If media recorder is active, stop and transcribe
+    if (jarvisMediaRec && jarvisMediaRec.state === 'recording') {
+        jarvisMediaRec.stop();
+        if (micBtn) micBtn.style.color = 'var(--text-secondary)';
+        return;
+    }
+
+    if (jarvisSpeechRec) {
+        jarvisSpeechRec.stop();
+        jarvisSpeechRec = null;
+        if (micBtn) { micBtn.style.color = 'var(--text-secondary)'; }
+        return;
+    }
+
+    // Attempt 1: Web Speech API (Instant client-side)
+    if (SpeechRecognition) {
+        try {
+            jarvisSpeechRec = new SpeechRecognition();
+            jarvisSpeechRec.lang = 'en-US';
+            jarvisSpeechRec.interimResults = false;
+            jarvisSpeechRec.onstart = () => {
+                if (micBtn) { micBtn.style.color = '#ef4444'; }
+            };
+            jarvisSpeechRec.onresult = (evt) => {
+                const transcript = evt.results[0][0].transcript;
+                if (inputArea) {
+                    inputArea.value = (inputArea.value ? inputArea.value + ' ' : '') + transcript;
+                    inputArea.focus();
+                }
+                window.jarvisLastPromptWasVoice = true;
+                if (typeof window.sendChatArenaMessage === 'function') {
+                    setTimeout(window.sendChatArenaMessage, 300);
+                }
+            };
+            jarvisSpeechRec.onerror = (e) => {
+                console.warn('Web Speech error, activating MediaRecorder Gemini fallback:', e.error);
+                _startMediaRecorderFallback(micBtn, inputArea);
+            };
+            jarvisSpeechRec.onend = () => {
+                jarvisSpeechRec = null;
+                if (micBtn) { micBtn.style.color = 'var(--text-secondary)'; }
+            };
+            jarvisSpeechRec.start();
+            return;
+        } catch(e) {
+            console.warn('SpeechRecognition start failed, falling back:', e);
+        }
+    }
+
+    // Attempt 2: Direct MediaRecorder (Brave / Firefox / Safari fallback)
+    _startMediaRecorderFallback(micBtn, inputArea);
+}
+
+async function _startMediaRecorderFallback(micBtn, inputArea) {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        jarvisAudioChunks = [];
+        jarvisMediaRec = new MediaRecorder(stream);
+        jarvisMediaRec.ondataavailable = (e) => { if (e.data.size > 0) jarvisAudioChunks.push(e.data); };
+        jarvisMediaRec.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            if (micBtn) micBtn.style.color = 'var(--text-secondary)';
+            if (jarvisAudioChunks.length > 0) {
+                const blob = new Blob(jarvisAudioChunks, { type: 'audio/mp3' });
+                const formData = new FormData();
+                formData.append('file', blob, 'recording.mp3');
+                if (inputArea) inputArea.placeholder = 'Transcribing voice via Jarvis AI...';
+                try {
+                    const res = await fetch('/api/voice/transcribe', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if (data.text && inputArea) {
+                        inputArea.value = (inputArea.value ? inputArea.value + ' ' : '') + data.text;
+                        inputArea.focus();
+                        window.jarvisLastPromptWasVoice = true;
+                        if (typeof window.sendChatArenaMessage === 'function') {
+                            setTimeout(window.sendChatArenaMessage, 300);
+                        }
+                    }
+                } catch(err) {
+                    console.warn('Transcription failed:', err);
+                } finally {
+                    if (inputArea) inputArea.placeholder = 'Type an instruction or command for Jarvis...';
+                }
+            }
+        };
+        jarvisMediaRec.start();
+        if (micBtn) micBtn.style.color = '#ef4444';
+    } catch(err) {
+        console.warn('Microphone permission blocked:', err);
+        alert('Microphone permission blocked. Please click the lock or camera/mic icon in your browser URL bar and choose "Allow".');
+    }
+}
+
+// ==========================================
+// Phase 6: Cognitive Memory & Knowledge Graph UI
+// ==========================================
+let allCachedMemories = { entities: [], relations: [], habits: [], raw_memories: [] };
+
+async function refreshMemoriesUI() {
+    try {
+        const res = await fetch('/api/memory/list?limit=60');
+        if (!res.ok) return;
+        const data = await res.json();
+        allCachedMemories = data;
+
+        const counts = data.counts || {};
+        const badge = document.getElementById('memoryCountBadge');
+        if (badge) badge.textContent = `${counts.entities || 0} Entities, ${counts.relations || 0} Rels`;
+
+        const elEnt = document.getElementById('statEntitiesCount');
+        const elRel = document.getElementById('statRelationsCount');
+        const elHab = document.getElementById('statHabitsCount');
+        const elEpi = document.getElementById('statEpisodesCount');
+        if (elEnt) elEnt.textContent = counts.entities || 0;
+        if (elRel) elRel.textContent = counts.relations || 0;
+        if (elHab) elHab.textContent = counts.habits || 0;
+        if (elEpi) elEpi.textContent = counts.episodes || 0;
+
+        renderMemoryCards(allCachedMemories);
+    } catch(e) {
+        console.warn('Failed to load memories:', e);
+    }
+}
+
+function renderMemoryCards(data, filterText = '') {
+    const container = document.getElementById('memoryCardsList');
+    if (!container) return;
+
+    const query = filterText.toLowerCase().trim();
+    let cards = [];
+
+    // Render Entities
+    (data.entities || []).forEach(ent => {
+        const text = `${ent.name} ${ent.entity_type} ${ent.attributes || ''}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            let attrs = {};
+            try { attrs = JSON.parse(ent.attributes || '{}'); } catch(e) {}
+            const attrParts = Object.entries(attrs).map(([k, v]) => `<span style="color:var(--text-muted);">${k}:</span> ${v}`).join(' &bull; ');
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.75rem; min-width:0; overflow:hidden; text-overflow:ellipsis;">
+                        <span style="color:#60a5fa; font-weight:600;">[${ent.entity_type}]</span>
+                        <strong style="color:var(--text-primary); margin-left:4px;">${ent.name}</strong>
+                        ${attrParts ? `<div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${attrParts}</div>` : ''}
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('entity', ${ent.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Entity">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    // Render Relations
+    (data.relations || []).forEach(rel => {
+        const text = `${rel.source_name} ${rel.relation} ${rel.target_name}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.74rem;">
+                        <span style="color:#34d399; font-weight:600;">🔗 ${rel.source_name}</span>
+                        <span style="color:var(--text-muted); font-style:italic; margin:0 4px;">--${rel.relation}--></span>
+                        <span style="color:#60a5fa; font-weight:600;">${rel.target_name}</span>
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('relation', ${rel.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Relationship">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    // Render Habits
+    (data.habits || []).forEach(h => {
+        const text = `${h.category} ${h.habit_key} ${h.rule_text}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.74rem;">
+                        <span style="color:#fbbf24; font-weight:600;">⚡ [${h.category}]</span>
+                        <span style="color:var(--text-primary); margin-left:4px;">${h.rule_text}</span>
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('habit', ${h.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Habit">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    // Render Raw Memories
+    (data.raw_memories || []).forEach(raw => {
+        const text = `${raw.category} ${raw.content}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.74rem;">
+                        <span style="color:#a855f7; font-weight:600;">📝 Fact:</span>
+                        <span style="color:var(--text-primary); margin-left:4px;">${raw.content}</span>
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('raw', ${raw.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Fact">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    if (cards.length === 0) {
+        container.innerHTML = `<div style="font-size:0.73rem; color:var(--text-muted); text-align:center; padding:12px;">No memories match "${filterText}". Teach Jarvis something below!</div>`;
+    } else {
+        container.innerHTML = cards.join('');
+    }
+}
+
+function filterMemoriesUI(query) {
+    renderMemoryCards(allCachedMemories, query);
+}
+
+async function deleteMemoryItem(itemType, itemId) {
+    try {
+        await fetch(`/api/memory/${itemType}/${itemId}`, { method: 'DELETE' });
+        refreshMemoriesUI();
+    } catch(e) {
+        console.warn('Failed to delete memory item:', e);
+    }
+}
+
+async function triggerConsolidateUI() {
+    const badge = document.getElementById('memoryCountBadge');
+    if (badge) badge.textContent = "Consolidating...";
+    try {
+        const res = await fetch('/api/memory/consolidate', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'success') {
+            const summary = `Consolidated: ${data.deduplicated_count} deduped, ${data.superseded_count} superseded, ${data.habits_synthesized} habits`;
+            if (badge) badge.textContent = summary;
+            setTimeout(refreshMemoriesUI, 2200);
+        }
+    } catch(e) {
+        console.warn('Consolidation failed:', e);
+        refreshMemoriesUI();
+    }
+}
+
+async function refreshDaemonTasksUI() {
+    try {
+        const res = await fetch('/api/daemon/tasks/active');
+        if (!res.ok) return;
+        const data = await res.json();
+        const tasks = data.tasks || [];
+        const container = document.getElementById('daemonTasksList');
+        const badge = document.getElementById('navDaemonTaskBadge');
+        const badgeText = document.getElementById('navDaemonTaskText');
+
+        if (tasks.length > 0) {
+            const topTask = tasks[0];
+            if (badge && badgeText) {
+                badge.style.display = 'inline-flex';
+                badgeText.textContent = `${topTask.title.slice(0, 18)}... (${Math.round(topTask.progress)}%)`;
+            }
+        } else {
+            if (badge) badge.style.display = 'none';
+        }
+
+        if (container) {
+            if (tasks.length === 0) {
+                container.innerHTML = '<div style="font-size:0.73rem; color:var(--text-muted); text-align:center; padding:8px;">No active background daemon tasks.</div>';
+            } else {
+                container.innerHTML = tasks.map(t => `
+                    <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                            <strong style="font-size:0.75rem; color:var(--text-primary);">${t.title}</strong>
+                            <span style="font-size:0.68rem; color:#10b981; font-weight:600;">${Math.round(t.progress)}%</span>
+                        </div>
+                        <div style="width:100%; height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; margin-bottom:4px;">
+                            <div style="width:${t.progress}%; height:100%; background:#10b981; transition:width 0.3s ease;"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.68rem; color:var(--text-muted);">
+                            <span>${t.current_step}</span>
+                            <button type="button" onclick="cancelDaemonTaskUI('${t.task_id}')" class="btn-quiet" style="padding:1px 5px; font-size:0.68rem; color:#ef4444;">Cancel</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+    } catch(e) {
+        console.warn('Failed to refresh daemon tasks:', e);
+    }
+}
+
+async function cancelDaemonTaskUI(taskId) {
+    try {
+        await fetch(`/api/daemon/tasks/${taskId}/cancel`, { method: 'POST' });
+        refreshDaemonTasksUI();
+    } catch(e) {}
+}
+
+async function toggleProjectPolicyUI(isChecked) {
+    const curProj = typeof currentProjectName !== 'undefined' ? currentProjectName : 'default_project';
+    try {
+        await fetch('/api/daemon/policy', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ project_name: curProj, policy_key: 'require_approval', value: isChecked })
+        });
+    } catch(e) {
+        console.warn('Failed to update project policy:', e);
+    }
+}
+
+async function submitQuickFact() {
+    const input = document.getElementById('inputNewFact');
+    if (!input || !input.value.trim()) return;
+    const text = input.value.trim();
+    input.value = '';
+    try {
+        await fetch('/api/memory/remember', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ content: text, category: 'user_note', importance: 8 })
+        });
+        refreshMemoriesUI();
+    } catch(e) {
+        console.warn('Failed to add memory fact:', e);
+    }
+}
+
+function switchTrainSubTab(subTab) {
+    const classic = document.getElementById('classic-train-container');
+    const forge = document.getElementById('persona-forge-container');
+    const btnClassic = document.getElementById('btn-sub-classic-train');
+    const btnForge = document.getElementById('btn-sub-persona-forge');
+
+    if (subTab === 'persona') {
+        if (classic) classic.style.display = 'none';
+        if (forge) forge.style.display = 'block';
+        if (btnClassic) btnClassic.classList.remove('active');
+        if (btnForge) btnForge.classList.add('active');
+        initPersonaForge();
+    } else {
+        if (classic) classic.style.display = 'block';
+        if (forge) forge.style.display = 'none';
+        if (btnClassic) btnClassic.classList.add('active');
+        if (btnForge) btnForge.classList.remove('active');
+    }
+}
+
+function updatePersonaDialLabels() {
+    const sSarcasm = document.getElementById('sliderSarcasm');
+    const sAutonomy = document.getElementById('sliderAutonomy');
+    const sCalm = document.getElementById('sliderCalm');
+    const sVerbosity = document.getElementById('sliderVerbosity');
+
+    const lSarcasm = document.getElementById('labelSarcasm');
+    const lAutonomy = document.getElementById('labelAutonomy');
+    const lCalm = document.getElementById('labelCalm');
+    const lVerbosity = document.getElementById('labelVerbosity');
+
+    if (sSarcasm && lSarcasm) {
+        const val = parseInt(sSarcasm.value);
+        const desc = val >= 70 ? 'British Irony & Sarcasm' : val >= 30 ? 'Subtle Dry Wit' : 'Strictly Formal';
+        lSarcasm.textContent = `${val}% (${desc})`;
+    }
+    if (sAutonomy && lAutonomy) {
+        const val = parseInt(sAutonomy.value);
+        const desc = val >= 80 ? 'Protective Advisor' : val >= 40 ? 'Balanced Warning' : 'Direct Obedience';
+        lAutonomy.textContent = `${val}% (${desc})`;
+    }
+    if (sCalm && lCalm) {
+        const val = parseInt(sCalm.value);
+        const desc = val >= 80 ? 'Unflappable' : 'Composed';
+        lCalm.textContent = `${val}% (${desc})`;
+    }
+    if (sVerbosity && lVerbosity) {
+        const val = parseInt(sVerbosity.value);
+        const desc = val <= 30 ? 'Ultra-Crisp Butler' : val <= 65 ? 'Balanced Articulate' : 'Exhaustive Analysis';
+        lVerbosity.textContent = `${val}% (${desc})`;
+    }
+}
+
+let personaDomainTags = ['Hardware Telemetry & Thermals', 'Windows OS API & Automation', 'Cyber Defense & Security', 'Python & System Architecture'];
+
+function renderPersonaDomainChips() {
+    const container = document.getElementById('forgeDomainChipsContainer');
+    const input = document.getElementById('inputNewDomainChip');
+    if (!container || !input) return;
+    
+    const existingChips = container.querySelectorAll('.domain-chip');
+    existingChips.forEach(el => el.remove());
+    
+    personaDomainTags.forEach((domain, index) => {
+        const chip = document.createElement('span');
+        chip.className = 'domain-chip';
+        chip.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #a5b4fc; border-radius: 999px; font-size: 0.76rem; font-weight: 500;';
+        chip.innerHTML = `
+            <span>${domain}</span>
+            <span onclick="removePersonaDomainTag(${index})" style="cursor: pointer; font-size: 0.85rem; font-weight: 700; color: #818cf8; line-height: 1; padding-left: 2px;" title="Remove domain">×</span>
+        `;
+        container.insertBefore(chip, input);
+    });
+}
+
+function removePersonaDomainTag(index) {
+    if (index >= 0 && index < personaDomainTags.length) {
+        personaDomainTags.splice(index, 1);
+        renderPersonaDomainChips();
+    }
+}
+
+function handleDomainChipKeydown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const input = document.getElementById('inputNewDomainChip');
+        if (!input) return;
+        const val = input.value.trim().replace(/^,|,$/g, '');
+        if (val && !personaDomainTags.includes(val)) {
+            personaDomainTags.push(val);
+            input.value = '';
+            renderPersonaDomainChips();
+        }
+    } else if (e.key === 'Backspace' && e.target.value === '' && personaDomainTags.length > 0) {
+        personaDomainTags.pop();
+        renderPersonaDomainChips();
+    }
+}
+
+async function loadAvailableVoices() {
+    try {
+        const res = await fetch('/api/voice/available_voices');
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        const sapiList = data.installed_sapi_voices || data.sapi_installed;
+        if (sapiList && sapiList.length > 0) {
+            const sapiSelects = [
+                document.getElementById('chatDefaultFallbackVoiceSelect'),
+                document.getElementById('forgeFallbackVoiceSelect')
+            ];
+            sapiSelects.forEach(sel => {
+                if (!sel) return;
+                sapiList.forEach(sapi => {
+                    const exists = Array.from(sel.options).some(o => o.value === sapi.id || o.text.includes(sapi.name));
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = sapi.id;
+                        opt.textContent = `💻 Windows SAPI: ${sapi.name}`;
+                        sel.appendChild(opt);
+                    }
+                });
+            });
+        }
+        
+        if (data.custom_local_voices && data.custom_local_voices.length > 0) {
+            const voiceSelects = [
+                document.getElementById('chatDefaultInternetVoiceSelect'),
+                document.getElementById('forgeInternetVoiceSelect')
+            ];
+            voiceSelects.forEach(sel => {
+                if (!sel) return;
+                data.custom_local_voices.forEach(v => {
+                    const exists = Array.from(sel.options).some(o => o.value === v.id);
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = v.id;
+                        opt.textContent = `📁 Custom Local Voice: ${v.name}`;
+                        sel.appendChild(opt);
+                    }
+                });
+            });
+        }
+    } catch(e) {
+        console.warn('Failed loading available voices:', e);
+    }
+}
+
+async function initPersonaForge() {
+    updatePersonaDialLabels();
+    renderPersonaDomainChips();
+    try {
+        const res = await fetch('/api/lab/models');
+        if (res.ok) {
+            const data = await res.json();
+            const select = document.getElementById('forgeBaseModelSelect');
+            if (select && data.models) {
+                const currentVal = select.value;
+                const options = data.models.map(m => `<option value="${m.name}">${m.name} (${m.size_gb ? m.size_gb.toFixed(1) + 'GB' : 'Local'})</option>`).join('');
+                select.innerHTML = options;
+                if (currentVal) select.value = currentVal;
+            }
+        }
+    } catch(e) {
+        console.warn('Failed to load Ollama models for Persona Forge:', e);
+    }
+}
+
+async function synthesizePersonaDataset() {
+    const btn = document.getElementById('btnSynthesizeDataset');
+    const consoleBox = document.getElementById('personaBakeConsole');
+    if (btn) btn.disabled = true;
+    if (consoleBox) {
+        consoleBox.style.display = 'block';
+        consoleBox.innerHTML = `
+            <div>⚡ <strong>Synthesizing Level 2 QLoRA Reasoning Pairs...</strong></div>
+            <div style="color: var(--text-muted);">Injecting &lt;thought&gt; metacognition traces, advisory pushback, and domain specializations...</div>
+        `;
+    }
+
+    const rawInternetVoice = document.getElementById('forgeInternetVoiceSelect')?.value;
+    const internetVoiceVal = (rawInternetVoice && rawInternetVoice !== 'none') ? rawInternetVoice : (rawInternetVoice === 'none' ? 'none' : null);
+
+    const payload = {
+        agent_name: document.getElementById('forgeAgentName')?.value.trim() || 'Custom Agent',
+        role_mandate: document.getElementById('forgeRoleMandate')?.value.trim() || 'Autonomous Systems Specialist',
+        user_addressing: document.getElementById('forgeAddressing')?.value.trim() || '',
+        creator: document.getElementById('forgeCreator')?.value.trim() || '',
+        sarcasm_level: parseInt(document.getElementById('sliderSarcasm')?.value || '20'),
+        autonomy_level: parseInt(document.getElementById('sliderAutonomy')?.value || '50'),
+        calm_under_fire: parseInt(document.getElementById('sliderCalm')?.value || '100'),
+        verbosity: parseInt(document.getElementById('sliderVerbosity')?.value || '30'),
+        core_directive: document.getElementById('forgeCoreDirective')?.value || '',
+        pushback_rule: document.getElementById('forgePushbackRule')?.value || '',
+        specialist_domains: personaDomainTags,
+        base_model: document.getElementById('forgeBaseModelSelect')?.value || 'cyber-specialist:latest',
+        internet_voice: internetVoiceVal,
+        fallback_voice: document.getElementById('forgeFallbackVoiceSelect')?.value || 'default'
+    };
+
+    try {
+        const res = await fetch('/api/llm/persona/synthesize_dataset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+            if (consoleBox) {
+                consoleBox.innerHTML += `
+                    <div style="color: #10b981; font-weight: 600; margin-top: 8px;">
+                        ✨ SUCCESS: ${data.sample_count} QLoRA Reasoning Pairs Synthesized!
+                    </div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
+                        Dataset generated at: ${data.dataset_path} (${data.format})
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error(data.detail || data.error || 'Dataset synthesis failed');
+        }
+    } catch(err) {
+        if (consoleBox) {
+            consoleBox.innerHTML += `<div style="color: #ef4444; font-weight: 600; margin-top: 8px;">❌ Synthesis Error: ${err.message}</div>`;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function bakePersonaModel() {
+    const btn = document.getElementById('btnBakePersona');
+    const consoleBox = document.getElementById('personaBakeConsole');
+    if (btn) btn.disabled = true;
+    if (consoleBox) {
+        consoleBox.style.display = 'block';
+        consoleBox.innerHTML = `
+            <div>⚡ <strong>Initiating Persona Compilation...</strong></div>
+            <div style="color: var(--text-muted);">[1/3] Compiling behavioral directives and identity constraints...</div>
+        `;
+    }
+
+    const rawInternetVoice = document.getElementById('forgeInternetVoiceSelect')?.value;
+    const internetVoiceVal = (rawInternetVoice && rawInternetVoice !== 'none') ? rawInternetVoice : (rawInternetVoice === 'none' ? 'none' : null);
+
+    const payload = {
+        agent_name: document.getElementById('forgeAgentName')?.value.trim() || 'Custom Agent',
+        role_mandate: document.getElementById('forgeRoleMandate')?.value.trim() || 'Autonomous Systems Specialist',
+        user_addressing: document.getElementById('forgeAddressing')?.value.trim() || '',
+        creator: document.getElementById('forgeCreator')?.value.trim() || '',
+        sarcasm_level: parseInt(document.getElementById('sliderSarcasm')?.value || '20'),
+        autonomy_level: parseInt(document.getElementById('sliderAutonomy')?.value || '50'),
+        calm_under_fire: parseInt(document.getElementById('sliderCalm')?.value || '100'),
+        verbosity: parseInt(document.getElementById('sliderVerbosity')?.value || '30'),
+        core_directive: document.getElementById('forgeCoreDirective')?.value || '',
+        pushback_rule: document.getElementById('forgePushbackRule')?.value || '',
+        specialist_domains: personaDomainTags,
+        base_model: document.getElementById('forgeBaseModelSelect')?.value || 'cyber-specialist:latest',
+        internet_voice: internetVoiceVal,
+        fallback_voice: document.getElementById('forgeFallbackVoiceSelect')?.value || 'default'
+    };
+
+    try {
+        if (consoleBox) {
+            consoleBox.innerHTML += `<div style="color: var(--text-muted);">[2/3] Generating immutable Modelfile and invoking Ollama compiler on local GPU...</div>`;
+        }
+        const res = await fetch('/api/llm/persona/bake', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok && data.status === 'success') {
+            if (consoleBox) {
+                consoleBox.innerHTML += `
+                    <div style="color: #10b981; font-weight: 600; margin-top: 8px;">
+                        ✨ [3/3] SUCCESS: Persona '${data.agent_name}' (${data.model_tag}) successfully baked into Ollama!
+                    </div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
+                        Modelfile compiled at: ${data.modelfile_path}
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <button type="button" class="btn-primary-quiet" onclick="switchAppTab('chat-section')" style="padding: 4px 14px; font-size: 0.78rem;">
+                            Go to Chat Arena to test ${data.agent_name} →
+                        </button>
+                    </div>
+                `;
+            }
+        } else {
+            throw new Error(data.detail || data.error || 'Compilation failed');
+        }
+    } catch(err) {
+        if (consoleBox) {
+            consoleBox.innerHTML += `
+                <div style="color: #ef4444; font-weight: 600; margin-top: 8px;">
+                    ❌ Compilation Error: ${err.message}
+                </div>
+            `;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initJarvisVoiceUI();
+    refreshMemoriesUI();
+    refreshDaemonTasksUI();
+    initPersonaForge();
+    setInterval(refreshDaemonTasksUI, 5000);
+});
+</script>
 
 </body>
 </html>

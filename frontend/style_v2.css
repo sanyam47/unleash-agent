@@ -346,6 +346,9 @@ html, body {
 /* Main Content Workspace */
 .app-wrapper {
     width: 100%;
+    height: calc(100vh - 54px - 25px);
+    overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     justify-content: center;
 }

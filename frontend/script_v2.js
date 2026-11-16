@@ -4412,29 +4412,52 @@ window.sendChatArenaMessage = async function() {
     }
 
     try {
-        const historyPayload = session.messages.map(m => ({
+        const historyPayload = session.messages.map((m, idx) => ({
             role: m.role,
             content: m.content,
-            images: m.images && m.images.length > 0 ? m.images : undefined
+            images: (idx === session.messages.length - 1 && m.images && m.images.length > 0) ? m.images : undefined
         }));
 
-        const res = await fetch('/api/chat/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                model: model,
-                messages: historyPayload,
-                system_prompt: systemPrompt,
-                temperature: temperature,
-                context_window: contextWindow,
-                use_rag: window.cyberRAGEnabled !== false,
-                skill_ids: activeSkillIds,
-                agentic: isAgentic,
-                use_swarm: window.swarmModeEnabled === true,
-                workspace_path: window.activeMountedWorkspacePath || undefined,
-                project_name: window.activeMountedProjectName || projectName
-            })
-        });
+        window._chatTimedOut = false;
+        const chatAbortController = new AbortController();
+        window._currentChatAbortController = chatAbortController;
+        const chatWatchdogTimer = setTimeout(() => {
+            window._chatTimedOut = true;
+            chatAbortController.abort();
+        }, 90000);
+
+        const wasVoicePrompt = Boolean(window.jarvisLastPromptWasVoice);
+        window.jarvisLastPromptWasVoice = false;
+        const isChatSpeech = Boolean(window.jarvisChatSpeechEnabled);
+
+        let res;
+        try {
+            res = await fetch('/api/chat/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: chatAbortController.signal,
+                body: JSON.stringify({
+                    model: model,
+                    messages: historyPayload,
+                    system_prompt: systemPrompt,
+                    temperature: temperature,
+                    context_window: contextWindow,
+                    use_rag: window.cyberRAGEnabled !== false,
+                    skill_ids: activeSkillIds,
+                    agentic: isAgentic,
+                    use_swarm: window.swarmModeEnabled === true,
+                    workspace_path: window.activeMountedWorkspacePath || undefined,
+                    project_name: window.activeMountedProjectName || projectName,
+                    speak_reply: isChatSpeech,
+                    is_voice: wasVoicePrompt
+                })
+            });
+        } finally {
+            clearTimeout(chatWatchdogTimer);
+            if (window._currentChatAbortController === chatAbortController) {
+                window._currentChatAbortController = null;
+            }
+        }
 
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
@@ -4471,6 +4494,81 @@ window.sendChatArenaMessage = async function() {
 
         appendMessageElement('assistant', data.reply, data.telemetry, true, null, data.rag_sources, data.active_skills, agenticData, model, data.bake_recommendation);
 
+        // Phase 5 Jarvis Voice: Auto-Speak Replies ONLY if voice command OR if user enabled chat speech
+        const shouldSpeak = wasVoicePrompt || isChatSpeech;
+        const replyWords = (data.reply || '').split(/\s+/).length;
+        const speechDurationMs = Math.max(3000, replyWords * 380 + 1200);
+        const isSpeakingNow = Boolean(shouldSpeak && (data.spoken || data.reply));
+
+        if (window._jarvisVoicePollInterval) {
+            clearInterval(window._jarvisVoicePollInterval);
+            window._jarvisVoicePollInterval = null;
+        }
+        if (window._jarvisSpeechTimer) {
+            clearTimeout(window._jarvisSpeechTimer);
+            window._jarvisSpeechTimer = null;
+        }
+
+        if (isSpeakingNow) {
+            window.jarvisIsSpeaking = true;
+            window.jarvisCurrentSpeechTranscript = (data.reply || '').toLowerCase();
+            if (typeof updateWakeWordBadge === 'function') {
+                updateWakeWordBadge(true, '🔊 Jarvis Speaking...');
+            }
+
+            if (!data.spoken && shouldSpeak && data.reply) {
+                try {
+                    fetch('/api/voice/speak', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text: data.reply, play_on_host: true })
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+
+            // Real-time voice synchronization: Listen for exact moment speaker queue completes
+            let pollTicks = 0;
+            const maxTicks = Math.max(30, Math.ceil((speechDurationMs + 6000) / 300));
+            window._jarvisVoicePollInterval = setInterval(async () => {
+                pollTicks++;
+                try {
+                    if (pollTicks >= 2) {
+                        const sRes = await fetch('/api/voice/status');
+                        const sData = await sRes.json();
+                        if (!sData.is_speaking || pollTicks >= maxTicks) {
+                            clearInterval(window._jarvisVoicePollInterval);
+                            window._jarvisVoicePollInterval = null;
+                            window.jarvisIsSpeaking = false;
+                            window.jarvisCurrentSpeechTranscript = '';
+                            if (data.dismissal) {
+                                if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+                            } else {
+                                if (typeof window.activateJarvisConversationalWindow === 'function') {
+                                    window.activateJarvisConversationalWindow(20000);
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {
+                    if (pollTicks >= maxTicks) {
+                        clearInterval(window._jarvisVoicePollInterval);
+                        window._jarvisVoicePollInterval = null;
+                        window.jarvisIsSpeaking = false;
+                    }
+                }
+            }, 300);
+        } else {
+            window.jarvisIsSpeaking = false;
+            window.jarvisCurrentSpeechTranscript = '';
+            if (data.dismissal) {
+                if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+            } else {
+                if (typeof window.activateJarvisConversationalWindow === 'function') {
+                    window.activateJarvisConversationalWindow(20000);
+                }
+            }
+        }
+
         // Auto-Execute in sandbox if user enabled Auto-Run
         if (window.autoExecuteSandbox) {
             setTimeout(() => {
@@ -4496,7 +4594,16 @@ window.sendChatArenaMessage = async function() {
         }
     } catch (err) {
         removeTypingIndicator(typingId);
-        appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        if (err.name === 'AbortError') {
+            if (window._chatTimedOut) {
+                window._chatTimedOut = false;
+                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+            } else {
+                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+            }
+        } else {
+            appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        }
     } finally {
         window.isChatGenerating = false;
         window.activeGeneratingProject = null;
@@ -5177,6 +5284,12 @@ function appendTypingIndicator(modelName, projectName) {
     const thread = document.getElementById('chatMessagesThread');
     if (!thread) return null;
 
+    // Clean up any stale typing indicators and stop orphaned progress pollers
+    thread.querySelectorAll('[id^="typing_"]').forEach(stale => {
+        if (stale._pollInterval) clearInterval(stale._pollInterval);
+        stale.remove();
+    });
+
     const id = 'typing_' + Date.now();
     const div = document.createElement('div');
     div.id = id;
@@ -5192,11 +5305,40 @@ function appendTypingIndicator(modelName, projectName) {
             <div style="width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-secondary); flex-shrink: 0;">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 15h6"/></svg>
             </div>
-            <div style="padding: 11px 16px; border-radius: 14px 14px 14px 2px; background: var(--chat-bubble-bot); border: 1px solid var(--chat-bubble-bot-border); color: var(--text-secondary); font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
-                <span class="status-dot" style="background: var(--accent); width: 7px; height: 7px;"></span>
-                <span><strong>${modelName}</strong> is thinking...</span>
+            <div style="padding: 10px 14px; border-radius: 14px 14px 14px 2px; background: var(--chat-bubble-bot); border: 1px solid var(--chat-bubble-bot-border); color: var(--text-secondary); font-size: 0.84rem; display: flex; flex-direction: column; gap: 4px; min-width: 240px; max-width: 480px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 7px;">
+                        <span class="status-dot" style="background: var(--accent); width: 7px; height: 7px;"></span>
+                        <span style="font-weight: 600; color: var(--text-primary); font-size: 0.78rem;">${modelName}</span>
+                    </div>
+                    <span id="${id}_timer" style="font-size: 0.70rem; color: var(--text-muted); font-family: var(--font-mono);">0.0s</span>
+                </div>
+                <div id="${id}_status" style="font-size: 0.76rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                    <span>⚡ Analyzing directive & routing intent...</span>
+                </div>
             </div>
         `;
+
+        const nonAgenticStart = Date.now();
+        const nonAgenticInterval = setInterval(() => {
+            const elapsed = ((Date.now() - nonAgenticStart) / 1000).toFixed(1);
+            const timerEl = document.getElementById(`${id}_timer`);
+            const statusEl = document.getElementById(`${id}_status`);
+            if (timerEl) timerEl.textContent = `${elapsed}s`;
+            if (statusEl) {
+                const s = parseFloat(elapsed);
+                if (s < 1.5) {
+                    statusEl.innerHTML = `<span>⚡ Analyzing directive & routing intent...</span>`;
+                } else if (s < 4.0) {
+                    statusEl.innerHTML = `<span>🧠 Processing with ${modelName}...</span>`;
+                } else if (s < 8.0) {
+                    statusEl.innerHTML = `<span>⚙️ Synthesizing response (${modelName})...</span>`;
+                } else {
+                    statusEl.innerHTML = `<span>⏳ Deep inference in progress (${elapsed}s elapsed — active)...</span>`;
+                }
+            }
+        }, 500);
+        div._pollInterval = nonAgenticInterval;
     } else {
         // Antigravity Live Agentic Execution Telemetry Indicator
         div.innerHTML = `
@@ -5228,19 +5370,25 @@ function appendTypingIndicator(modelName, projectName) {
 
         const intervalId = setInterval(async () => {
             try {
-                const pRes = await fetch(pollUrl);
-                if (!pRes.ok) return;
-                const pData = await pRes.json();
-                if (!pData || pData.phase === 'idle') return;
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                const timerEl = document.getElementById(`${id}_timer`);
+                if (timerEl) timerEl.textContent = `${elapsed}s`;
 
                 const dotEl = document.getElementById(`${id}_dot`);
                 const phaseEl = document.getElementById(`${id}_phase`);
-                const timerEl = document.getElementById(`${id}_timer`);
                 const headEl = document.getElementById(`${id}_headline`);
                 const detailEl = document.getElementById(`${id}_detail`);
 
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                if (timerEl) timerEl.textContent = `${elapsed}s`;
+                const pRes = await fetch(pollUrl);
+                if (!pRes.ok) return;
+                const pData = await pRes.json();
+                if (!pData || pData.phase === 'idle') {
+                    if (parseFloat(elapsed) > 2.0 && headEl && headEl.textContent.includes('Analyzing')) {
+                        headEl.innerHTML = `<span>🧠 Synthesizing response (${modelName})...</span>`;
+                        if (detailEl) detailEl.textContent = `Frontier neural inference in progress`;
+                    }
+                    return;
+                }
 
                 if (headEl && pData.headline) {
                     headEl.textContent = pData.headline;
@@ -6263,6 +6411,17 @@ const COMMAND_REGISTRY = [
         shortcut: '⌘D',
         action: () => {
             if (typeof window.toggleTheme === 'function') window.toggleTheme();
+        }
+    },
+    {
+        id: 'act-settings',
+        title: 'Standard Settings (Jarvis Voice, Wake Word & Runtime)',
+        category: 'System',
+        shortcut: '⌘,',
+        action: () => {
+            if (typeof window.openChatSettingsModal === 'function') {
+                window.openChatSettingsModal();
+            }
         }
     },
     {
@@ -7767,12 +7926,16 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
     }
 
     try {
-        const historyPayload = session.messages.map(m => ({
+        const historyPayload = session.messages.map((m, idx) => ({
             role: m.role,
             content: m.content,
-            images: m.images && m.images.length > 0 ? m.images : undefined
+            images: (idx === session.messages.length - 1 && m.images && m.images.length > 0) ? m.images : undefined
         }));
         const activeSkillIds = (session && Array.isArray(session.activeSkills)) ? session.activeSkills : [];
+
+        const wasVoicePrompt = Boolean(window.jarvisLastPromptWasVoice);
+        window.jarvisLastPromptWasVoice = false;
+        const isChatSpeech = Boolean(window.jarvisChatSpeechEnabled);
 
         const res = await fetch('/api/chat/send', {
             method: 'POST',
@@ -7786,7 +7949,9 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
                 use_rag: window.cyberRAGEnabled !== false,
                 skill_ids: activeSkillIds,
                 agentic: true,
-                project_name: projectName
+                project_name: projectName,
+                speak_reply: isChatSpeech,
+                is_voice: wasVoicePrompt
             })
         });
 
@@ -7823,9 +7988,93 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
         renderChatSessionsSidebar();
 
         appendMessageElement('assistant', data.reply, data.telemetry, true, null, data.rag_sources, data.active_skills, agenticData, model, data.bake_recommendation);
+
+        // Phase 5 Jarvis Voice: Auto-Speak Replies ONLY if voice command OR if user enabled chat speech
+        const shouldSpeak = wasVoicePrompt || isChatSpeech;
+        const replyWords = (data.reply || '').split(/\s+/).length;
+        const speechDurationMs = Math.max(3000, replyWords * 380 + 1200);
+        const isSpeakingNow = Boolean(shouldSpeak && (data.spoken || data.reply));
+
+        if (window._jarvisVoicePollInterval) {
+            clearInterval(window._jarvisVoicePollInterval);
+            window._jarvisVoicePollInterval = null;
+        }
+        if (window._jarvisSpeechTimer) {
+            clearTimeout(window._jarvisSpeechTimer);
+            window._jarvisSpeechTimer = null;
+        }
+
+        if (isSpeakingNow) {
+            window.jarvisIsSpeaking = true;
+            window.jarvisCurrentSpeechTranscript = (data.reply || '').toLowerCase();
+            if (typeof updateWakeWordBadge === 'function') {
+                updateWakeWordBadge(true, '🔊 Jarvis Speaking...');
+            }
+
+            if (!data.spoken && shouldSpeak && data.reply) {
+                try {
+                    fetch('/api/voice/speak', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text: data.reply, play_on_host: true })
+                    }).catch(() => {});
+                } catch(e) {}
+            }
+
+            // Real-time voice synchronization: Listen for exact moment speaker queue completes
+            let pollTicks = 0;
+            const maxTicks = Math.max(30, Math.ceil((speechDurationMs + 6000) / 300));
+            window._jarvisVoicePollInterval = setInterval(async () => {
+                pollTicks++;
+                try {
+                    if (pollTicks >= 2) {
+                        const sRes = await fetch('/api/voice/status');
+                        const sData = await sRes.json();
+                        if (!sData.is_speaking || pollTicks >= maxTicks) {
+                            clearInterval(window._jarvisVoicePollInterval);
+                            window._jarvisVoicePollInterval = null;
+                            window.jarvisIsSpeaking = false;
+                            window.jarvisCurrentSpeechTranscript = '';
+                            if (data.dismissal) {
+                                if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+                            } else {
+                                if (typeof window.activateJarvisConversationalWindow === 'function') {
+                                    window.activateJarvisConversationalWindow(20000);
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {
+                    if (pollTicks >= maxTicks) {
+                        clearInterval(window._jarvisVoicePollInterval);
+                        window._jarvisVoicePollInterval = null;
+                        window.jarvisIsSpeaking = false;
+                    }
+                }
+            }, 300);
+        } else {
+            window.jarvisIsSpeaking = false;
+            window.jarvisCurrentSpeechTranscript = '';
+            if (data.dismissal) {
+                if (typeof window.dismissJarvisConversation === 'function') window.dismissJarvisConversation();
+            } else {
+                if (typeof window.activateJarvisConversationalWindow === 'function') {
+                    window.activateJarvisConversationalWindow(20000);
+                }
+            }
+        }
     } catch (err) {
         removeTypingIndicator(typingId);
-        appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        if (err.name === 'AbortError') {
+            if (window._chatTimedOut) {
+                window._chatTimedOut = false;
+                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+            } else {
+                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+            }
+        } else {
+            appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        }
     } finally {
         window.isChatGenerating = false;
         if (sendBtn) {
@@ -7867,10 +8116,10 @@ window.dismissAgenticProposal = async function(btn) {
     }
 
     try {
-        const historyPayload = session.messages.map(m => ({
+        const historyPayload = session.messages.map((m, idx) => ({
             role: m.role,
             content: m.content,
-            images: m.images && m.images.length > 0 ? m.images : undefined
+            images: (idx === session.messages.length - 1 && m.images && m.images.length > 0) ? m.images : undefined
         }));
         const activeSkillIds = (session && Array.isArray(session.activeSkills)) ? session.activeSkills : [];
 
@@ -7916,7 +8165,16 @@ window.dismissAgenticProposal = async function(btn) {
         appendMessageElement('assistant', data.reply, data.telemetry, true, null, data.rag_sources, data.active_skills, null, model, data.bake_recommendation);
     } catch (err) {
         removeTypingIndicator(typingId);
-        appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        if (err.name === 'AbortError') {
+            if (window._chatTimedOut) {
+                window._chatTimedOut = false;
+                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+            } else {
+                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+            }
+        } else {
+            appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
+        }
     } finally {
         window.isChatGenerating = false;
         if (sendBtn) {
@@ -8073,6 +8331,8 @@ window.openChatSettingsModal = function() {
         }
         if (typeof refreshDockerStatus === 'function') refreshDockerStatus();
         if (typeof refreshChatStatus === 'function') refreshChatStatus();
+        if (typeof refreshMemoriesUI === 'function') refreshMemoriesUI();
+        if (typeof initJarvisVoiceUI === 'function') initJarvisVoiceUI();
     }
 };
 
@@ -8616,32 +8876,102 @@ window.handlePauseExecutionClick = async function() {
     }
 };
 
-window.handleCancelExecutionClick = async function() {
-    const session = getActiveSession();
-    const projName = window.activeGeneratingProject || (session ? session.projectName : 'default_project');
-    const confirmed = confirm("Are you sure you want to stop execution? Your workspace files are preserved.");
-    if (!confirmed) return;
+window.stopAllJarvisOperations = async function(reason = "Stop command") {
+    // 0. Debounce: Prevent rapid duplicate executions within 3 seconds
+    const now = Date.now();
+    if (window._lastStopCallTime && (now - window._lastStopCallTime < 3000)) {
+        console.log("[Jarvis Emergency Stop]: Ignoring duplicate stop call within debounce window.");
+        return;
+    }
+    window._lastStopCallTime = now;
 
+    console.log("[Jarvis Emergency Stop]: Halting operations...", reason);
+
+    const hadActiveGeneration = (window.isChatGenerating === true || !!window.activeGeneratingProject);
+
+    // 1. Immediately reset client state and abort in-flight fetch
+    window.isChatGenerating = false;
+    if (window._currentChatAbortController) {
+        try {
+            window._currentChatAbortController.abort();
+            window._currentChatAbortController = null;
+        } catch (e) {}
+    }
+    const projName = window.activeGeneratingProject || (typeof getActiveSession === 'function' && getActiveSession()?.projectName) || 'default_project';
+    window.activeGeneratingProject = null;
+
+    // 2. Remove all typing indicators and stop orphaned progress pollers
+    const thread = document.getElementById('chatMessagesThread');
+    if (thread) {
+        thread.querySelectorAll('[id^="typing_"]').forEach(el => {
+            if (el._pollInterval) clearInterval(el._pollInterval);
+            el.remove();
+        });
+    }
+
+    // 3. Restore UI buttons
+    const execControls = document.getElementById('activeExecutionControls');
+    const sendBtn = document.getElementById('btnSendChat');
+    if (execControls) execControls.style.display = 'none';
+    if (sendBtn) {
+        sendBtn.style.display = 'inline-flex';
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<span>Send</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+    }
+
+    // 3.5 Stop any active voice playback (Barge-in)
     try {
-        const res = await fetch('/api/chat/execution/cancel', {
+        fetch('/api/voice/stop', { method: 'POST' }).catch(() => {});
+        window.jarvisIsSpeaking = false;
+    } catch(e) {}
+
+    // 4. Cancel active agentic execution on backend
+    try {
+        fetch('/api/chat/execution/cancel', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ project_name: projName, rollback: false })
-        });
-        const data = await res.json();
-        const execControls = document.getElementById('activeExecutionControls');
-        const sendBtn = document.getElementById('btnSendChat');
-        if (execControls) execControls.style.display = 'none';
-        if (sendBtn) {
-            sendBtn.style.display = 'inline-flex';
-            sendBtn.disabled = false;
-            sendBtn.innerHTML = '<span>Send</span> <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:4px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+        }).catch(() => {});
+    } catch(e) {}
+
+    // 5. Cancel any running background daemon tasks
+    try {
+        fetch('/api/daemon/tasks/cancel_all', { method: 'POST' })
+            .then(() => {
+                const badge = document.getElementById('navDaemonTaskBadge');
+                if (badge) badge.style.display = 'none';
+            }).catch(() => {});
+    } catch(e) {}
+
+    // 6 & 7. Only speak and append status bubble IF there was actually an active generation in flight!
+    if (hadActiveGeneration) {
+        const spokenReply = "Stopping operations right away, Sir. Execution halted.";
+        try {
+            fetch('/api/voice/speak', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ text: spokenReply, play_on_host: true, pipelined: false })
+            }).catch(() => {});
+        } catch(e) {}
+
+        if (typeof appendMessageElement === 'function') {
+            appendMessageElement('assistant', `🛑 **Execution Halted:** Active operations have been cancelled upon your directive, Sir.`);
         }
-        window.isChatGenerating = false;
-        alert("Execution cancelled by user. You can start a new prompt or click Undo to revert workspace files.");
-    } catch (e) {
-        console.error("Cancel request error:", e);
     }
+
+    // 8. Clean up input placeholder & reset attentive state
+    const inputArea = document.getElementById('chatInputMessage');
+    if (inputArea) {
+        inputArea.value = '';
+        inputArea.placeholder = 'Type an instruction or command for Jarvis...';
+    }
+    if (typeof updateWakeWordBadge === 'function') {
+        updateWakeWordBadge(true, '🟢 Jarvis Online (Standing By)');
+    }
+};
+
+window.handleCancelExecutionClick = async function() {
+    await window.stopAllJarvisOperations("User clicked cancel button");
 };
 
 window.openComputeBoundaryModal = function(boundaryData) {

@@ -8,7 +8,7 @@ from backend.core.router import interpret_intent
 from backend.db.database import engine, Base, get_db
 from backend.db.models import Job
 from backend.workers.tasks import run_auto_train_pipeline, run_manual_train_pipeline
-from backend.api import lab_router, llm_studio_router, chat_router, skills_router
+from backend.api import lab_router, llm_studio_router, chat_router, skills_router, voice_router, memory_router, daemon_router
 from backend.core.paths import FRONTEND_DIR
 import os
 import shutil
@@ -31,17 +31,32 @@ app.include_router(lab_router.router)
 app.include_router(llm_studio_router.router, prefix="/api")
 app.include_router(chat_router.router, prefix="/api/chat")
 app.include_router(skills_router.router)
+app.include_router(voice_router.router, prefix="/api/voice")
+app.include_router(memory_router.router, prefix="/api/memory")
+app.include_router(daemon_router.router)
 
 
 @app.on_event("startup")
 def startup_event():
-    """Background startup warm-up: launches Docker & Ollama supervisors asynchronously."""
+    """Background startup warm-up: launches Docker & Ollama supervisors, and starts proactive watchdog."""
     import threading
     from backend.core.sandbox import ensure_docker_daemon_async
     threading.Thread(target=ensure_docker_daemon_async, daemon=True).start()
 
     from backend.api.chat_router import ensure_ollama_daemon
     threading.Thread(target=ensure_ollama_daemon, daemon=True).start()
+
+    from backend.core.task_daemon import start_proactive_watchdog_loop
+    start_proactive_watchdog_loop(interval_sec=20)
+
+    try:
+        from backend.core.voice_pilot import load_voice_config
+        v_cfg = load_voice_config()
+        if v_cfg.get("wake_word_enabled", True):
+            from backend.core.wake_word_listener import start_native_wake_word_daemon
+            start_native_wake_word_daemon(in_background=True)
+    except Exception as e:
+        print(f"[Startup Warning] Native Wake-Word Daemon startup notice: {e}")
 
 
 @app.get("/debug/gemini")

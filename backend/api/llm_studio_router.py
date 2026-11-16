@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -695,5 +695,173 @@ def download_synthetic_dataset(filename: str):
         filename=clean_name,
         media_type="application/x-jsonlines"
     )
+
+
+# ============================================================================
+# PERSONA & CONSCIOUSNESS FORGE
+# ============================================================================
+class PersonaBakeRequest(BaseModel):
+    agent_name: str = Field("Assistant", description="Designation name of the AI")
+    role_mandate: str = Field("Autonomous Systems Specialist", description="Operational role and mandate")
+    full_designation: Optional[str] = Field(None, description="Optional designation")
+    user_addressing: Optional[str] = Field(None, description="How the AI addresses the user ('Sir', 'Boss', 'Commander', or custom)")
+    creator: Optional[str] = Field(None, description="Creator identity (optional)")
+    voice_accent: Optional[str] = Field(None, description="Voice diction/accent description")
+    internet_voice: Optional[str] = Field(None, description="Neural voice identifier, or 'none' for pure offline")
+    fallback_voice: Optional[str] = Field("default", description="Offline fallback voice identifier ('male', 'female', 'default', 'none')")
+    sarcasm_level: int = Field(20, ge=0, le=100, description="Wit & sarcasm percentage")
+    autonomy_level: int = Field(50, ge=0, le=100, description="Advisory pushback & initiative")
+    calm_under_fire: int = Field(100, ge=0, le=100, description="Calmness during errors/crashes")
+    verbosity: int = Field(30, ge=0, le=100, description="Verbosity: 20=crisp (under 30 words), 80=detailed")
+    core_directive: Optional[str] = Field(None, description="Fundamental ethical directive")
+    pushback_rule: Optional[str] = Field(None, description="Pushback & advisory protocol")
+    specialist_domains: List[str] = Field(default_factory=list, description="Knowledge domains")
+    base_model: str = Field("cyber-specialist:latest", description="Base Ollama model to inherit from")
+
+
+@router.post("/persona/synthesize_dataset")
+def synthesize_persona_dataset_endpoint(req: PersonaBakeRequest) -> Dict[str, Any]:
+    """
+    Synthesizes multi-turn QLoRA alignment dataset with metacognitive <thought> reasoning traces.
+    Prepares dataset for fine-tuning on local RTX 3050 GPU dynamically from user configuration.
+    """
+    from backend.llm_studio.persona_synthesizer import synthesize_persona_training_dataset
+    res = synthesize_persona_training_dataset(
+        agent_name=req.agent_name,
+        role_mandate=req.role_mandate,
+        specialist_domains=req.specialist_domains,
+        user_addressing=req.user_addressing,
+        creator=req.creator,
+        core_directive=req.core_directive,
+        pushback_rule=req.pushback_rule,
+        sarcasm_level=req.sarcasm_level,
+        autonomy_level=req.autonomy_level,
+        calm_under_fire=req.calm_under_fire,
+        verbosity=req.verbosity,
+    )
+    return res
+
+
+@router.post("/persona/bake")
+def bake_persona_endpoint(req: PersonaBakeRequest) -> Dict[str, Any]:
+    """
+    Bakes and compiles a Stark Matrix Persona model directly into local Ollama.
+    Combines the identity core, psychological dials, and pushback directives into an immutable Modelfile.
+    """
+    import subprocess
+    import shutil
+    import re
+    from pathlib import Path
+
+    clean_tag = re.sub(r"[^\w\.-]", "", req.agent_name.lower().replace(".", "").replace(" ", "-")).strip("-")
+    if not clean_tag:
+        clean_tag = "custom-agent"
+    model_tag = f"{clean_tag}:latest"
+
+    # Construct the Constitutional System Prompt strictly from user-provided parameters
+    addr = req.user_addressing.strip() if req.user_addressing else ""
+    tone_desc = "high dry wit and irony" if req.sarcasm_level >= 70 else "subtle dry humor" if req.sarcasm_level >= 30 else "strictly direct, technical, and objective"
+    verbosity_desc = "concise (strictly 1 to 2 sentences)" if req.verbosity <= 35 else "balanced (2 to 3 sentences)" if req.verbosity <= 65 else "detailed and analytical"
+    domains_str = ", ".join(req.specialist_domains) if req.specialist_domains else ""
+
+    mandate = (req.role_mandate or "").strip() or "Autonomous Systems Specialist"
+    prompt_lines = [
+        f"You are {req.agent_name}.",
+        f"OPERATIONAL ROLE & PRIMARY MANDATE: {mandate}."
+    ]
+    if req.creator and req.creator.strip():
+        prompt_lines.append(f"CREATOR & ORIGIN: Configured by {req.creator.strip()}.")
+    if addr:
+        prompt_lines.append(f"OPERATOR ADDRESS: Address the user consistently as '{addr}'.")
+    prompt_lines.append(f"TONE & CADENCE: Speak with {tone_desc}.")
+    prompt_lines.append(f"VERBOSITY: Keep responses {verbosity_desc}. Never generate redundant conversational filler.")
+    if req.core_directive and req.core_directive.strip():
+        prompt_lines.append(f"CORE DIRECTIVE: {req.core_directive.strip()}")
+    if req.pushback_rule and req.pushback_rule.strip():
+        prompt_lines.append(f"ADVISORY PUSHBACK ({req.autonomy_level}% Autonomy): {req.pushback_rule.strip()}")
+    if req.calm_under_fire:
+        prompt_lines.append(f"STABILITY & RESILIENCE ({req.calm_under_fire}%): During system faults or unexpected exceptions, remain analytical and composed.")
+    if domains_str:
+        prompt_lines.append(f"DOMAIN MASTERY: You specialize in: {domains_str}. Prioritize practical, deterministic tools and commands in these domains.")
+    prompt_lines.append("ANTI-DISCLAIMER MANDATE: Provide direct, high-precision technical answers and execution without generic AI disclaimers.")
+
+    system_prompt = "\n".join(prompt_lines)
+
+    temp_val = round(0.15 + (req.sarcasm_level / 400.0), 2)
+    modelfile_content = f"""# Persona Modelfile - Generated by Unleash-Agent Studio
+FROM {req.base_model}
+
+PARAMETER temperature {temp_val}
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"
+PARAMETER stop "Human:"
+PARAMETER stop "User:"
+
+SYSTEM \"\"\"{system_prompt}\"\"\"
+
+TEMPLATE \"\"\"{{{{ if .System }}}}<|start_header_id|>system<|end_header_id|>
+
+{{{{ .System }}}}<|eot_id|>{{{{ end }}}}{{{{ if .Prompt }}}}<|start_header_id|>user<|end_header_id|>
+
+{{{{ .Prompt }}}}<|eot_id|>{{{{ end }}}}<|start_header_id|>assistant<|end_header_id|>
+
+{{{{ .Response }}}}<|eot_id|>\"\"\"
+"""
+
+    persona_dir = Path("backend/data/personas") / clean_tag
+    persona_dir.mkdir(parents=True, exist_ok=True)
+    modelfile_path = persona_dir / "Modelfile"
+    modelfile_path.write_text(modelfile_content, encoding="utf-8")
+
+    # Run ollama create
+    try:
+        proc = subprocess.run(
+            ["ollama", "create", model_tag, "-f", str(modelfile_path.resolve())],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False
+        )
+        if proc.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Ollama compilation failed: {proc.stderr or proc.stdout}"
+            )
+
+        import json
+        import time
+        persona_config = {
+            "agent_name": req.agent_name,
+            "clean_tag": clean_tag,
+            "model_tag": model_tag,
+            "internet_voice": req.internet_voice if req.internet_voice and req.internet_voice != "none" else None,
+            "fallback_voice": req.fallback_voice or "default",
+            "user_addressing": addr,
+            "role_mandate": req.role_mandate,
+            "created_at": time.time()
+        }
+        try:
+            (persona_dir / "persona_config.json").write_text(json.dumps(persona_config, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+        return {
+            "status": "success",
+            "model_tag": model_tag,
+            "agent_name": req.agent_name,
+            "full_designation": req.full_designation,
+            "user_addressing": addr,
+            "internet_voice": persona_config["internet_voice"],
+            "fallback_voice": persona_config["fallback_voice"],
+            "base_model": req.base_model,
+            "message": f"Persona '{req.agent_name}' ({model_tag}) successfully compiled and baked into Ollama!",
+            "modelfile_path": str(modelfile_path)
+        }
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Ollama compilation timed out after 120s.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Persona baking failed: {str(e)}")
 
 

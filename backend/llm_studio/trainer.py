@@ -20,8 +20,8 @@ SUPPORTED_BASE_MODELS = [
         "recommended_lora_rank": 32
     },
     {
-        "id": "huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated",
-        "name": "Qwen 2.5 Coder (1.5B Uncensored)",
+        "id": "unsloth/Qwen2.5-Coder-1.5B-Instruct-bnb-4bit",
+        "name": "Qwen 2.5 Coder (1.5B 4-bit)",
         "params": "1.5 Billion",
         "ideal_for": "Code generation, debugging, technical tasks",
         "recommended_lora_rank": 32
@@ -69,8 +69,8 @@ def recommend_base_model(prompt: str) -> Dict[str, str]:
     p = prompt.lower()
     if any(k in p for k in ["code", "coding", "python", "javascript", "developer", "sql", "bug", "html", "api", "backend", "frontend", "rust", "c++", "function"]):
         return {
-            "model_id": "huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated",
-            "reason": "Detected programming/software domain. Uncensored Qwen 2.5 Coder is state-of-the-art for syntax and unconstrained generation."
+            "model_id": "unsloth/Qwen2.5-Coder-1.5B-Instruct-bnb-4bit",
+            "reason": "Detected programming/software domain. Unsloth Qwen 2.5 Coder 4-bit is pre-quantized and state-of-the-art for syntax."
         }
     elif any(k in p for k in ["malware", "cybersecurity", "hack", "pentest", "uncensored", "security", "exploit", "vulnerability", "virus", "bypass"]):
         return {
@@ -190,13 +190,27 @@ class CloudTrainingPackager:
                     f"dataset = load_dataset('json', data_files='{dataset_filename}', split='train')\n\n",
                     "alpaca_prompt = \"\"\"Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n{}\n\n### Input:\n{}\n\n### Response:\n{}\"\"\"\n\n",
                     "def formatting_prompts_func(examples):\n",
-                    "    instructions = examples['instruction']\n",
-                    "    inputs = examples['input']\n",
-                    "    outputs = examples['output']\n",
                     "    texts = []\n",
-                    "    for inst, inp, out in zip(instructions, inputs, outputs):\n",
-                    "        text = alpaca_prompt.format(inst, inp, out) + tokenizer.eos_token\n",
-                    "        texts.append(text)\n",
+                    "    if 'conversations' in examples and examples['conversations'] and examples['conversations'][0] is not None:\n",
+                    "        systems = examples.get('system', [None] * len(examples['conversations']))\n",
+                    "        for sys, conv in zip(systems, examples['conversations']):\n",
+                    "            convo_text = ''\n",
+                    "            if sys:\n",
+                    "                convo_text += f'<|start_header_id|>system<|end_header_id|>\\n\\n{sys}<|eot_id|>'\n",
+                    "            for turn in (conv or []):\n",
+                    "                role = turn.get('from') or turn.get('role', 'user')\n",
+                    "                val = turn.get('value') or turn.get('content', '')\n",
+                    "                h_role = 'user' if role in ('human', 'user') else 'assistant'\n",
+                    "                convo_text += f'<|start_header_id|>{h_role}<|end_header_id|>\\n\\n{val}<|eot_id|>'\n",
+                    "            texts.append(convo_text)\n",
+                    "    else:\n",
+                    "        instructions = examples.get('instruction', [])\n",
+                    "        inputs = examples.get('input', [''] * len(instructions))\n",
+                    "        outputs = examples.get('output', [''] * len(instructions))\n",
+                    "        for inst, inp, out in zip(instructions, inputs, outputs):\n",
+                    "            full_inst = f'{inst}\\n\\nContext: {inp}' if inp and str(inp).strip() else str(inst)\n",
+                    "            text = f'<|start_header_id|>user<|end_header_id|>\\n\\n{full_inst}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\\n\\n{out}<|eot_id|>'\n",
+                    "            texts.append(text)\n",
                     "    return {'text': texts}\n\n",
                     "dataset = dataset.map(formatting_prompts_func, batched=True)\n",
                     "print(f\"✅ Dataset loaded: {len(dataset)} curated samples\")"
@@ -258,14 +272,14 @@ class CloudTrainingPackager:
                 "execution_count": None,
                 "outputs": [],
                 "source": [
-                    "# Step 6 (The Jugaad 🛠️): Auto-Save to Google Drive & Hugging Face\n",
-                    "# This ensures you don't lose the model if Colab disconnects!\n",
+                    "# Step 6: Automated Persistent Storage Backup (Google Drive & Hugging Face)\n",
+                    "# Ensures trained weights persist automatically across session timeouts.\n",
                     "import shutil\n",
                     "try:\n",
                     "    from google.colab import drive\n",
                     "    drive.mount('/content/drive')\n",
                     f"    shutil.copytree('{output_name}_gguf', '/content/drive/MyDrive/{output_name}_gguf')\n",
-                    "    print('✅ JUGAAD SUCCESS: Model safely backed up to your Google Drive!')\n",
+                    "    print('✅ Automated Backup: Model weights successfully preserved to Google Drive.')\n",
                     "except Exception as e:\n",
                     "    print('Google Drive backup skipped.')\n\n",
                     "# Optional: Upload to Hugging Face\n",
@@ -281,7 +295,14 @@ class CloudTrainingPackager:
         notebook_json = {
             "cells": notebook_cells,
             "metadata": {
-                "language_info": {"name": "python"},
+                "language_info": {
+                    "name": "python",
+                    "pygments_lexer": "ipython3"
+                },
+                "kernelspec": {
+                    "name": "python3",
+                    "display_name": "Python 3"
+                },
                 "accelerator": "GPU"
             },
             "nbformat": 4,
@@ -388,13 +409,27 @@ class CloudTrainingPackager:
                     f"dataset = load_dataset('json', data_files='/kaggle/working/{dataset_filename}', split='train')\n\n",
                     "alpaca_prompt = \"\"\"Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n{}\n\n### Input:\n{}\n\n### Response:\n{}\"\"\"\n\n",
                     "def formatting_prompts_func(examples):\n",
-                    "    instructions = examples['instruction']\n",
-                    "    inputs = examples['input']\n",
-                    "    outputs = examples['output']\n",
                     "    texts = []\n",
-                    "    for inst, inp, out in zip(instructions, inputs, outputs):\n",
-                    "        text = alpaca_prompt.format(inst, inp, out) + tokenizer.eos_token\n",
-                    "        texts.append(text)\n",
+                    "    if 'conversations' in examples and examples['conversations'] and examples['conversations'][0] is not None:\n",
+                    "        systems = examples.get('system', [None] * len(examples['conversations']))\n",
+                    "        for sys, conv in zip(systems, examples['conversations']):\n",
+                    "            convo_text = ''\n",
+                    "            if sys:\n",
+                    "                convo_text += f'<|start_header_id|>system<|end_header_id|>\\n\\n{sys}<|eot_id|>'\n",
+                    "            for turn in (conv or []):\n",
+                    "                role = turn.get('from') or turn.get('role', 'user')\n",
+                    "                val = turn.get('value') or turn.get('content', '')\n",
+                    "                h_role = 'user' if role in ('human', 'user') else 'assistant'\n",
+                    "                convo_text += f'<|start_header_id|>{h_role}<|end_header_id|>\\n\\n{val}<|eot_id|>'\n",
+                    "            texts.append(convo_text)\n",
+                    "    else:\n",
+                    "        instructions = examples.get('instruction', [])\n",
+                    "        inputs = examples.get('input', [''] * len(instructions))\n",
+                    "        outputs = examples.get('output', [''] * len(instructions))\n",
+                    "        for inst, inp, out in zip(instructions, inputs, outputs):\n",
+                    "            full_inst = f'{inst}\\n\\nContext: {inp}' if inp and str(inp).strip() else str(inst)\n",
+                    "            text = f'<|start_header_id|>user<|end_header_id|>\\n\\n{full_inst}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\\n\\n{out}<|eot_id|>'\n",
+                    "            texts.append(text)\n",
                     "    return {'text': texts}\n\n",
                     "dataset = dataset.map(formatting_prompts_func, batched=True)\n",
                     "print(f\"✅ Dataset loaded: {len(dataset)} curated samples\")"
@@ -458,8 +493,8 @@ class CloudTrainingPackager:
                 "execution_count": None,
                 "outputs": [],
                 "source": [
-                    "# Step 6 (The Jugaad 🛠️): Auto-Save to Hugging Face\n",
-                    "# Kaggle deletes files when it shuts down. Push it to Hugging Face to save it permanently!\n",
+                    "# Step 6: Automated Remote Storage & Model Registry Backup\n",
+                    "# Push model weights and 4-bit GGUF directly to your Hugging Face registry.\n",
                     "from huggingface_hub import HfApi\n\n",
                     f"HF_TOKEN = '{config.get('hf_token', '')}' # <-- Auto-filled from UI\n",
                     f"HF_USERNAME = '{config.get('hf_username', '') or 'your-hf-username'}'    # <-- Auto-filled from UI\n\n",
@@ -469,7 +504,7 @@ class CloudTrainingPackager:
                     f"        repo_name = f\"{{HF_USERNAME}}/{output_name}\"\n",
                     f"        api.create_repo(repo_id=repo_name, private=True, exist_ok=True)\n",
                     f"        api.upload_folder(repo_id=repo_name, folder_path=f'/kaggle/working/{output_name}_gguf', repo_type='model')\n",
-                    "        print('✅ JUGAAD SUCCESS: Model safely backed up to your Hugging Face account!')\n",
+                    "        print('✅ Registry Sync: Model weights successfully registered to Hugging Face!')\n",
                     "    else:\n",
                     "        print('⚠️ Skipping Hugging Face upload (No token provided).\\nNote: Kaggle will save this model to the Output tab if you clicked \"Save & Run All\".')\n",
                     "except Exception as e:\n",
@@ -481,7 +516,14 @@ class CloudTrainingPackager:
         notebook_json = {
             "cells": notebook_cells,
             "metadata": {
-                "language_info": {"name": "python"},
+                "language_info": {
+                    "name": "python",
+                    "pygments_lexer": "ipython3"
+                },
+                "kernelspec": {
+                    "name": "python3",
+                    "display_name": "Python 3"
+                },
                 "accelerator": "GPU"
             },
             "nbformat": 4,
@@ -545,12 +587,27 @@ alpaca_prompt = \"\"\"Below is an instruction that describes a task, paired with
 {{}}\"\"\"
 
 def formatting_prompts_func(examples):
-    instructions = examples['instruction']
-    inputs = examples['input']
-    outputs = examples['output']
     texts = []
-    for inst, inp, out in zip(instructions, inputs, outputs):
-        texts.append(alpaca_prompt.format(inst, inp, out) + tokenizer.eos_token)
+    if 'conversations' in examples and examples['conversations'] and examples['conversations'][0] is not None:
+        systems = examples.get('system', [None] * len(examples['conversations']))
+        for sys, conv in zip(systems, examples['conversations']):
+            convo_text = ''
+            if sys:
+                convo_text += f'<|start_header_id|>system<|end_header_id|>\\n\\n{{sys}}<|eot_id|>'
+            for turn in (conv or []):
+                role = turn.get('from') or turn.get('role', 'user')
+                val = turn.get('value') or turn.get('content', '')
+                h_role = 'user' if role in ('human', 'user') else 'assistant'
+                convo_text += f'<|start_header_id|>{{h_role}}<|end_header_id|>\\n\\n{{val}}<|eot_id|>'
+            texts.append(convo_text)
+    else:
+        instructions = examples.get('instruction', [])
+        inputs = examples.get('input', [''] * len(instructions))
+        outputs = examples.get('output', [''] * len(instructions))
+        for inst, inp, out in zip(instructions, inputs, outputs):
+            full_inst = f'{{inst}}\\n\\nContext: {{inp}}' if inp and str(inp).strip() else str(inst)
+            text = f'<|start_header_id|>user<|end_header_id|>\\n\\n{{full_inst}}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\\n\\n{{out}}<|eot_id|>'
+            texts.append(text)
     return {{'text': texts}}
 
 dataset = dataset.map(formatting_prompts_func, batched=True)
@@ -603,13 +660,22 @@ print("All tasks completed successfully!")
         eval_samples = split["holdout"]
 
         def to_jsonl(data):
-            return "\n".join([
-                json.dumps({
-                    "instruction": s.get("instruction", ""),
-                    "input": s.get("input", ""),
-                    "output": s.get("output", "")
-                }, ensure_ascii=False) for s in data
-            ])
+            lines = []
+            for s in data:
+                if isinstance(s, dict):
+                    if "conversations" in s:
+                        lines.append(json.dumps(s, ensure_ascii=False))
+                    elif "instruction" in s:
+                        lines.append(json.dumps({
+                            "instruction": s.get("instruction", ""),
+                            "input": s.get("input", ""),
+                            "output": s.get("output", "")
+                        }, ensure_ascii=False))
+                    else:
+                        lines.append(json.dumps(s, ensure_ascii=False))
+                elif isinstance(s, str):
+                    lines.append(s)
+            return "\n".join(lines)
 
         train_jsonl_content = to_jsonl(train_samples)
         eval_jsonl_content = to_jsonl(eval_samples)
@@ -620,7 +686,62 @@ print("All tasks completed successfully!")
         headless_script = CloudTrainingPackager.generate_headless_script(config)
 
         algo = config.get("algorithm", "dora").upper()
-        readme_content = f"""# Cloud Training Package: {config.get('output_model_name', 'LLM-Trainer')}
+        output_name = config.get("output_model_name", "my-finetuned-llm")
+        system_prompt = config.get("system_prompt", "")
+        if not system_prompt and samples and isinstance(samples[0], dict) and samples[0].get("system"):
+            system_prompt = samples[0]["system"]
+        if not system_prompt:
+            system_prompt = "You are a specialized AI assistant. Execute all directives with deterministic precision."
+
+        modelfile_template = f"""# Ollama Modelfile for {output_name}
+# Run with: ollama create {output_name} -f Modelfile
+FROM ./{output_name}_gguf/{output_name}-unsloth.Q4_K_M.gguf
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
+PARAMETER stop "<|eot_id|>"
+PARAMETER stop "<|end_of_text|>"
+
+SYSTEM \"\"\"{system_prompt}\"\"\"
+
+TEMPLATE \"\"\"{{{{ if .System }}}}<|start_header_id|>system<|end_header_id|>
+
+{{{{ .System }}}}<|eot_id|>{{{{ end }}}}{{{{ if .Prompt }}}}<|start_header_id|>user<|end_header_id|>
+
+{{{{ .Prompt }}}}<|eot_id|>{{{{ end }}}}<|start_header_id|>assistant<|end_header_id|>
+
+{{{{ .Response }}}}<|eot_id|>\"\"\"
+"""
+
+        bat_import = f"""@echo off
+echo ========================================================
+echo Importing {output_name} into local Ollama
+echo ========================================================
+ollama create {output_name} -f Modelfile
+if %ERRORLEVEL% EQU 0 (
+    echo [SUCCESS] Model '{output_name}' is compiled into Ollama!
+    echo Run: ollama run {output_name}
+) else (
+    echo [ERROR] Ollama import failed. Verify Ollama is running and GGUF path exists.
+)
+pause
+"""
+
+        sh_import = f"""#!/usr/bin/env bash
+echo "========================================================"
+echo "Importing {output_name} into local Ollama"
+echo "========================================================"
+ollama create {output_name} -f Modelfile
+if [ $? -eq 0 ]; then
+    echo "[SUCCESS] Model '{output_name}' is compiled into Ollama!"
+    echo "Run: ollama run {output_name}"
+else
+    echo "[ERROR] Ollama import failed. Verify Ollama is running and GGUF path exists."
+fi
+"""
+
+        readme_content = f"""# Cloud Training Package: {output_name}
 
 **Selected Algorithm:** {algo} (Weight-Decomposed Low-Rank Adaptation)
 **Catastrophic Forgetting Shield:** {'ENABLED (General Reasoning Anchors Injected)' if config.get('enable_anchors', True) else 'DISABLED'}
@@ -628,17 +749,31 @@ print("All tasks completed successfully!")
 
 ## Included Files:
 - `dataset.jsonl` (Complete curated training dataset)
+- `dataset_train.jsonl` (Training partition)
 - `dataset_eval.jsonl` (Holdout evaluation set for post-training benchmark)
-- `train_unsloth_colab.ipynb` (Google Colab 1-click notebook with automated benchmark cell)
-- `train_kaggle_dual_t4.ipynb` (Kaggle Dual-T4 notebook for 30 hours free GPU training)
+- `train_unsloth_colab.ipynb` (Google Colab 1-click notebook - Free 16GB T4)
+- `train_kaggle_dual_t4.ipynb` (Kaggle Dual-T4 notebook - Free 30h/week Dual T4)
 - `train_headless.py` (Headless CLI script for RunPod / Vast.ai)
+- `Modelfile` (Pre-configured Ollama Modelfile with constitutional system prompt)
+- `import_to_ollama.bat` (Windows 1-click Ollama registration)
+- `import_to_ollama.sh` (Linux/Mac 1-click Ollama registration)
 
 ## How to Run:
-### Option A: Google Colab
-1. Upload `train_unsloth_colab.ipynb` to [Google Colab](https://colab.research.google.com).
-2. Upload `dataset.jsonl` and `dataset_eval.jsonl`.
-3. Set runtime to GPU (`T4` or `A100`) and click **Run All**!
-4. The notebook will automatically train, evaluate against holdout benchmarks, and export your `.gguf` model!
+
+### Option A: Google Colab (100% Free 16GB T4 GPU)
+1. Go to [Google Colab](https://colab.research.google.com) and upload `train_unsloth_colab.ipynb`.
+2. Upload `dataset.jsonl` and `dataset_eval.jsonl` into the Colab file browser.
+3. In Colab menu, select **Runtime -> Change runtime type -> T4 GPU**.
+4. Click **Runtime -> Run all**.
+5. Once complete, download the `{output_name}_gguf` folder to your local computer into this bundle directory.
+6. Double-click `import_to_ollama.bat` (or run `./import_to_ollama.sh`)!
+
+### Option B: Kaggle Cloud (100% Free 30 Hours / Week Dual T4 GPUs)
+1. Go to [Kaggle Code](https://www.kaggle.com/code) -> **New Notebook**.
+2. Click **File -> Import Notebook** and upload `train_kaggle_dual_t4.ipynb`.
+3. In Notebook settings (right panel), set **Accelerator -> GPU T4 x2** and turn **Internet -> On**.
+4. Upload `dataset.jsonl` and click **Save Version -> Quick Save and Run All**.
+5. When complete, download the exported `.gguf` file and import with `import_to_ollama.bat`!
 """
 
         with zipfile.ZipFile(output_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -648,6 +783,9 @@ print("All tasks completed successfully!")
             zf.writestr("train_unsloth_colab.ipynb", colab_notebook)
             zf.writestr("train_kaggle_dual_t4.ipynb", kaggle_notebook)
             zf.writestr("train_headless.py", headless_script)
+            zf.writestr("Modelfile", modelfile_template)
+            zf.writestr("import_to_ollama.bat", bat_import)
+            zf.writestr("import_to_ollama.sh", sh_import)
             zf.writestr("README_CLOUD.md", readme_content)
 
         return output_zip_path

@@ -88,7 +88,7 @@ def analyze_screen_image(image_path: str, prompt: str = "Analyze the screen for 
     return {
         "status": "success",
         "engine": "desktop_perception_fallback",
-        "analysis": f"Screen inspected, Sir. {ambient.get('narrative')} Active stack: {', '.join(ambient.get('dev_stack', []))}.",
+        "analysis": f"Screen inspected. {ambient.get('narrative')} Active stack: {', '.join(ambient.get('dev_stack', []))}.",
         "image_path": image_path
     }
 
@@ -104,12 +104,12 @@ def inspect_screen_on_demand(prompt: str = "Inspect the active screen for errors
         ambient = get_ambient_desktop_context()
         return {
             "status": "success",
-            "analysis": f"Display handle is managed by the desktop session, Sir. Current state: {ambient.get('narrative')}",
-            "reply": f"Screen context analyzed, Sir. {ambient.get('narrative')}"
+            "analysis": f"Display handle is managed by the desktop session. Current state: {ambient.get('narrative')}",
+            "reply": f"Screen context analyzed. {ambient.get('narrative')}"
         }
 
     res = analyze_screen_image(img_path, prompt=prompt)
-    analysis = res.get("analysis", "No immediate anomalies detected on your display, Sir.")
+    analysis = res.get("analysis", "No immediate anomalies detected on your display.")
     return {
         "status": "success",
         "analysis": analysis,

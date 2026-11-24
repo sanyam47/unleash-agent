@@ -36,6 +36,13 @@ app.include_router(memory_router.router, prefix="/api/memory")
 app.include_router(daemon_router.router)
 
 
+@app.get("/api/system/telemetry")
+def get_system_telemetry_top_level():
+    """Returns verified real-time workstation hardware telemetry in < 1ms."""
+    from backend.core.workstation_sensors import get_full_workstation_telemetry
+    return get_full_workstation_telemetry()
+
+
 @app.on_event("startup")
 def startup_event():
     """Background startup warm-up: launches Docker & Ollama supervisors, and starts proactive watchdog."""

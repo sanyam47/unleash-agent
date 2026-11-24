@@ -22,7 +22,7 @@ class SmartSituationAdvisor:
             domain_label = "💻 Software Engineering & Code Syntax"
             recommended_base_model = "Qwen/Qwen2.5-Coder-1.5B-Instruct"
             ollama_base = "qwen2.5-coder:1.5b"
-            model_aliases = ["huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated", "qwen2.5-coder:1.5b", "Qwen/Qwen2.5-Coder-1.5B-Instruct", "qwen", "coder"]
+            model_aliases = ["unsloth/Qwen2.5-Coder-1.5B-Instruct-bnb-4bit", "qwen2.5-coder:1.5b", "Qwen/Qwen2.5-Coder-1.5B-Instruct", "qwen", "coder"]
             model_reason = "Qwen 2.5 Coder is the state-of-the-art open-weights architecture for indentation, AST parsing, and programming languages."
             rec_temp = 0.2
             temp_reason = "Low temperature (0.2) eliminates hallucinations and enforces strict syntax correctness."

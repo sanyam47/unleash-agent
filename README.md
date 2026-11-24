@@ -122,6 +122,15 @@ playwright install chromium
 ```
 
 ### 2. Launch Local Engine & Studio
+
+#### ⚡ 1-Click Launch (Windows)
+Double-click `start_studio.bat` (or run in cmd):
+```cmd
+start_studio.bat
+```
+*Automatically audits Ollama status, clears stale ports, sets PYTHONPATH, and opens `http://localhost:8001` in your browser.*
+
+#### Manual Launch (Terminal)
 ```bash
 # Terminal 1: Start local Ollama daemon
 ollama serve

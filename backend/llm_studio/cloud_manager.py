@@ -239,171 +239,37 @@ class KaggleAutoPilotRunner:
         kernel_dir = os.path.join(os.getcwd(), "cloud_packages", "kaggle_runs", slug)
         os.makedirs(kernel_dir, exist_ok=True)
 
-        base_model = config.get("base_model", "meta-llama/Llama-3.2-1B-Instruct")
-        lora_r = config.get("lora_rank", 16)
-        lora_alpha = config.get("lora_alpha", 32)
-        epochs = config.get("epochs", 3)
-        lr = config.get("learning_rate", 2e-4)
-        algo = config.get("algorithm", "dora").lower()
-        use_dora = "True" if algo == "dora" else "False"
+        from backend.llm_studio.trainer import CloudTrainingPackager
+        import json
 
-        # Embedded JSON samples
+        dataset_path = os.path.join(kernel_dir, 'dataset.jsonl')
+        with open(dataset_path, 'w', encoding='utf-8') as f:
+            for s in samples:
+                f.write(json.dumps(s) + '\n')
+
+        nb_str = CloudTrainingPackager.generate_kaggle_notebook(config, dataset_filename='dataset.jsonl')
+        nb_data = json.loads(nb_str)
+
         samples_json = json.dumps(samples)
-
-        notebook_cells = [
-            {
-                "cell_type": "markdown",
-                "metadata": {},
-                "source": [
-                    f"# 🚀 Auto-Pilot Cloud Training: {clean_name}\\n",
-                    f"**Base Model:** `{base_model}` | **Method:** {'DoRA' if use_dora == 'True' else 'LoRA'} | **Dual T4 GPUs (32 GB VRAM)**\\n",
-                    "Dispatched automatically by AI Studio Personal Foundry."
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 0: Unpack Curated Dataset\\n",
-                    "import json, os\\n\\n",
-                    f"samples = {samples_json}\\n",
-                    "with open('dataset.jsonl', 'w', encoding='utf-8') as f:\\n",
-                    "    for s in samples:\\n",
-                    "        f.write(json.dumps(s) + '\\n')\\n",
-                    "print(f'✅ Curated dataset unpacked: {len(samples)} samples ready!')"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 1: Install High-Performance Unsloth & Dependencies\\n",
-                    "!pip install --upgrade --no-cache-dir pip\\n",
-                    "!pip install \"unsloth[kaggle-new] @ git+https://github.com/unslothai/unsloth.git\" torch torchvision transformers datasets trl peft bitsandbytes accelerate"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 2: Load Model with 4-bit Quantization\\n",
-                    "from unsloth import FastLanguageModel\\n",
-                    "import torch\\n\\n",
-                    f"model, tokenizer = FastLanguageModel.from_pretrained(\\n",
-                    f"    model_name='{base_model}',\\n",
-                    "    max_seq_length=2048,\\n",
-                    "    dtype=None,\\n",
-                    "    load_in_4bit=True,\\n",
-                    ")\\n\\n",
-                    "model = FastLanguageModel.get_peft_model(\\n",
-                    "    model,\\n",
-                    f"    r={lora_r},\\n",
-                    f"    lora_alpha={lora_alpha},\\n",
-                    "    target_modules=['q_proj', 'k_proj', 'v_proj', 'o_proj', 'gate_proj', 'up_proj', 'down_proj'],\\n",
-                    f"    use_dora={use_dora},\\n",
-                    "    lora_dropout=0,\\n",
-                    "    bias='none',\\n",
-                    "    use_gradient_checkpointing='unsloth',\\n",
-                    "    random_state=42,\\n",
-                    ")\\n",
-                    "print('✅ Model & Adapters successfully initialized on Dual T4 GPUs!')"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 3: Load Dataset\\n",
-                    "from datasets import load_dataset\\n\\n",
-                    "dataset = load_dataset('json', data_files='dataset.jsonl', split='train')\\n",
-                    "alpaca_prompt = '''Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\\n\\n### Instruction:\\n{}\\n\\n### Input:\\n{}\\n\\n### Response:\\n{}'''\\n\\n",
-                    "def format_prompts(examples):\\n",
-                    "    instructions = examples['instruction']\\n",
-                    "    inputs = examples['input']\\n",
-                    "    outputs = examples['output']\\n",
-                    "    texts = []\\n",
-                    "    for inst, inp, out in zip(instructions, inputs, outputs):\\n",
-                    "        text = alpaca_prompt.format(inst, inp, out) + tokenizer.eos_token\\n",
-                    "        texts.append(text)\\n",
-                    "    return {'text': texts}\\n\\n",
-                    "dataset = dataset.map(format_prompts, batched=True)\\n",
-                    "print(f'✅ Dataset formatted: {len(dataset)} samples ready!')"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 4: SFT Training\\n",
-                    "from trl import SFTTrainer\\n",
-                    "from transformers import TrainingArguments\\n\\n",
-                    "trainer = SFTTrainer(\\n",
-                    "    model=model,\\n",
-                    "    tokenizer=tokenizer,\\n",
-                    "    train_dataset=dataset,\\n",
-                    "    dataset_text_field='text',\\n",
-                    "    max_seq_length=2048,\\n",
-                    "    dataset_num_proc=2,\\n",
-                    "    packing=False,\\n",
-                    "    args=TrainingArguments(\\n",
-                    "        per_device_train_batch_size=2,\\n",
-                    "        gradient_accumulation_steps=4,\\n",
-                    "        warmup_steps=5,\\n",
-                    f"        num_train_epochs={epochs},\\n",
-                    f"        learning_rate={lr},\\n",
-                    "        fp16=not torch.cuda.is_bf16_supported(),\\n",
-                    "        bf16=torch.cuda.is_bf16_supported(),\\n",
-                    "        logging_steps=1,\\n",
-                    "        optim='adamw_8bit',\\n",
-                    "        output_dir='output',\\n",
-                    "    ),\\n",
-                    ")\\n",
-                    "trainer.train()\\n",
-                    "print('🎉 Cloud Training Finished!')"
-                ]
-            },
-            {
-                "cell_type": "code",
-                "metadata": {},
-                "execution_count": None,
-                "outputs": [],
-                "source": [
-                    "# Step 5: Export GGUF for Ollama\\n",
-                    f"model.save_pretrained_gguf('{clean_name}_gguf', tokenizer, quantization_method='q4_k_m')\\n",
-                    "print('📦 GGUF Quantized Model successfully exported!')"
-                ]
-            }
-        ]
-
-        nb_data = {
-            "cells": notebook_cells,
-            "metadata": {
-                "language_info": {
-                    "name": "python",
-                    "pygments_lexer": "ipython3"
-                },
-                "kernelspec": {
-                    "name": "python3",
-                    "display_name": "Python 3"
-                },
-                "accelerator": "GPU"
-            },
-            "nbformat": 4,
-            "nbformat_minor": 2
+        unpack_cell = {
+            'cell_type': 'code',
+            'metadata': {},
+            'execution_count': None,
+            'outputs': [],
+            'source': [
+                '# Step 0: Ensure dataset is unpacked to /kaggle/working/\n',
+                'import json, os\n\n',
+                f'samples = {samples_json}\n',
+                "with open('/kaggle/working/dataset.jsonl', 'w', encoding='utf-8') as f:\n",
+                '    for s in samples:\n',
+                "        f.write(json.dumps(s) + \"\\n\")\n",
+                "print(f'✅ Curated dataset unpacked: {len(samples)} samples ready!')"
+            ]
         }
+        nb_data['cells'].insert(1, unpack_cell)
 
-        nb_path = os.path.join(kernel_dir, "train_kernel.ipynb")
-        with open(nb_path, "w", encoding="utf-8") as f:
+        nb_path = os.path.join(kernel_dir, 'train_kernel.ipynb')
+        with open(nb_path, 'w', encoding='utf-8') as f:
             json.dump(nb_data, f, indent=2)
 
         meta_data = {

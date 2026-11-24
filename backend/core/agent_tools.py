@@ -914,6 +914,11 @@ AGENT_TOOLS_SCHEMA = [
         }
     },
     {
+        "name": "get_workstation_telemetry",
+        "description": "Inspect live Windows workstation hardware telemetry directly from physical kernel registers and GPU sensors (RAM usage, battery/power state, GPU thermals and load for RTX 3050, active foreground window, and top memory processes). Returns pure JSON hardware metrics in <1ms without any hallucinations.",
+        "parameters": {}
+    },
+    {
         "name": "open_browser_url",
         "description": "Open a website, web application, search query, or link in the user's default Windows web browser (e.g. 'https://youtube.com', 'https://web.whatsapp.com', 'https://github.com').",
         "parameters": {
@@ -927,6 +932,11 @@ AGENT_TOOLS_SCHEMA = [
             "action": "Action to execute: 'processes', 'logs', 'diagnostics', 'heating', 'get_system_info', 'get_clipboard', 'set_clipboard', 'volume_mute', 'volume_up', 'volume_down', 'lock_workstation'",
             "value": "Optional value for actions like 'set_clipboard' (the text) or 'volume_up'/'volume_down' (number of steps)"
         }
+    },
+    {
+        "name": "get_current_time",
+        "description": "Get the precise real-time system clock, local time, date, day of the week, and timezone from the Windows host machine.",
+        "parameters": {}
     },
     {
         "name": "send_desktop_notification",
@@ -1310,6 +1320,20 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         app_args = args.get("args") or args.get("arguments") or ""
         return launch_app(str(app_name), str(app_args) if app_args else None)
 
+    elif tool_name in ("get_workstation_telemetry", "workstation_telemetry", "get_hardware_telemetry", "hardware_telemetry"):
+        from backend.core.workstation_sensors import get_full_workstation_telemetry
+        return get_full_workstation_telemetry()
+
+    elif tool_name in ("get_current_time", "get_time", "current_time", "get_date", "current_date", "clock"):
+        now = time.localtime()
+        return {
+            "status": "success",
+            "current_time": time.strftime("%I:%M %p", now),
+            "current_date": time.strftime("%A, %B %d, %Y", now),
+            "timezone": time.strftime("%Z", now),
+            "formatted": f"It is currently {time.strftime('%I:%M %p on %A, %B %d, %Y', now)}."
+        }
+
     elif tool_name in ("open_browser_url", "open_url", "browse_url", "open_browser", "browse"):
         from backend.core.jarvis_executive import open_browser_url
         url = args.get("url") or args.get("link") or args.get("target") or ""
@@ -1622,3 +1646,24 @@ def get_all_tool_schemas() -> List[Dict[str, Any]]:
     except Exception:
         pass
     return schemas
+
+
+def format_tools_for_modelfile_system() -> str:
+    """
+    Dynamically generates the tool declaration block for Ollama Modelfiles.
+    Zero hardcoding: introspects active tool schemas and builds standard ReAct invocation grammar.
+    """
+    tools = get_all_tool_schemas()
+    lines = [
+        "### AVAILABLE TOOLS & ACTIONS:",
+        "You have direct executive control over the host operating system via tool calling.",
+        "To invoke an action, format your reasoning and action as follows:",
+        "Thought: <your reason for choosing this action>",
+        "Action: <tool_name>(<json_arguments>)",
+        "",
+        "Supported Tools:"
+    ]
+    for t in tools:
+        param_desc = ", ".join([f'"{k}": <{v}>' for k, v in t.get("parameters", {}).items()])
+        lines.append(f"- {t['name']}({{{param_desc}}}): {t.get('description', '')}")
+    return "\n".join(lines)

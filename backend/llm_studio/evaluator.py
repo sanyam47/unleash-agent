@@ -73,8 +73,13 @@ class BenchmarkEvaluator:
         duplicates_count = 0
 
         for idx, s in enumerate(samples):
-            inst = str(s.get("instruction", "")).strip()
-            out = str(s.get("output", "")).strip()
+            # Support both ShareGPT (conversations) and Alpaca (instruction/output) formats
+            if "conversations" in s and s["conversations"]:
+                inst = s["conversations"][0].get("value", "") if len(s["conversations"]) > 0 else ""
+                out = s["conversations"][1].get("value", "") if len(s["conversations"]) > 1 else ""
+            else:
+                inst = str(s.get("instruction", "")).strip()
+                out = str(s.get("output", "")).strip()
 
             if not inst or not out:
                 warnings.append(f"Sample #{idx+1} has empty instruction or output.")
@@ -134,15 +139,29 @@ class BenchmarkEvaluator:
             anchors_to_add = len(GENERAL_REASONING_ANCHORS)
 
         enriched = list(samples)
+        has_convs = bool(samples and "conversations" in samples[0])
+        system_text = samples[0].get("system", "") if has_convs else ""
+
         for i in range(anchors_to_add):
             anchor = GENERAL_REASONING_ANCHORS[i % len(GENERAL_REASONING_ANCHORS)]
-            enriched.append({
-                "id": f"anchor_{i}_{int(time.time())}",
-                "instruction": anchor["instruction"],
-                "input": "",
-                "output": f"Expected standard balanced reasoning: {anchor['expected_trait']}",
-                "source": "Replay Regularization Anchor"
-            })
+            if has_convs:
+                enriched.append({
+                    "id": f"anchor_{i}_{int(time.time())}",
+                    "system": system_text,
+                    "conversations": [
+                        {"from": "human", "value": anchor["instruction"]},
+                        {"from": "gpt", "value": f"<thought>\nApplying baseline general reasoning without task bias.\n</thought>\nExpected standard balanced reasoning: {anchor['expected_trait']}"}
+                    ],
+                    "source": "Replay Regularization Anchor"
+                })
+            else:
+                enriched.append({
+                    "id": f"anchor_{i}_{int(time.time())}",
+                    "instruction": anchor["instruction"],
+                    "input": "",
+                    "output": f"Expected standard balanced reasoning: {anchor['expected_trait']}",
+                    "source": "Replay Regularization Anchor"
+                })
         return enriched
 
     @staticmethod

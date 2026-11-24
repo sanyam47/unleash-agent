@@ -35,6 +35,7 @@ def get_ollama_chat_url() -> str:
 DEFAULT_MAX_STEPS = 24
 
 JARVIS_EXECUTIVE_TOOLS = {
+    "get_workstation_telemetry",
     "launch_application", "open_browser_url", "system_control",
     "send_desktop_notification", "run_host_cli", "browser_navigate",
     "browser_click", "browser_type", "browser_extract",

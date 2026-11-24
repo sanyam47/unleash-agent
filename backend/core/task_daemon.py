@@ -291,10 +291,60 @@ def get_daemon_context_injection() -> str:
 # PROACTIVE AUTONOMIC WATCHDOG DAEMON (Never Sleeps, Observes & Speaks)
 # ============================================================================
 _LAST_PROACTIVE_ALERTS: Dict[str, float] = {}
+_LAST_PROACTIVE_ALERT: Optional[Dict[str, Any]] = None
 _PROACTIVE_ALERTS_LOG: List[Dict[str, Any]] = []
 _ALERTED_TASK_COMPLETIONS: set = set()
 _WATCHDOG_STARTED = False
 _WATCHDOG_LOCK = threading.RLock()
+_WATCHDOG_CONFIG = {
+    "enabled": True,
+    "interval_sec": 20,
+    "ram_threshold_pct": 90,
+    "gpu_temp_threshold_c": 82,
+    "battery_threshold_pct": 15,
+    "voice_alerts": True
+}
+
+
+def get_operator_salutation() -> str:
+    """Dynamically resolves user's addressing preference ('Sir', 'Boss', 'Commander', etc.) from persona/voice config."""
+    try:
+        from backend.core.voice_pilot import load_voice_config
+        cfg = load_voice_config()
+        if cfg.get("user_addressing") and cfg["user_addressing"].strip():
+            return cfg["user_addressing"].strip()
+    except Exception:
+        pass
+
+    # Check baked personas directory
+    try:
+        personas_dir = Path("backend/data/personas")
+        if personas_dir.exists():
+            for p_dir in personas_dir.iterdir():
+                if p_dir.is_dir():
+                    cfg_file = p_dir / "persona_config.json"
+                    if cfg_file.exists():
+                        data = json.loads(cfg_file.read_text(encoding="utf-8"))
+                        if data.get("user_addressing") and data["user_addressing"].strip():
+                            return data["user_addressing"].strip()
+    except Exception:
+        pass
+
+    return "Sir"
+
+
+def format_polite_alert(context_message: str, urgency: str = "normal") -> str:
+    """
+    Wraps workstation advisories in cultured, polite executive phrasing:
+    'Pardon the interruption, Sir...', 'Excuse me, Sir, sorry to interrupt...'
+    Adapts dynamically to the user's configured salutation.
+    """
+    salutation = get_operator_salutation()
+    if urgency == "critical":
+        prefix = f"Excuse me, {salutation}, sorry to interrupt — "
+    else:
+        prefix = f"Pardon the interruption, {salutation}. "
+    return f"{prefix}{context_message}"
 
 
 def get_proactive_alerts(limit: int = 10) -> List[Dict[str, Any]]:
@@ -303,81 +353,162 @@ def get_proactive_alerts(limit: int = 10) -> List[Dict[str, Any]]:
         return list(reversed(_PROACTIVE_ALERTS_LOG[-limit:]))
 
 
-def _emit_proactive_alert(alert_key: str, message: str, category: str = "advisory", cooldown_sec: float = 300.0):
-    """Speaks aloud and logs an autonomous alert if cooldown has elapsed."""
+def get_latest_proactive_alert(max_age_sec: float = 90.0) -> Optional[Dict[str, Any]]:
+    """
+    Returns the most recent proactive alert if emitted within max_age_sec.
+    Enables zero-amnesia conversational continuity when the user responds to an alert.
+    """
+    global _LAST_PROACTIVE_ALERT
+    with _WATCHDOG_LOCK:
+        if not _LAST_PROACTIVE_ALERT:
+            return None
+        age = time.time() - _LAST_PROACTIVE_ALERT.get("epoch", 0.0)
+        if age <= max_age_sec:
+            record = _LAST_PROACTIVE_ALERT.copy()
+            record["age_seconds"] = round(age, 1)
+            return record
+    return None
+
+
+def get_watchdog_status() -> Dict[str, Any]:
+    """Returns real-time status of the proactive watchdog daemon, thresholds, and recent alerts."""
+    from backend.core.workstation_sensors import get_full_workstation_telemetry
+    with _WATCHDOG_LOCK:
+        return {
+            "status": "success",
+            "active": _WATCHDOG_STARTED,
+            "config": _WATCHDOG_CONFIG.copy(),
+            "operator_salutation": get_operator_salutation(),
+            "alert_count": len(_PROACTIVE_ALERTS_LOG),
+            "recent_alerts": list(reversed(_PROACTIVE_ALERTS_LOG[-5:])),
+            "telemetry_sample": get_full_workstation_telemetry()
+        }
+
+
+def configure_watchdog(updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Updates watchdog thresholds, intervals, or voice alert settings."""
+    with _WATCHDOG_LOCK:
+        _WATCHDOG_CONFIG.update(updates)
+        return {"status": "success", "config": _WATCHDOG_CONFIG.copy()}
+
+
+def _emit_proactive_alert(
+    alert_key: str,
+    raw_message: str,
+    category: str = "advisory",
+    urgency: str = "normal",
+    cooldown_sec: float = 300.0,
+    speak: bool = True
+):
+    """Speaks aloud politely and logs an autonomous alert if cooldown has elapsed."""
+    if not _WATCHDOG_CONFIG.get("enabled", True):
+        return
+
     now = time.time()
     last_time = _LAST_PROACTIVE_ALERTS.get(alert_key, 0.0)
     if now - last_time < cooldown_sec:
-        return  # Cooldown active to avoid nagging
+        return  # Cooldown active to prevent nagging
 
     _LAST_PROACTIVE_ALERTS[alert_key] = now
+    polite_text = format_polite_alert(raw_message, urgency=urgency)
+
     alert_record = {
         "id": f"alert_{int(now*1000)}",
         "category": category,
-        "message": message,
-        "timestamp": datetime.datetime.utcnow().isoformat()
+        "urgency": urgency,
+        "message": polite_text,
+        "raw_message": raw_message,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "epoch": now
     }
+    global _LAST_PROACTIVE_ALERT
     with _WATCHDOG_LOCK:
+        _LAST_PROACTIVE_ALERT = alert_record
         _PROACTIVE_ALERTS_LOG.append(alert_record)
         if len(_PROACTIVE_ALERTS_LOG) > 50:
             _PROACTIVE_ALERTS_LOG.pop(0)
 
-    print(f"[Proactive Watchdog Advisory]: {message}")
+    print(f"[Proactive Watchdog Advisory]: {polite_text}")
 
-    # Speak autonomously via voice pilot
+    # 1. Deliver native Windows desktop notification asynchronously
     try:
-        from backend.core.voice_pilot import get_voice_config, speak_aloud
-        v_cfg = get_voice_config()
-        if v_cfg.get("auto_speak_replies", True):
-            threading.Thread(target=speak_aloud, args=(message,), daemon=True).start()
-    except Exception as e:
-        print(f"[Watchdog Voice Exception]: {e}")
+        from backend.core.jarvis_executive import send_desktop_notification
+        threading.Thread(target=send_desktop_notification, args=("Jarvis Executive Watchdog", polite_text), daemon=True).start()
+    except Exception:
+        pass
+
+    # 2. Speak aloud politely via voice pilot if enabled
+    if speak and _WATCHDOG_CONFIG.get("voice_alerts", True):
+        try:
+            from backend.core.voice_pilot import get_voice_config, speak_aloud
+            v_cfg = get_voice_config()
+            if v_cfg.get("auto_speak_replies", True):
+                threading.Thread(target=speak_aloud, args=(polite_text,), daemon=True).start()
+        except Exception as e:
+            print(f"[Watchdog Voice Exception]: {e}")
 
 
-def proactive_watchdog_tick():
-    """Single tick of the proactive system observer: inspects hardware, battery, and background tasks."""
+def proactive_watchdog_tick() -> Dict[str, Any]:
+    """
+    Single tick of the proactive system observer:
+    Inspects hardware sensors, battery state, thermal registers, and background tasks.
+    """
+    triggered_alerts = []
     try:
-        from backend.core.jarvis_executive import get_system_telemetry
-        telemetry = get_system_telemetry()
+        from backend.core.workstation_sensors import get_full_workstation_telemetry
+        telemetry = get_full_workstation_telemetry()
+
+        ram_cfg_pct = _WATCHDOG_CONFIG.get("ram_threshold_pct", 90)
+        gpu_cfg_temp = _WATCHDOG_CONFIG.get("gpu_temp_threshold_c", 82)
+        bat_cfg_pct = _WATCHDOG_CONFIG.get("battery_threshold_pct", 15)
 
         # 1. GPU Thermal Anomaly Watch (> 82°C)
         gpu = telemetry.get("gpu", {})
         temp = gpu.get("temperature_c")
-        if isinstance(temp, (int, float)) and temp >= 82:
+        if isinstance(temp, (int, float)) and temp >= gpu_cfg_temp:
             gpu_name = gpu.get("name", "GPU")
+            raw_msg = f"{gpu_name} thermals have reached {int(temp)}°C under sustained compute. Throttling is imminent."
             _emit_proactive_alert(
                 "gpu_thermal_high",
-                f"Sir, a thermal advisory: your {gpu_name} temperature has reached {int(temp)}°C under heavy compute load.",
+                raw_msg,
                 category="thermal_warning",
-                cooldown_sec=360.0
+                urgency="critical",
+                cooldown_sec=300.0
             )
+            triggered_alerts.append({"type": "gpu_thermal", "temp": temp})
 
         # 2. Battery Depletion Watch (< 15% on battery)
-        battery_str = str(telemetry.get("battery", "")).lower()
-        if "on battery" in battery_str:
-            import re
-            m = re.search(r"(\d+)%", battery_str)
-            if m:
-                level = int(m.group(1))
-                if level <= 15:
-                    _emit_proactive_alert(
-                        "battery_critical",
-                        f"Advisory, Sir. Workstation battery is at {level}%. Please connect to AC power.",
-                        category="battery_warning",
-                        cooldown_sec=420.0
-                    )
+        bat = telemetry.get("battery", {})
+        level = bat.get("percent")
+        is_ac = bat.get("ac", True)
+        if not is_ac and isinstance(level, (int, float)) and level <= bat_cfg_pct:
+            raw_msg = f"Workstation battery has dropped to {int(level)}%. I recommend connecting to AC power."
+            _emit_proactive_alert(
+                "battery_critical",
+                raw_msg,
+                category="battery_warning",
+                urgency="critical",
+                cooldown_sec=420.0
+            )
+            triggered_alerts.append({"type": "battery_critical", "level": level})
 
-        # 3. High RAM Saturation Watch (> 92%)
-        ram_used_pct = telemetry.get("ram", {}).get("used_percent", 0)
-        if ram_used_pct >= 92:
+        # 3. High RAM Saturation Watch (> 90%)
+        ram = telemetry.get("ram", {})
+        ram_used_pct = ram.get("used_percent", 0)
+        if ram_used_pct >= ram_cfg_pct:
+            top_procs = telemetry.get("top_processes", [])
+            top_desc = f", with {top_procs[0]['name']} utilizing {int(top_procs[0]['memory_mb'])} MB" if top_procs else ""
+            raw_msg = f"System RAM utilization has reached {int(ram_used_pct)}%{top_desc}. You may wish to inspect background processes."
             _emit_proactive_alert(
                 "ram_saturation",
-                f"Warning, Sir. System RAM utilization has reached {int(ram_used_pct)}%. You may wish to terminate background processes.",
+                raw_msg,
                 category="memory_warning",
-                cooldown_sec=480.0
+                urgency="normal",
+                cooldown_sec=420.0
             )
+            triggered_alerts.append({"type": "ram_saturation", "used_percent": ram_used_pct})
 
-        # 4. Background Task Completions
+        # 4. Background Task Completions (Only tasks completing in the active session)
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT task_id, title, status FROM daemon_tasks WHERE status = 'completed' ORDER BY updated_at DESC LIMIT 5")
@@ -387,21 +518,48 @@ def proactive_watchdog_tick():
                 t_title = r["title"]
                 if t_id not in _ALERTED_TASK_COMPLETIONS:
                     _ALERTED_TASK_COMPLETIONS.add(t_id)
+                    raw_msg = f"The background execution for '{t_title}' has completed successfully."
                     _emit_proactive_alert(
                         f"task_done_{t_id}",
-                        f"Sir, your background task '{t_title}' has completed successfully.",
+                        raw_msg,
                         category="task_completed",
+                        urgency="normal",
                         cooldown_sec=10.0
                     )
+                    triggered_alerts.append({"type": "task_completed", "task_id": t_id, "title": t_title})
 
-        # 5. Autonomous Procedural Habit Mining (Pillar 3)
+        # 5. Autonomous Procedural Habit Mining (Non-blocking async)
         try:
             from backend.core.habit_miner import record_habit_observation
-            record_habit_observation()
+            threading.Thread(target=record_habit_observation, daemon=True).start()
         except Exception:
             pass
+
     except Exception as e:
         print(f"[Watchdog Tick Exception]: {e}")
+
+    return {
+        "status": "success",
+        "timestamp": time.time(),
+        "triggered_count": len(triggered_alerts),
+        "triggered_alerts": triggered_alerts
+    }
+
+
+def _seed_completed_tasks_on_startup():
+    """Populates _ALERTED_TASK_COMPLETIONS with past completed tasks so old runs never trigger false alarms on restart."""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT task_id FROM daemon_tasks WHERE status = 'completed'")
+            for r in cursor.fetchall():
+                _ALERTED_TASK_COMPLETIONS.add(r["task_id"])
+    except Exception:
+        pass
+
+
+# Seed past completed tasks on module import so startup is always clean
+_seed_completed_tasks_on_startup()
 
 
 def start_proactive_watchdog_loop(interval_sec: int = 20):
@@ -412,15 +570,20 @@ def start_proactive_watchdog_loop(interval_sec: int = 20):
             return
         _WATCHDOG_STARTED = True
 
+    # Seed past completed tasks so startup is silent and dignified
+    _seed_completed_tasks_on_startup()
+
     def _loop():
-        # Delay first tick by 8s so app startup finishes smoothly
-        time.sleep(8)
+        # Delay first tick by 5s so app startup finishes smoothly
+        time.sleep(5)
         while True:
             try:
-                proactive_watchdog_tick()
+                if _WATCHDOG_CONFIG.get("enabled", True):
+                    proactive_watchdog_tick()
             except Exception as e:
                 print(f"[Watchdog Loop Exception]: {e}")
-            time.sleep(interval_sec)
+            curr_interval = _WATCHDOG_CONFIG.get("interval_sec", interval_sec)
+            time.sleep(max(5, curr_interval))
 
     t = threading.Thread(target=_loop, daemon=True, name="JarvisProactiveWatchdog")
     t.start()

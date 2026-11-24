@@ -11,7 +11,8 @@ from typing import Dict, Any, List, Optional
 from backend.core.task_daemon import (
     spawn_daemon_task, get_task_status, list_active_tasks,
     list_all_tasks, pause_task, resume_task, cancel_task,
-    get_proactive_alerts
+    get_proactive_alerts, get_watchdog_status, configure_watchdog,
+    proactive_watchdog_tick
 )
 from backend.core.desktop_perception import get_ambient_desktop_context
 from backend.core.habit_miner import synthesize_user_habits, get_current_habit_summary
@@ -79,6 +80,24 @@ def get_proactive_alerts_endpoint(limit: int = 10) -> Dict[str, Any]:
     """Returns recent proactive alerts issued autonomously by the watchdog."""
     alerts = get_proactive_alerts(limit=limit)
     return {"status": "success", "count": len(alerts), "alerts": alerts}
+
+
+@router.get("/watchdog/status")
+def get_watchdog_status_endpoint() -> Dict[str, Any]:
+    """Returns real-time status of the proactive ambient watchdog daemon."""
+    return get_watchdog_status()
+
+
+@router.post("/watchdog/configure")
+def configure_watchdog_endpoint(updates: Dict[str, Any]) -> Dict[str, Any]:
+    """Updates watchdog monitoring thresholds (RAM %, GPU temp, battery, interval)."""
+    return configure_watchdog(updates)
+
+
+@router.post("/watchdog/tick")
+def trigger_watchdog_tick_endpoint() -> Dict[str, Any]:
+    """Manually triggers an immediate proactive watchdog tick evaluation."""
+    return proactive_watchdog_tick()
 
 
 class SpawnTaskRequest(BaseModel):

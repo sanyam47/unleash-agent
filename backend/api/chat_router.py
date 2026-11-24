@@ -24,6 +24,51 @@ def get_ollama_base_url() -> str:
 OLLAMA_BASE_URL = get_ollama_base_url()
 
 
+def sanitize_executive_response(reply: str) -> str:
+    """
+    Context Sanitizer & Corporate Disclaimer Stripper.
+    Prevents local 8B models (Llama, Mistral, Qwen) and cloud LLMs from outputting
+    canned corporate boilerplate disclaimers, while preserving technical code blocks and reasoning.
+    """
+    if not reply or not isinstance(reply, str):
+        return reply
+
+    clean_text = reply.strip()
+    if clean_text.startswith("```"):
+        return clean_text
+
+    patterns = [
+        r"^(?:as (?:an?|a) (?:ai language model|large language model|ai assistant|virtual assistant|ai|language model)[^.,\n;:]*[,.;:]\s*)",
+        r"^(?:i am (?:an?|a) (?:ai language model|large language model|ai assistant|virtual assistant|ai)[^.,\n;:]*[,.;:]\s*)",
+        r"^(?:i (?:do not|don't) have (?:direct )?access to (?:your|the) (?:local )?(?:computer|system|hardware|pc|laptop|files)[^.,\n;:]*[,.;:]\s*)",
+        r"^(?:i cannot (?:see|monitor|view|access) (?:your|the) (?:screen|system|hardware|telemetry|active window)[^.,\n;:]*[,.;:]\s*)",
+        r"^(?:i am unable to (?:run|execute|access) (?:programs|files|hardware)[^.,\n;:]*[,.;:]\s*)",
+    ]
+
+    cleanup_leading_transitions = [
+        r"^(?:(?:however|but|nonetheless|that said|note that)[,\s]+)",
+    ]
+
+    changed = True
+    passes = 0
+    while changed and passes < 5:
+        changed = False
+        passes += 1
+        for p in patterns:
+            new_res = re.sub(p, "", clean_text, count=1, flags=re.IGNORECASE).strip()
+            if new_res != clean_text:
+                clean_text = new_res
+                changed = True
+
+    for p in cleanup_leading_transitions:
+        clean_text = re.sub(p, "", clean_text, count=1, flags=re.IGNORECASE).strip()
+
+    if clean_text and clean_text[0].islower() and not clean_text.startswith(("http", "www", "./", "/")):
+        clean_text = clean_text[0].upper() + clean_text[1:]
+
+    return clean_text
+
+
 class PullModelRequest(BaseModel):
     model_tag: str = Field(..., description="Ollama library model tag, e.g. 'qwen2.5-coder:1.5b'")
     custom_name: Optional[str] = Field(None, description="Custom alias/name to give the model before registering")
@@ -73,6 +118,13 @@ class ExecutiveRequest(BaseModel):
 
 _VISION_TRANSCRIPTION_CACHE: Dict[str, str] = {}
 _GEMINI_COOLDOWN_UNTIL: float = 0.0
+
+SPECIALIST_SYSTEM_INTEGRATION_DIRECTIVE = (
+    "\n\n### SYSTEM INTEGRATION & CAPABILITIES:\n"
+    "You are natively integrated into the host operating system with tools for process inspection, "
+    "event log auditing, hardware telemetry (GPU/CPU/RAM), filesystem operations, and desktop automation. "
+    "NEVER claim to be a restricted text-based AI without access to system processes or logs when tools are available."
+)
 
 def _extract_vision_description(base64_image: str) -> str:
     """
@@ -147,6 +199,16 @@ def get_compute_tier(model: Optional[str] = None):
     return probe_active_compute_tier(model_name=model)
 
 
+@router.get("/system/telemetry")
+def get_live_system_telemetry_endpoint():
+    """
+    Returns verified real-time workstation hardware telemetry in < 1ms:
+    Physical RAM, battery/power, GPU thermals, active window, and top processes.
+    """
+    from backend.core.workstation_sensors import get_full_workstation_telemetry
+    return get_full_workstation_telemetry()
+
+
 @router.post("/executive")
 def execute_jarvis_executive(req: ExecutiveRequest):
     """
@@ -166,7 +228,7 @@ def execute_jarvis_executive(req: ExecutiveRequest):
 
     clean_cmd = normalize_voice_phonetics(req.command or "").strip()
     if not clean_cmd:
-        return {"status": "empty", "reply": "Standing by, Sir."}
+        return {"status": "empty", "reply": "Standing by."}
 
     _, intent_type = classify_user_action_intent(clean_cmd)
     v_cfg = load_voice_config()
@@ -190,9 +252,27 @@ def execute_jarvis_executive(req: ExecutiveRequest):
                 pause_agentic_loop(req.project_name)
             except Exception:
                 pass
-        stop_text = f"Stopping operations right away, Sir. Cancelled {cancelled_count} active task(s)." if cancelled_count else "Stopping all active subroutines, Sir. Workstation execution halted."
+        stop_text = f"Stopping operations. Cancelled {cancelled_count} active task(s)." if cancelled_count else "Stopping all active subroutines. Workstation execution halted."
         _speak_bg(stop_text)
         return {"status": "success", "reply": stop_text, "action": "stop", "stopped": True}
+
+    # 1.5. Tier 1 Semantic OS Fast-Path (< 2ms Direct Execution)
+    try:
+        from backend.core.fast_path_router import try_fast_path_os_dispatch
+        fast_res = try_fast_path_os_dispatch(clean_cmd)
+        if fast_res is not None:
+            reply = fast_res.get("reply", "Action executed.")
+            _speak_bg(reply)
+            return {
+                "status": "success",
+                "reply": reply,
+                "action": fast_res.get("action"),
+                "fast_path": True,
+                "tier": 1,
+                "latency_ms": fast_res.get("latency_ms", 1.0)
+            }
+    except Exception as e:
+        print(f"[Executive Fast-Path Notice]: {e}")
 
     # 2. Greeting / Auditory check
     if intent_type == "jarvis_greeting":
@@ -203,7 +283,7 @@ def execute_jarvis_executive(req: ExecutiveRequest):
     # 2.5 Audio output diagnostics check
     if intent_type == "jarvis_audio_check":
         reply = (
-            "Testing audio transmission now, Sir. My vocal synthesizer is transmitting aloud through your host sound device. "
+            "Testing audio transmission now. Vocal synthesizer is transmitting aloud through the host sound device. "
             "If you cannot hear this, please verify your Windows volume or ensure the browser tab is unmuted."
         )
         _speak_bg(reply)
@@ -211,7 +291,7 @@ def execute_jarvis_executive(req: ExecutiveRequest):
 
     # 3. Dismissal
     if intent_type == "jarvis_dismissal":
-        reply = "Very good, Sir. Standing by whenever you need me."
+        reply = "Acknowledged. Standing by."
         _speak_bg(reply)
         return {"status": "success", "reply": reply, "action": "dismissal"}
 
@@ -226,19 +306,19 @@ def execute_jarvis_executive(req: ExecutiveRequest):
     # 5. Direct fallback for weather / time questions
     if re.search(r"\b(?:weather|temperature|forecast|raining)\b", clean_cmd, re.I):
         res = get_live_weather()
-        reply = res.get("reply", "Atmospheric check complete, Sir.")
+        reply = res.get("reply", "Atmospheric check complete.")
         _speak_bg(reply)
         return {"status": "success", "reply": reply, "action": "weather_report"}
 
     if re.search(r"\b(?:time|date)\b", clean_cmd, re.I):
         import datetime
         now = datetime.datetime.now()
-        reply = f"The current time is {now.strftime('%I:%M %p').lstrip('0')} on {now.strftime('%A, %B %d, %Y')}, Sir."
+        reply = f"The current time is {now.strftime('%I:%M %p').lstrip('0')} on {now.strftime('%A, %B %d, %Y')}."
         _speak_bg(reply)
         return {"status": "success", "reply": reply, "action": "time_check"}
 
     # 6. Busy advisory if user gives another command during background task
-    reply = "I am currently monitoring your workstation and active operations, Sir. Standing by."
+    reply = "Monitoring workstation and active operations. Standing by."
     _speak_bg(reply)
     return {"status": "success", "reply": reply, "action": "advisory"}
 
@@ -254,76 +334,13 @@ def send_chat_message(req: ChatRequest):
     user_texts_quick = [m.content for m in req.messages if m.role == "user" and m.content]
     latest_prompt_quick = user_texts_quick[-1] if user_texts_quick else ""
 
+    from backend.core.intent_gate import classify_user_action_intent
+    _, intent_type_quick = classify_user_action_intent(latest_prompt_quick)
+
     # Determine whether vocal speech output is permitted:
     # 1. Hands-free voice or wake-word commands (req.is_voice == True) ALWAYS speak aloud irrespective of chat settings.
     # 2. Text chat commands only speak aloud if speak_reply is explicitly enabled via the Chat Speech toggle.
     allow_speech = bool(getattr(req, "is_voice", False) or getattr(req, "speak_reply", False))
-
-    # 0. High-Speed Jarvis Voice Greeting & Check-In Interception (Sub-10ms Instant Turn)
-    from backend.core.intent_gate import classify_user_action_intent
-    _, intent_type_quick = classify_user_action_intent(latest_prompt_quick)
-    if intent_type_quick == "jarvis_greeting":
-        from backend.core.jarvis_executive import get_jarvis_greeting_response
-        greeting_text = get_jarvis_greeting_response(latest_prompt_quick)
-        if allow_speech:
-            try:
-                import threading
-                from backend.core.voice_pilot import speak_aloud
-                threading.Thread(target=speak_aloud, args=(greeting_text,), kwargs={"model": req.model}, daemon=True).start()
-            except Exception:
-                pass
-
-        return {
-            "status": "success",
-            "model": req.model,
-            "reply": greeting_text,
-            "role": "assistant",
-            "spoken": allow_speech,
-            "telemetry": {"eval_tokens": 15, "eval_duration_sec": 0.01, "tokens_per_second": 1500}
-        }
-
-    if intent_type_quick == "jarvis_audio_check":
-        audio_reply = (
-            "Testing audio transmission now, Sir. My vocal synthesizer is transmitting aloud through your host sound device. "
-            "If you cannot hear this, please verify your Windows volume or ensure the browser tab is unmuted."
-        )
-        if allow_speech:
-            try:
-                import threading
-                from backend.core.voice_pilot import speak_aloud
-                threading.Thread(target=speak_aloud, args=(audio_reply,), kwargs={"model": req.model}, daemon=True).start()
-            except Exception:
-                pass
-
-        return {
-            "status": "success",
-            "model": req.model,
-            "reply": audio_reply,
-            "role": "assistant",
-            "spoken": allow_speech,
-            "audio_diagnostic": True,
-            "telemetry": {"eval_tokens": 28, "eval_duration_sec": 0.01, "tokens_per_second": 2800}
-        }
-
-    if intent_type_quick == "jarvis_dismissal":
-        dismissal_text = "Very good, Sir. Standing by whenever you need me."
-        if allow_speech:
-            try:
-                import threading
-                from backend.core.voice_pilot import speak_aloud
-                threading.Thread(target=speak_aloud, args=(dismissal_text,), kwargs={"model": req.model}, daemon=True).start()
-            except Exception:
-                pass
-
-        return {
-            "status": "success",
-            "model": req.model,
-            "reply": dismissal_text,
-            "role": "assistant",
-            "spoken": allow_speech,
-            "dismissal": True,
-            "telemetry": {"eval_tokens": 12, "eval_duration_sec": 0.01, "tokens_per_second": 1200}
-        }
 
     # Emergency Voice Stop / Cancellation (<10ms Subroutine Halt)
     if intent_type_quick == "jarvis_stop":
@@ -342,9 +359,9 @@ def send_chat_message(req: ChatRequest):
                 pass
 
         if cancelled_count > 0:
-            stop_text = f"Stopping operations right away, Sir. Cancelled {cancelled_count} active background task(s) and halted execution."
+            stop_text = f"Stopping operations. Cancelled {cancelled_count} active background task(s) and halted execution."
         else:
-            stop_text = "Stopping all active subroutines, Sir. Workstation execution halted."
+            stop_text = "Stopping all active subroutines. Workstation execution halted."
 
         if allow_speech:
             try:
@@ -366,32 +383,43 @@ def send_chat_message(req: ChatRequest):
             "telemetry": {"eval_tokens": 15, "eval_duration_sec": 0.01, "tokens_per_second": 1500}
         }
 
-    # High-Speed Jarvis OS & Host Hardware Diagnostics (<50ms Direct Execution)
-    history_dicts = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
-    if intent_type_quick == "jarvis_os_action":
-        from backend.core.jarvis_executive import dispatch_jarvis_executive_action
-        action_res = dispatch_jarvis_executive_action(latest_prompt_quick, history=history_dicts, allow_semantic=True)
-        if action_res and action_res.get("reply"):
-            reply_text = action_res["reply"]
+    # Tier 1 Semantic OS Fast-Path (< 2ms Direct Execution)
+    # Intercepts dynamic clock, app launching, master volume, and battery telemetry
+    # without running a heavy 8B neural inference loop.
+    try:
+        from backend.core.fast_path_router import try_fast_path_os_dispatch
+        fast_res = try_fast_path_os_dispatch(latest_prompt_quick)
+        if fast_res is not None:
+            fast_reply = fast_res.get("reply", "Action completed.")
             if allow_speech:
                 try:
-                    from backend.core.voice_pilot import get_voice_config, speak_aloud
                     import threading
-                    v_cfg = get_voice_config()
+                    from backend.core.voice_pilot import load_voice_config, speak_aloud
+                    v_cfg = load_voice_config()
                     if v_cfg.get("auto_speak_replies", True):
-                        threading.Thread(target=speak_aloud, args=(reply_text,), kwargs={"model": req.model}, daemon=True).start()
+                        threading.Thread(target=speak_aloud, args=(fast_reply,), kwargs={"model": req.model}, daemon=True).start()
                 except Exception:
                     pass
-
             return {
                 "status": "success",
                 "model": req.model,
-                "reply": reply_text,
+                "reply": fast_reply,
                 "role": "assistant",
                 "spoken": allow_speech,
-                "executive_action": action_res.get("action"),
-                "telemetry": {"eval_tokens": 35, "eval_duration_sec": 0.05, "tokens_per_second": 700}
+                "fast_path": True,
+                "tier": 1,
+                "action": fast_res.get("action"),
+                "telemetry": {
+                    "eval_tokens": len(fast_reply.split()),
+                    "eval_duration_sec": round(fast_res.get("latency_ms", 1.0) / 1000.0, 4),
+                    "tokens_per_second": 2500
+                }
             }
+    except Exception as e:
+        print(f"[Send Fast-Path Notice]: {e}")
+
+    # High-Speed Jarvis OS & Host Hardware Diagnostics (<50ms Direct Execution)
+    history_dicts = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
 
     from backend.core.cloud_llm_client import is_cloud_model
     if not is_cloud_model(req.model):
@@ -417,8 +445,8 @@ def send_chat_message(req: ChatRequest):
         from backend.core.task_daemon import spawn_daemon_task
         task_info = spawn_daemon_task(title=latest_prompt[:80], description=latest_prompt, project_name=req.project_name or "default_project")
         ack_message = (
-            f"Understood, Sir. I have initiated '{task_info['title']}' as an autonomous background daemon (Task ID #{task_info['task_id']}).\n\n"
-            f"Take as much time as you need. Feel free to ask me anything else while it runs—I will alert you the moment it completes."
+            f"Initiated '{task_info['title']}' as an autonomous background daemon (Task ID #{task_info['task_id']}).\n\n"
+            f"You can continue working or submit additional queries while it runs; you will be notified upon completion."
         )
         return {
             "status": "success",
@@ -436,40 +464,56 @@ def send_chat_message(req: ChatRequest):
     skill_blocks = []
     knowledge_proposal = None
 
+    specialist_persona = SPECIALIST_SYSTEM_INTEGRATION_DIRECTIVE
+
+    # Proactive Ambient Advisory Continuity Context
+    proactive_advisory_context = ""
+    try:
+        from backend.core.task_daemon import get_latest_proactive_alert
+        last_alert = get_latest_proactive_alert(max_age_sec=90.0)
+        if last_alert:
+            proactive_advisory_context = (
+                f"\n\n### ACTIVE PROACTIVE ADVISORY (Spoken to user {last_alert['age_seconds']}s ago):\n"
+                f"\"{last_alert['message']}\" (Category: {last_alert['category']})\n"
+                "If the user's message is a follow-up, confirmation ('yes', 'inspect it', 'what is it', 'close it', 'proceed'), "
+                "or question regarding this advisory, connect your response directly to this alert and explain or execute "
+                "the requested inspection without asking them what they are referring to."
+            )
+    except Exception:
+        pass
+
+    # Determine base system prompt:
+    # Determine if target model is a custom trained / baked persona model.
+    # Any model baked via Unleash Studio has its own constitutional SYSTEM prompt in its Modelfile.
+    # We dynamically inspect Ollama models and known personas so ANY future model name is automatically protected!
+    clean_req_model = req.model.lower().split(":")[0].strip()
+    known_personas = set()
+    try:
+        from pathlib import Path
+        personas_dir = Path(__file__).resolve().parent.parent / "data" / "personas"
+        if personas_dir.exists():
+            known_personas = {p.name.lower() for p in personas_dir.iterdir() if p.is_dir()}
+    except Exception:
+        pass
+
+    is_custom_baked_persona = (
+        clean_req_model in known_personas
+        or any(k in clean_req_model for k in ("jarvis", "persona", "custom-agent", "stark", "qlora", "my-custom"))
+    )
+
     if not is_actionable:
-        # Check if conversational inquiry implies a semantic host OS or communication tool action
-        from backend.core.jarvis_executive import dispatch_jarvis_executive_action
-        action_res = dispatch_jarvis_executive_action(latest_prompt, history=history_dicts, allow_semantic=True)
-        if action_res and action_res.get("reply") and action_res.get("action") not in (None, "conversational"):
-            reply_text = action_res["reply"]
-            if allow_speech:
-                try:
-                    from backend.core.voice_pilot import get_voice_config, speak_aloud
-                    import threading
-                    v_cfg = get_voice_config()
-                    if v_cfg.get("auto_speak_replies", True):
-                        threading.Thread(target=speak_aloud, args=(reply_text,), kwargs={"model": req.model}, daemon=True).start()
-                except Exception:
-                    pass
-
-            return {
-                "status": "success",
-                "model": req.model,
-                "reply": reply_text,
-                "role": "assistant",
-                "spoken": allow_speech,
-                "executive_action": action_res.get("action"),
-                "telemetry": {"eval_tokens": 35, "eval_duration_sec": 0.05, "tokens_per_second": 700}
-            }
-
         # Conversational / Brainstorming Lean Path:
         if req.system_prompt and req.system_prompt.strip():
             base_sys = req.system_prompt.strip()
+        elif is_custom_baked_persona:
+            base_sys = ""
         else:
             base_sys = (
                 "You are an advanced, helpful, and concise local AI assistant and technical specialist running directly on the user's workstation. "
                 "Provide direct, high-precision technical answers and code without unnecessary conversational filler or generic disclaimers."
             )
+        if base_sys:
+            base_sys = f"{base_sys}{specialist_persona}{proactive_advisory_context}"
     else:
         # Actionable / Code / System Audit Path: Full specialist tooling and RAG context
         if req.use_rag:
@@ -494,20 +538,20 @@ def send_chat_message(req: ChatRequest):
             except Exception as e:
                 print(f"[RAG] Context retrieval error: {e}")
 
-        base_sys = req.system_prompt.strip() if (req.system_prompt and req.system_prompt.strip()) else (
-            "You are an advanced Autonomous AI Assistant and OS Specialist running directly on the user's Windows machine. "
-            "You have full executive access to host tools, real-time hardware telemetry (CPU, RAM, GPU, thermals), running processes, "
-            "file systems, browser pilot, vision, and cognitive memory. "
-            "Provide direct, high-precision technical answers, actions, and code without unnecessary conversational filler or generic disclaimers."
-        )
+        if req.system_prompt and req.system_prompt.strip():
+            base_sys = req.system_prompt.strip()
+        elif is_custom_baked_persona:
+            base_sys = ""
+        else:
+            base_sys = (
+                "You are an advanced Autonomous AI Assistant and OS Specialist running directly on the user's Windows machine. "
+                "You have full executive access to host tools, real-time hardware telemetry (CPU, RAM, GPU, thermals), running processes, "
+                "file systems, browser pilot, vision, and cognitive memory. "
+                "Provide direct, high-precision technical answers, actions, and code without unnecessary conversational filler or generic disclaimers."
+            )
 
-        specialist_persona = (
-            "\n\n### SYSTEM INTEGRATION & CAPABILITIES:\n"
-            "You are natively integrated into the host operating system with tools for process inspection, "
-            "event log auditing, hardware telemetry (GPU/CPU/RAM), filesystem operations, and desktop automation. "
-            "NEVER claim to be a restricted text-based AI without access to system processes or logs when tools are available."
-        )
-        base_sys = f"{base_sys}{specialist_persona}"
+        if base_sys:
+            base_sys = f"{base_sys}{specialist_persona}{proactive_advisory_context}"
 
         epistemic_directive = (
             "\n\n### EPISTEMIC CALIBRATION & KNOWLEDGE BOUNDARY DIRECTIVES:\n"
@@ -517,7 +561,8 @@ def send_chat_message(req: ChatRequest):
             "4. Knowledge Acquisition: Note that an authoritative domain knowledge base can be connected to ground answers."
         )
         from backend.core.prompt_injection_guard import PROMPT_INJECTION_GUARD_DIRECTIVE
-        base_sys = f"{base_sys}{epistemic_directive}\n{PROMPT_INJECTION_GUARD_DIRECTIVE}"
+        if base_sys:
+            base_sys = f"{base_sys}{epistemic_directive}\n{PROMPT_INJECTION_GUARD_DIRECTIVE}"
 
         try:
             from backend.core.knowledge_broker import detect_unknown_domain
@@ -585,7 +630,25 @@ def send_chat_message(req: ChatRequest):
         except Exception as e:
             print(f"[Task Daemon] Chat injection notice: {e}")
 
-    payload_messages = [{"role": "system", "content": base_sys}]
+    # Live Win32 Sensory Telemetry Guardrail:
+    # Injects live hardware registers (<12ms execution) so the model knows its actual host environment
+    try:
+        from backend.core.workstation_sensors import get_ambient_sensory_summary
+        sensory_telemetry_snapshot = get_ambient_sensory_summary()
+        if sensory_telemetry_snapshot:
+            telemetry_guardrail = (
+                f"\n\n### LIVE WORKSTATION SENSORY NERVES (Real-Time Win32 Telemetry):\n"
+                f"{sensory_telemetry_snapshot}\n"
+                "Directives: You are UNLEASH PILOT running locally on this workstation. "
+                "You possess live physical sensory nerves. When the user asks about hardware, memory, thermals, "
+                "active windows, or system load, cite your live telemetry registers authoritatively. "
+                "Never state that you lack access to the host computer or hardware state."
+            )
+            base_sys = f"{base_sys}\n{telemetry_guardrail}" if base_sys else telemetry_guardrail
+    except Exception as e:
+        print(f"[Workstation Sensors] Telemetry injection notice: {e}")
+
+    payload_messages = [{"role": "system", "content": base_sys}] if base_sys.strip() else []
 
     # For conversational fast path, keep recent conversation history (last 6 messages)
     # so prompt eval stays sub-second on local GPU VRAM, while full history is preserved in coding/agentic mode.
@@ -643,7 +706,7 @@ def send_chat_message(req: ChatRequest):
                         from backend.core.voice_pilot import speak_aloud, get_voice_config
                         v_cfg = get_voice_config()
                         if v_cfg.get("auto_speak_replies", True):
-                            threading.Thread(target=speak_aloud, args=("Initiating codebase construction now, Sir.",), daemon=True).start()
+                            threading.Thread(target=speak_aloud, args=("Initiating codebase construction now.",), daemon=True).start()
                     except Exception:
                         pass
 
@@ -716,7 +779,7 @@ def send_chat_message(req: ChatRequest):
                 pass
 
             return {
-                "reply": agent_reply,
+                "reply": sanitize_executive_response(agent_reply),
                 "agentic": True,
                 "project_name": agent_res.get("project_name", "project_default"),
                 "created_files": agent_res.get("created_files", []),
@@ -755,7 +818,7 @@ def send_chat_message(req: ChatRequest):
                 temperature=req.temperature or 0.35,
                 max_tokens=req.max_tokens or 4096
             )
-            reply_content = cloud_res["content"]
+            reply_content = sanitize_executive_response(cloud_res["content"])
             eval_count = cloud_res.get("eval_count", 0)
             elapsed = cloud_res.get("duration_sec", 0.1)
             tok_per_sec = round(eval_count / max(elapsed, 0.001), 1)
@@ -828,6 +891,47 @@ def send_chat_message(req: ChatRequest):
             tok_per_sec = round(eval_count / elapsed, 2)
 
         reply_content = msg.get("content", "")
+
+        # Phase 2: Closed-Loop Executive Action Dispatch (Zero Hardcoding)
+        # If the model produced an Action call, execute it dynamically on the host and feed the observation back
+        from backend.core.agent_engine import parse_react_output
+        thought_act, action_name, action_args, _ = parse_react_output(reply_content)
+        if action_name:
+            from backend.core.agent_tools import dispatch_tool
+            tool_context = {"project_name": req.project_name or "default_project", "model": req.model}
+            tool_obs = dispatch_tool(action_name, action_args or {}, context=tool_context)
+
+            # Re-prompt model with real observation for closed-loop synthesis
+            obs_payload_messages = list(payload_messages)
+            obs_payload_messages.append({"role": "assistant", "content": reply_content})
+            obs_payload_messages.append({"role": "user", "content": f"Observation: {json.dumps(tool_obs)}"})
+
+            try:
+                obs_ollama_payload = {
+                    "model": req.model,
+                    "messages": obs_payload_messages,
+                    "stream": False,
+                    "options": {
+                        "temperature": req.temperature or 0.7,
+                        "top_p": req.top_p or 0.9,
+                        "num_predict": num_predict,
+                        "num_ctx": ctx_window
+                    }
+                }
+                obs_post_data = json.dumps(obs_ollama_payload).encode("utf-8")
+                obs_api_req = urllib.request.Request(
+                    f"{get_ollama_base_url()}/api/chat",
+                    data=obs_post_data,
+                    headers={"Content-Type": "application/json"}
+                )
+                with urllib.request.urlopen(obs_api_req, timeout=120) as obs_resp:
+                    obs_res_data = json.loads(obs_resp.read().decode("utf-8"))
+                    second_msg = obs_res_data.get("message", {})
+                    if second_msg.get("content"):
+                        reply_content = second_msg["content"]
+            except Exception as obs_err:
+                print(f"[Closed-Loop Dispatch Notice]: Observation synthesis fallback: {obs_err}")
+
         # Graceful sentence boundary check: If output terminated mid-word or mid-sentence due to token limit, trim dangling fragment
         if reply_content and not reply_content.rstrip().endswith(('.', '!', '?', '"', "'", '`', ')', '}', ']')):
             last_punc = max(
@@ -844,7 +948,7 @@ def send_chat_message(req: ChatRequest):
         return {
             "status": "success",
             "model": req.model,
-            "reply": reply_content,
+            "reply": sanitize_executive_response(reply_content),
             "role": msg.get("role", "assistant"),
             "rag_sources": rag_sources,
             "active_skills": active_skills_names,

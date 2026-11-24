@@ -1644,6 +1644,12 @@ window.applySmartRecommendations = async function() {
             btn.style.background = "";
         }, 2200);
     }
+
+    // Always reveal configuration and training sections so user can scroll down
+    const trainSec = document.getElementById("llmTrainingConfigSection");
+    if (trainSec) trainSec.style.display = "block";
+    const curSec = document.getElementById("llmCurationSection");
+    if (curSec) curSec.style.display = "block";
 };
 
 function setupAdvisorListeners() {

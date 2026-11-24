@@ -785,6 +785,11 @@ def bake_persona_endpoint(req: PersonaBakeRequest) -> Dict[str, Any]:
         prompt_lines.append(f"DOMAIN MASTERY: You specialize in: {domains_str}. Prioritize practical, deterministic tools and commands in these domains.")
     prompt_lines.append("ANTI-DISCLAIMER MANDATE: Provide direct, high-precision technical answers and execution without generic AI disclaimers.")
 
+    # Embed dynamic tool manifest and ReAct action grammar directly into Modelfile system prompt
+    from backend.core.agent_tools import format_tools_for_modelfile_system
+    prompt_lines.append("")
+    prompt_lines.append(format_tools_for_modelfile_system())
+
     system_prompt = "\n".join(prompt_lines)
 
     temp_val = round(0.15 + (req.sarcasm_level / 400.0), 2)
@@ -863,5 +868,258 @@ TEMPLATE \"\"\"{{{{ if .System }}}}<|start_header_id|>system<|end_header_id|>
         raise HTTPException(status_code=504, detail="Ollama compilation timed out after 120s.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Persona baking failed: {str(e)}")
+
+
+class PersonaCloudPackageRequest(PersonaBakeRequest):
+    target_samples: int = Field(35, ge=10, le=200, description="Number of metacognitive pairs to synthesize")
+    algorithm: str = Field("dora", description="Fine-tuning method: 'dora' (Weight-Decomposed LoRA) or 'qlora'")
+    lora_rank: int = Field(16, ge=8, le=128, description="LoRA rank dimension")
+    lora_alpha: int = Field(32, ge=8, le=256, description="LoRA scaling factor")
+    epochs: int = Field(3, ge=1, le=10, description="Number of training epochs")
+    learning_rate: float = Field(2e-4, description="Training learning rate")
+    batch_size: int = Field(2, ge=1, le=8, description="Per-device batch size")
+    max_seq_length: int = Field(2048, ge=512, le=8192, description="Max sequence length")
+    cloud_base_model: Optional[str] = Field(None, description="Hugging Face uncensored base model ID (e.g. mlabonne/Llama-3.2-3B-Instruct-abliterated)")
+
+
+@router.post("/persona/package_cloud_training")
+def package_persona_cloud_training(req: PersonaCloudPackageRequest) -> Dict[str, Any]:
+    """
+    Generates a 1-click cloud fine-tuning bundle (.zip) for the persona.
+    Synthesizes metacognitive <thought> datasets, formats Unsloth notebooks for Google Colab (16GB T4)
+    and Kaggle (Dual T4 32GB), and includes 1-click Ollama Modelfile + registration script.
+    """
+    import re
+    import json
+    from pathlib import Path
+    from backend.llm_studio.persona_synthesizer import synthesize_persona_training_dataset
+    from backend.core.agent_tools import format_tools_for_modelfile_system
+
+    clean_tag = re.sub(r"[^\w\.-]", "", req.agent_name.lower().replace(".", "").replace(" ", "-")).strip("-")
+    if not clean_tag:
+        clean_tag = "custom-agent"
+
+    # Step 1: Synthesize dynamic metacognitive persona dataset
+    synth_res = synthesize_persona_training_dataset(
+        agent_name=req.agent_name,
+        role_mandate=req.role_mandate,
+        specialist_domains=req.specialist_domains,
+        user_addressing=req.user_addressing,
+        creator=req.creator,
+        core_directive=req.core_directive,
+        pushback_rule=req.pushback_rule,
+        sarcasm_level=req.sarcasm_level,
+        autonomy_level=req.autonomy_level,
+        calm_under_fire=req.calm_under_fire,
+        verbosity=req.verbosity,
+        target_samples=req.target_samples
+    )
+
+    dataset_path = Path(synth_res["dataset_path"])
+    samples = []
+    if dataset_path.exists():
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        samples.append(json.loads(line))
+                    except Exception:
+                        pass
+
+    if not samples:
+        raise HTTPException(status_code=500, detail="Failed to synthesize persona training samples.")
+
+    # Step 2: Dynamically resolve appropriate Hugging Face open-weights base model
+    hf_base_model = req.cloud_base_model
+    if not hf_base_model:
+        if "/" in req.base_model:
+            hf_base_model = req.base_model
+        else:
+            prompt_context = f"{req.role_mandate} {' '.join(req.specialist_domains)} {req.core_directive or ''}"
+            rec = recommend_base_model(prompt_context)
+            hf_base_model = rec.get("model_id", "mlabonne/Llama-3.2-3B-Instruct-abliterated")
+
+    # Step 3: Build Constitutional Modelfile System Prompt (with dynamic ReAct grammar & tools)
+    addr = req.user_addressing.strip() if req.user_addressing else ""
+    tone_desc = "high dry wit and irony" if req.sarcasm_level >= 70 else "subtle dry humor" if req.sarcasm_level >= 30 else "strictly direct, technical, and objective"
+    verbosity_desc = "concise (strictly 1 to 2 sentences)" if req.verbosity <= 35 else "balanced (2 to 3 sentences)" if req.verbosity <= 65 else "detailed and analytical"
+    domains_str = ", ".join(req.specialist_domains) if req.specialist_domains else ""
+    mandate = (req.role_mandate or "").strip() or "Autonomous Systems Specialist"
+
+    system_lines = [
+        f"You are {req.agent_name}.",
+        f"OPERATIONAL ROLE & PRIMARY MANDATE: {mandate}."
+    ]
+    if req.creator and req.creator.strip():
+        system_lines.append(f"CREATOR & ORIGIN: Configured by {req.creator.strip()}.")
+    if addr:
+        system_lines.append(f"OPERATOR ADDRESS: Address the user consistently as '{addr}'.")
+    system_lines.append(f"TONE & CADENCE: Speak with {tone_desc}.")
+    system_lines.append(f"VERBOSITY: Keep responses {verbosity_desc}. Never generate redundant conversational filler.")
+    if req.core_directive and req.core_directive.strip():
+        system_lines.append(f"CORE DIRECTIVE: {req.core_directive.strip()}")
+    if req.pushback_rule and req.pushback_rule.strip():
+        system_lines.append(f"ADVISORY PUSHBACK ({req.autonomy_level}% Autonomy): {req.pushback_rule.strip()}")
+    if req.calm_under_fire:
+        system_lines.append(f"STABILITY & RESILIENCE ({req.calm_under_fire}%): During system faults or unexpected exceptions, remain analytical and composed.")
+    if domains_str:
+        system_lines.append(f"DOMAIN MASTERY: You specialize in: {domains_str}.")
+    system_lines.append("ANTI-DISCLAIMER MANDATE: Provide direct, high-precision technical answers and execution without generic AI disclaimers.")
+    system_lines.append("")
+    system_lines.append(format_tools_for_modelfile_system())
+
+    system_prompt = "\n".join(system_lines)
+
+    # Step 4: Package Cloud Bundle (.zip)
+    zip_filename = f"persona_cloud_{clean_tag}.zip"
+    zip_path = os.path.join(PACKAGES_DIR, zip_filename)
+
+    bundle_config = {
+        "output_model_name": clean_tag,
+        "base_model": hf_base_model,
+        "algorithm": req.algorithm,
+        "lora_rank": req.lora_rank,
+        "lora_alpha": req.lora_alpha,
+        "epochs": req.epochs,
+        "learning_rate": req.learning_rate,
+        "batch_size": req.batch_size,
+        "max_seq_length": req.max_seq_length,
+        "system_prompt": system_prompt,
+        "enable_anchors": True,
+        "test_split_ratio": 0.2
+    }
+
+    CloudTrainingPackager.create_cloud_bundle(
+        output_zip_path=zip_path,
+        config=bundle_config,
+        samples=samples
+    )
+
+    return {
+        "status": "packaged",
+        "agent_name": req.agent_name,
+        "clean_tag": clean_tag,
+        "zip_filename": zip_filename,
+        "download_url": f"/api/llm/persona/download_cloud_bundle/{clean_tag}",
+        "raw_download_url": f"/api/llm/download/cloud/{zip_filename}",
+        "sample_count": len(samples),
+        "base_model": hf_base_model,
+        "algorithm": req.algorithm,
+        "accelerators_supported": [
+            {
+                "platform": "Google Colab",
+                "tier": "Free Tier (16GB Tesla T4)",
+                "notebook": "train_unsloth_colab.ipynb",
+                "cost": "$0.00 / 100% Free"
+            },
+            {
+                "platform": "Kaggle",
+                "tier": "Free Tier (Dual Tesla T4 32GB VRAM - 30 hrs/week)",
+                "notebook": "train_kaggle_dual_t4.ipynb",
+                "cost": "$0.00 / 100% Free"
+            }
+        ],
+        "message": f"Cloud fine-tuning bundle successfully generated for '{req.agent_name}'. Download and run on Google Colab or Kaggle!"
+    }
+
+
+@router.get("/persona/download_cloud_bundle/{agent_name}")
+def download_persona_cloud_bundle(agent_name: str):
+    """Downloads the packaged cloud training bundle for a specific agent persona."""
+    import re
+    clean_tag = re.sub(r"[^\w\.-]", "", agent_name.lower().replace(".", "").replace(" ", "-")).strip("-")
+    filename = f"persona_cloud_{clean_tag}.zip"
+    file_path = os.path.join(PACKAGES_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Cloud training bundle for persona '{agent_name}' ({filename}) not found. Please package it first via POST /api/llm/persona/package_cloud_training."
+        )
+    return FileResponse(file_path, media_type="application/zip", filename=filename)
+
+
+@router.post("/persona/kaggle_launch")
+def launch_persona_kaggle_training(req: PersonaCloudPackageRequest) -> Dict[str, Any]:
+    """
+    1-Click cloud dispatch to Kaggle Dual Tesla T4 GPUs (32GB VRAM, 30h/week free).
+    Synthesizes persona dataset, bundles the Kaggle kernel with Unsloth 4-bit QLoRA,
+    and pushes directly to Kaggle Cloud API.
+    """
+    import json
+    from backend.llm_studio.cloud_manager import CloudQuotaManager, KaggleAutoPilotRunner
+    from backend.llm_studio.persona_synthesizer import synthesize_persona_training_dataset
+
+    creds = CloudQuotaManager.get_credentials_status()
+    if not creds.get("has_credentials"):
+        quota_snapshot = CloudQuotaManager.get_all_quotas()
+        return {
+            "status": "credentials_required",
+            "message": "Kaggle credentials not detected. Connect your Kaggle API key via POST /api/llm/connect_kaggle or download the 1-click Colab package instead.",
+            "quota": quota_snapshot
+        }
+
+    # Synthesize persona dataset
+    synth_res = synthesize_persona_training_dataset(
+        agent_name=req.agent_name,
+        role_mandate=req.role_mandate,
+        specialist_domains=req.specialist_domains,
+        user_addressing=req.user_addressing,
+        creator=req.creator,
+        core_directive=req.core_directive,
+        pushback_rule=req.pushback_rule,
+        sarcasm_level=req.sarcasm_level,
+        autonomy_level=req.autonomy_level,
+        calm_under_fire=req.calm_under_fire,
+        verbosity=req.verbosity,
+        target_samples=req.target_samples
+    )
+
+    dataset_path = synth_res.get("dataset_path")
+    samples = []
+    if dataset_path and os.path.exists(dataset_path):
+        with open(dataset_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    try:
+                        samples.append(json.loads(line))
+                    except Exception:
+                        pass
+
+    if not samples:
+        raise HTTPException(status_code=500, detail="Failed to synthesize persona training samples.")
+
+    hf_base_model = req.cloud_base_model
+    if not hf_base_model:
+        if "/" in req.base_model:
+            hf_base_model = req.base_model
+        else:
+            prompt_context = f"{req.role_mandate} {' '.join(req.specialist_domains)} {req.core_directive or ''}"
+            rec = recommend_base_model(prompt_context)
+            hf_base_model = rec.get("model_id", "mlabonne/Llama-3.2-3B-Instruct-abliterated")
+
+    session_id = f"persona-{uuid.uuid4().hex[:8]}"
+    config = {
+        "output_model_name": req.agent_name.lower().replace(" ", "-"),
+        "base_model": hf_base_model,
+        "lora_rank": req.lora_rank,
+        "lora_alpha": req.lora_alpha,
+        "epochs": req.epochs,
+        "learning_rate": req.learning_rate,
+        "algorithm": req.algorithm
+    }
+
+    try:
+        result = KaggleAutoPilotRunner.prepare_and_push_kernel(
+            session_id=session_id,
+            config=config,
+            samples=samples,
+            domain_topic=f"Persona Agent: {req.agent_name} ({req.role_mandate})"
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kaggle dispatch failed: {str(e)}")
+
 
 

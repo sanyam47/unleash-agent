@@ -39,6 +39,30 @@ def decompose_goals(
     brand = (scout_res or {}).get("entities", {}).get("brand_name")
     persona = (scout_res or {}).get("entities", {}).get("persona_name")
 
+    # DYNAMIC DESKTOP/ACTION DETECTION OVERRIDE
+    is_action_intent = any(w in lowered for w in ("launch", "open", "message", "send", "chat"))
+    
+    if is_action_intent:
+        # Milestone 1: App Launch
+        milestones.append({
+            "id": "milestone_app_launch",
+            "name": "Launch Application",
+            "desc": "Identify and launch the required application using dynamic registry.",
+            "required_signals": ["launch_app"],
+            "status": "pending",
+            "turn_verified": None
+        })
+        # Milestone 2: UI/Data Interaction
+        milestones.append({
+            "id": "milestone_ui_interaction",
+            "name": "UI/Data Interaction",
+            "desc": "Interact with the application UI to fulfill the user request.",
+            "required_signals": ["desktop_perception", "browser_pilot"],
+            "status": "pending",
+            "turn_verified": None
+        })
+        return milestones
+
     # =========================================================================
     # A. BACKEND / CLI / PYTHON / MICROSERVICE STACK
     # =========================================================================

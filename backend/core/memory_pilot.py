@@ -156,7 +156,7 @@ def _seed_default_memories_if_needed():
         count = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
 
     if count == 0:
-        store_entity("User", "person", {"role": "Primary Operator / Developer", "alias": "Sir"}, importance=10)
+        store_entity("User", "person", {"role": "Primary Operator / Developer"}, importance=10)
         store_entity("Brave", "software", {"type": "browser", "is_primary": True}, importance=8)
         store_entity("VS Code", "software", {"type": "ide", "is_primary": True}, importance=8)
         store_entity("RTX 3050", "hardware", {"type": "gpu", "vram": "6GB", "platform": "Laptop"}, importance=7)
@@ -168,9 +168,9 @@ def _seed_default_memories_if_needed():
 
         store_procedural_habit("browser", "primary_browser", "Always use Brave as the primary web browser for navigation and searching.")
         store_procedural_habit("code", "code_editor", "Primary code workspace and editor is VS Code.")
-        store_procedural_habit("general", "persona", "Address user as Sir in cultured, precise British tone (Jarvis style).")
+        store_procedural_habit("general", "persona", "Provide concise, technically precise, and actionable responses directly.")
 
-        store_episodic_event("Jarvis Core Initialization", "Initialized Executive Gateway, Vision Pilot, GUI Pilot, Dual-Mode Voice Engine, and Cognitive Knowledge Graph.", salience=8, tags="system,init")
+        store_episodic_event("Executive Core Initialization", "Initialized Executive Gateway, Vision Pilot, GUI Pilot, Dual-Mode Voice Engine, and Cognitive Knowledge Graph.", salience=8, tags="system,init")
 
 
 # =========================================================================

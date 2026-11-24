@@ -329,6 +329,40 @@ def clean_phonetics_for_speech(text: str) -> str:
     return s
 
 
+def synthesize_with_piper(text: str, output_path: str, model_filename: Optional[str] = "jarvis-medium.onnx") -> bool:
+    """Synthesizes speech using local Piper ONNX model without any external piper.exe binary."""
+    try:
+        import wave
+        import piper
+
+        model_candidates = [
+            VOICES_DIR / (model_filename or "jarvis-medium.onnx"),
+            Path.home() / "Downloads" / (model_filename or "jarvis-medium.onnx")
+        ]
+        target_model = None
+        for cand in model_candidates:
+            if cand.exists():
+                target_model = cand
+                break
+
+        if not target_model:
+            print(f"[Voice Pilot] Piper model '{model_filename}' not found in voices dir or Downloads.")
+            return False
+
+        config_path = str(target_model) + ".json"
+        if not os.path.exists(config_path):
+            config_path = str(target_model.with_suffix(".onnx.json"))
+
+        voice = piper.PiperVoice.load(str(target_model), config_path=config_path if os.path.exists(config_path) else None)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with wave.open(output_path, "wb") as wf:
+            voice.synthesize_wav(text, wf)
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 100
+    except Exception as e:
+        print(f"[Voice Pilot] Piper ONNX synthesis exception: {e}")
+        return False
+
+
 def synthesize_speech(
     text: str,
     mode: Optional[str] = None,
@@ -383,8 +417,32 @@ def synthesize_speech(
             "format": "wav"
         }
 
-    # Case 1: Internet voice is explicitly None / Null / Offline-only
-    if str(target_voice).lower() in ("none", "null", "offline", ""):
+    # Case 0: Target voice is a custom Piper ONNX model or requested locally
+    if target_voice and (str(target_voice).endswith(".onnx") or "jarvis-medium" in str(target_voice)):
+        piper_ok = synthesize_with_piper(clean_text, out_wav, model_filename=str(target_voice))
+        if piper_ok:
+            return {
+                "success": True,
+                "audio_path": out_wav,
+                "mode": active_mode,
+                "voice": f"Piper ONNX ({target_voice})",
+                "format": "wav"
+            }
+
+    # Case 1: Internet voice is explicitly None / Null / Offline-only or Fallback is Piper ONNX
+    if str(target_voice).lower() in ("none", "null", "offline", "") or "jarvis-medium" in str(target_fallback):
+        if str(target_fallback).endswith(".onnx") or "jarvis-medium" in str(target_fallback):
+            piper_ok = synthesize_with_piper(clean_text, out_wav, model_filename=str(target_fallback))
+            if piper_ok:
+                return {
+                    "success": True,
+                    "audio_path": out_wav,
+                    "mode": active_mode,
+                    "voice": f"Piper ONNX Offline ({target_fallback})",
+                    "format": "wav",
+                    "offline": True
+                }
+
         if str(target_fallback).lower() in ("none", "null"):
             return {"success": False, "error": "Both internet voice and offline fallback are disabled."}
         sapi_ok = _synthesize_sapi_fallback(clean_text, out_wav, voice_hint=target_fallback)

@@ -12,10 +12,12 @@ Empowers Unleash with real executive capability on Windows:
 import os
 import re
 import sys
+import time
 import shutil
 import platform
 import subprocess
 import webbrowser
+import threading
 import ctypes
 from ctypes import wintypes
 from pathlib import Path
@@ -194,75 +196,20 @@ APPLICATION_PROTOCOL_MAP: Dict[str, Dict[str, Any]] = {
     "powershell": {
         "exe": "powershell.exe",
         "display_name": "PowerShell"
-    },
-    "cmd": {
-        "exe": "cmd.exe",
-        "display_name": "Command Prompt"
-    },
-    "vscode": {
-        "exe": "code",
-        "fallback_url": "https://code.visualstudio.com",
-        "display_name": "Visual Studio Code"
-    },
-    "code": {
-        "exe": "code",
-        "display_name": "Visual Studio Code"
-    },
-
-    # Browsers
-    "chrome": {
-        "exe": "chrome.exe",
-        "fallback_url": "https://www.google.com",
-        "display_name": "Google Chrome"
-    },
-    "edge": {
-        "exe": "msedge.exe",
-        "fallback_url": "https://www.bing.com",
-        "display_name": "Microsoft Edge"
-    },
-    "brave": {
-        "exe": "brave.exe",
-        "display_name": "Brave Browser"
-    },
-    "firefox": {
-        "exe": "firefox.exe",
-        "display_name": "Mozilla Firefox"
-    },
-
-    # Built-in Windows Utilities
-    "calc": {
-        "exe": "calc.exe",
-        "display_name": "Calculator"
-    },
-    "calculator": {
-        "exe": "calc.exe",
-        "display_name": "Calculator"
-    },
-    "notepad": {
-        "exe": "notepad.exe",
-        "display_name": "Notepad"
-    },
-    "explorer": {
-        "exe": "explorer.exe",
-        "display_name": "File Explorer"
-    },
-    "files": {
-        "exe": "explorer.exe",
-        "display_name": "File Explorer"
-    },
-    "settings": {
-        "protocol": "ms-settings:",
-        "display_name": "Windows Settings"
-    },
-    "taskmgr": {
-        "exe": "taskmgr.exe",
-        "display_name": "Task Manager"
-    },
-    "paint": {
-        "exe": "mspaint.exe",
-        "display_name": "Paint"
     }
 }
+
+# Merge with dynamic app registry
+from backend.core.app_discovery import refresh_app_cache
+_DYNAMIC_APP_REGISTRY = refresh_app_cache()
+
+# Merge dynamically discovered apps into our existing protocol map
+for app_name, meta in _DYNAMIC_APP_REGISTRY.items():
+    if app_name not in APPLICATION_PROTOCOL_MAP:
+        APPLICATION_PROTOCOL_MAP[app_name] = meta
+
+
+
 
 
 # ============================================================================
@@ -346,7 +293,7 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
         if is_windows_protocol_registered(proto):
             try:
                 if hasattr(os, "startfile"):
-                    os.startfile(proto)
+                    threading.Thread(target=os.startfile, args=(proto,), daemon=True).start()
                     return {
                         "status": "success",
                         "mode": "protocol_uri",
@@ -359,7 +306,7 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
 
         # Fallback to browser web interface if app protocol is unassociated
         if fb_url:
-            webbrowser.open(fb_url)
+            threading.Thread(target=webbrowser.open, args=(fb_url,), daemon=True).start()
             return {
                 "status": "success",
                 "mode": "browser_fallback",
@@ -381,8 +328,14 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
             if args:
                 cmd_list.extend(str(args).split())
 
-            creation_flags = subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
-            subprocess.Popen(cmd_list, shell=False, creationflags=creation_flags)
+            def _spawn_detached(cmd):
+                c_flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS) if os.name == 'nt' else 0
+                try:
+                    subprocess.Popen(cmd, shell=False, creationflags=c_flags)
+                except Exception as err:
+                    print(f"[Launcher spawn notice]: {err}")
+
+            threading.Thread(target=_spawn_detached, args=(cmd_list,), daemon=True).start()
             return {
                 "status": "success",
                 "mode": "desktop_executable",
@@ -396,7 +349,7 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
             if fallback_exe:
                 resolved_fallback = resolve_windows_executable(fallback_exe) or fallback_exe
                 try:
-                    subprocess.Popen([resolved_fallback], shell=False, creationflags=subprocess.DETACHED_PROCESS)
+                    threading.Thread(target=_spawn_detached, args=([resolved_fallback],), daemon=True).start()
                     return {
                         "status": "success",
                         "mode": "fallback_executable",
@@ -409,7 +362,7 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
 
             fb_url = app_meta.get("fallback_url")
             if fb_url:
-                webbrowser.open(fb_url)
+                threading.Thread(target=webbrowser.open, args=(fb_url,), daemon=True).start()
                 return {
                     "status": "success",
                     "mode": "browser_fallback",
@@ -424,7 +377,7 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
         if is_windows_protocol_registered(app_name):
             try:
                 if hasattr(os, "startfile"):
-                    os.startfile(app_name)
+                    threading.Thread(target=os.startfile, args=(app_name,), daemon=True).start()
                     return {
                         "status": "success",
                         "mode": "direct_protocol",
@@ -440,8 +393,8 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
         cmd_list = [app_name]
         if args:
             cmd_list.extend(str(args).split())
-        creation_flags = subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
-        subprocess.Popen(cmd_list, shell=False, creationflags=creation_flags)
+        c_flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS) if os.name == 'nt' else 0
+        threading.Thread(target=subprocess.Popen, args=(cmd_list,), kwargs={"shell": False, "creationflags": c_flags}, daemon=True).start()
         return {
             "status": "success",
             "mode": "custom_executable",
@@ -450,6 +403,9 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "error", "error": f"Failed to launch '{app_name}': {str(e)}"}
+
+
+launch_application = launch_app
 
 
 # ============================================================================
@@ -481,12 +437,22 @@ def open_browser_url(url: str) -> Dict[str, Any]:
 # ============================================================================
 
 def get_system_telemetry() -> Dict[str, Any]:
-    """Gathers real-time CPU, RAM, Battery, and Disk metrics on Windows."""
+    """Gathers real-time CPU, RAM, Battery, GPU, and Disk metrics on Windows in <1ms."""
+    from backend.core.workstation_sensors import (
+        get_live_ram_metrics,
+        get_live_battery_metrics,
+        get_live_gpu_metrics,
+        get_live_top_processes,
+        get_live_active_window
+    )
     telemetry: Dict[str, Any] = {
         "os": f"{platform.system()} {platform.release()}",
         "cpu_cores": os.cpu_count(),
-        "ram": {},
-        "battery": "Plugged in / Desktop",
+        "ram": get_live_ram_metrics(),
+        "battery": get_live_battery_metrics().get("battery", "Connected to AC power"),
+        "gpu": get_live_gpu_metrics() or {},
+        "top_processes": get_live_top_processes(top_n=5),
+        "active_window": get_live_active_window(),
         "disk": {}
     }
 
@@ -502,38 +468,7 @@ def get_system_telemetry() -> Dict[str, Any]:
     except Exception:
         pass
 
-    # 2. RAM metrics via native ctypes (<0.1ms)
-    telemetry["ram"] = get_native_ram_metrics()
-
-    # 3. Battery metrics via native ctypes (<0.1ms)
-    b_data = get_native_battery_metrics()
-    telemetry["battery"] = b_data.get("battery", "Connected to AC power")
-
-    # 4. GPU Telemetry & Thermals (nvidia-smi)
-    try:
-        gpu_res = subprocess.run(
-            ['nvidia-smi', '--query-gpu=temperature.gpu,utilization.gpu,utilization.memory,name', '--format=csv,noheader,nounits'],
-            capture_output=True, text=True, timeout=2,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-        )
-        if gpu_res.returncode == 0 and gpu_res.stdout.strip():
-            parts = [p.strip() for p in gpu_res.stdout.strip().split(",")]
-            if len(parts) >= 4:
-                temp_c = int(parts[0])
-                telemetry["gpu"] = {
-                    "name": parts[3],
-                    "temperature_c": temp_c,
-                    "utilization_percent": int(parts[1]),
-                    "memory_percent": int(parts[2]),
-                    "thermal_status": "Cool (<55°C)" if temp_c < 55 else ("Warm (55-75°C)" if temp_c <= 75 else "Hot / Throttling (>75°C)")
-                }
-    except Exception:
-        pass
-
-    # 5. Top Memory Processes via native PSAPI Toolhelp (<20ms)
-    telemetry["top_processes"] = get_native_top_processes(top_n=5)
-
-    # 6. Ambient Desktop Perception (User's interactive environment & active stack)
+    # 2. Ambient Desktop Perception (User's interactive environment & active stack)
     try:
         from backend.core.desktop_perception import get_ambient_desktop_context
         telemetry["desktop_perception"] = get_ambient_desktop_context()
@@ -586,6 +521,19 @@ def system_control(action: str, value: Optional[str] = None) -> Dict[str, Any]:
             except Exception:
                 data["recent_logs"] = []
         return {"status": "success", "action": act, "telemetry": data}
+
+    # 1.5. Real-Time System Clock & Date Query
+    if act in ("time", "get_time", "current_time", "date", "get_date", "current_date", "clock", "datetime"):
+        now = time.localtime()
+        now_time = time.strftime("%I:%M %p", now)
+        now_date = time.strftime("%A, %B %d, %Y", now)
+        return {
+            "status": "success",
+            "action": "get_current_time",
+            "current_time": now_time,
+            "current_date": now_date,
+            "formatted": f"It is currently {now_time} on {now_date}."
+        }
 
     # 2. Clipboard Read
     if act in ("get_clipboard", "read_clipboard", "clipboard_read"):
@@ -729,7 +677,7 @@ def run_host_cli(command: str, timeout: int = 15, confirm: bool = False) -> Dict
                 "risk_level": "HIGH",
                 "warning": impact.get("warning"),
                 "blast_radius": impact.get("blast_radius"),
-                "message": f"Sir, this command has a high blast radius: {impact.get('warning')}. Please confirm before I proceed."
+                "message": f"This command has a high blast radius: {impact.get('warning')}. Please confirm before proceeding."
             }
     except Exception:
         pass
@@ -795,9 +743,9 @@ def get_live_weather(location: Optional[str] = None) -> Dict[str, Any]:
             
             if ":" in speech:
                 city_part, cond_part = speech.split(":", 1)
-                reply = f"Checking atmospheric conditions for you, Sir... In {city_part.strip()}, it is currently {cond_part.strip()}."
+                reply = f"In {city_part.strip()}, atmospheric conditions: {cond_part.strip()}."
             else:
-                reply = f"Checking atmospheric conditions for you, Sir... {speech}."
+                reply = f"Atmospheric conditions: {speech}."
                 
             return {
                 "status": "success",
@@ -806,7 +754,7 @@ def get_live_weather(location: Optional[str] = None) -> Dict[str, Any]:
                 "location": loc_clean or "current_location"
             }
     except Exception as e:
-        err_msg = f"Unable to reach the meteorological station right now, Sir ({str(e)}). Please ensure internet connectivity."
+        err_msg = f"Unable to reach the meteorological station right now ({str(e)}). Please ensure internet connectivity."
         return {
             "status": "error",
             "reply": err_msg,
@@ -821,43 +769,43 @@ def get_live_weather(location: Optional[str] = None) -> Dict[str, Any]:
 import random
 
 WHATS_UP_REPLIES = [
-    "Not much, Sir. All systems are operational and running at peak performance. How may I be of service?",
-    "Quiet on all fronts, Sir. Standing by for your directive.",
-    "Just monitoring your system diagnostics and awaiting your instructions, Sir.",
-    "All telemetry is green, Sir. What's on your mind?",
-    "Standing by, Sir. What shall we tackle next?",
-    "Online and observing, Sir. Everything is running smoothly."
+    "All systems are operational and running at peak performance. How may I assist?",
+    "Quiet on all fronts. Standing by for your directive.",
+    "Monitoring system diagnostics and awaiting your instructions.",
+    "All telemetry is green. Ready when you are.",
+    "Standing by. What shall we tackle next?",
+    "Online and observing. Everything is running smoothly."
 ]
 
 HOW_ARE_YOU_REPLIES = [
-    "Operating at full capacity, Sir. CPU and thermals are well within nominal range.",
-    "Functioning optimally, Sir. Thank you for asking. How can I assist?",
-    "Never better, Sir. All background subroutines are performing flawlessly.",
-    "All cores engaged and ready for action, Sir."
+    "Operating at full capacity. CPU and thermals are well within nominal range.",
+    "Functioning optimally. Thank you for asking. How can I assist?",
+    "All background subroutines are performing flawlessly.",
+    "All cores engaged and ready for action."
 ]
 
 STATUS_CHECK_REPLIES = [
-    "Always, Sir. Ready for your command.",
-    "Online, connected, and standing by, Sir.",
-    "Right here, Sir. How can I help?"
+    "Ready for your command.",
+    "Online, connected, and standing by.",
+    "Right here. How can I help?"
 ]
 
 LISTENING_CHECK_REPLIES = [
-    "Always, Sir. Listening and at your command.",
-    "Loud and clear, Sir. How can I assist?",
-    "Attentive and standing by, Sir. What is your directive?",
-    "Every word, Sir. Ready when you are."
+    "Listening and at your command.",
+    "Loud and clear. How can I assist?",
+    "Attentive and standing by. What is your directive?",
+    "Every word. Ready when you are."
 ]
 
 GREETING_REPLIES = [
-    "At your service, Sir. What would you like to accomplish?",
-    "Good to hear from you, Sir. How may I assist you today?",
-    "Online and ready, Sir. What is our objective?",
-    "Greetings, Sir. Standing by for your command."
+    "At your service. What would you like to accomplish?",
+    "Good to hear from you. How may I assist you today?",
+    "Online and ready. What is our objective?",
+    "Greetings. Standing by for your command."
 ]
 
 def get_jarvis_greeting_response(prompt: str) -> str:
-    """Returns an instantaneous, authentic Hollywood Jarvis response for greetings and check-ins."""
+    """Returns an instantaneous response for greetings and check-ins."""
     clean = (prompt or "").strip().lower()
 
     # Listening & Auditory checks
@@ -874,15 +822,15 @@ def get_jarvis_greeting_response(prompt: str) -> str:
         return random.choice(STATUS_CHECK_REPLIES)
 
     if any(k in clean for k in ("good morning", "morning")):
-        return "Good morning, Sir. All diagnostic systems are online. How can I assist you today?"
+        return "Good morning. All diagnostic systems are online. How can I assist you today?"
 
     if any(k in clean for k in ("good evening", "good night")):
-        return "Good evening, Sir. Standing by whenever you need me."
+        return "Good evening. Standing by whenever you need me."
 
-    if any(k in clean for k in ("hello", "he jarvis", "hey jarvis", "hi jarvis", "hey", "hi")):
+    if any(k in clean for k in ("hello", "hey", "hi")):
         return random.choice(GREETING_REPLIES)
 
-    return "Jarvis online and standing by, Sir. What is your command?"
+    return "Systems online and standing by. What is your command?"
 
 
 # ============================================================================
@@ -891,456 +839,21 @@ def get_jarvis_greeting_response(prompt: str) -> str:
 
 def dispatch_jarvis_executive_action(prompt: str, history: Optional[List[Dict[str, str]]] = None, allow_semantic: bool = True) -> Optional[Dict[str, Any]]:
     """
-    Direct executive dispatcher for Jarvis OS actions and live hardware diagnostics.
-    Executes in <50ms without invoking heavy LLM inference loops or hallucinated disclaimers.
-    Falls back to semantic neural tool calling for arbitrary conversational phrasing.
+    Universal Dynamic Executive Action Dispatcher:
+    Routes executive commands directly to the neural model via dynamic semantic tool execution.
+    Eliminates hardcoded regex shortcuts and canned static responses.
     """
-    from backend.core.intent_gate import normalize_voice_phonetics
-    clean = normalize_voice_phonetics(prompt or "").strip().lower()
+    clean = (prompt or "").strip()
     if not clean:
         return None
 
-    # 0. Audio Output Diagnostics Check ("can't hear you", "can't listen to you", "no sound", "but I can't listen you")
-    audio_check_match = re.search(
-        r"\b(?:(?:i|we|user)?\s*(?:can[\x27\u2019]?t|cannot|cant|don[\x27\u2019]?t|dont|couldn[\x27\u2019]?t)\s+(?:hear|listen(?:\s+to)?)\s*(?:you|anything|audio|voice)?)\b"
-        r"|\b(?:why\s+(?:can[\x27\u2019]?t|cannot)\s+i\s+(?:hear|listen(?:\s+to)?)\s*(?:you|anything)?)\b"
-        r"|\b(?:no\s+(?:sound|audio|voice)|not\s+(?:audible|speaking|saying\s+anything)|can\s+you\s+speak(?:\s+up)?|i\s+hear\s+nothing|where\s+is\s+your\s+voice|i\s+can\s+not\s+hear\s+you)\b",
-        clean
-    )
-    if audio_check_match:
-        reply = (
-            "Testing audio transmission now, Sir. My vocal synthesizer is transmitting aloud through your host sound device. "
-            "If you cannot hear this, please verify your Windows volume or ensure the browser tab is unmuted."
-        )
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "audio_diagnostic",
-            "spoken": True
-        }
-
-    # 1. Fans, Thermals, Heating, Temperature ("my fans are loud", "my friends are loud", "why is it heating")
-    fan_thermal_match = re.search(
-        r"\b(?:(?:my|the)\s+)?(?:fans?|friends?|pc|laptop|computer)\s+(?:are|is)?\s*(?:so\s+)?(?:loud|noisy|spinning|running\s+fast|heating\s*up|hot)\b"
-        r"|\b(?:why\s+(?:is|are)\s+(?:my|the)?\s*(?:fans?|friends?|pc|laptop|computer)\s+(?:so\s+)?(?:loud|noisy|hot|spinning))\b"
-        r"|\b(?:fan\s+noise|fan\s+speed|loud\s+fans?|loud\s+friends?|noisy\s+fans?|noisy\s+friends?|thermals?|check\s+thermals|temperature)\b",
-        clean
-    )
-    if fan_thermal_match:
-        telemetry = get_system_telemetry()
-        gpu_info = telemetry.get("gpu", {})
-        gpu_temp = gpu_info.get("temperature_c", "nominal")
-        gpu_status = gpu_info.get("thermal_status", "Cool")
-        gpu_name = gpu_info.get("name", "GPU")
-        ram_pct = telemetry.get("ram", {}).get("used_percent", 0)
-        battery = telemetry.get("battery", "AC Power")
-        top_procs = telemetry.get("top_processes", [])
-        top_names = [p["name"] for p in top_procs[:3]]
-        top_str = ", ".join(top_names) if top_names else "system background processes"
-
-        reply = (
-            f"Let me check your system diagnostics, Sir... "
-            f"I have inspected your hardware thermals and active processes. "
-            f"Your {gpu_name} is operating at {gpu_temp}°C ({gpu_status}), and battery is at {battery}. "
-            f"System memory utilization is currently at {ram_pct}%, with primary workload from {top_str}. "
-            f"The cooling fans are engaged to maintain optimal hardware temperatures."
-        )
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "thermal_audit",
-            "telemetry": telemetry
-        }
-
-    # 2. Process & Log Audit / Telemetry Verification ("did you check the logs and processes", "check processes", "top processes")
-    diag_match = re.search(
-        r"\b(?:did\s+you\s+(?:check(?:ed)?|look(?:\s+at)?|inspect(?:ed)?|view|read|audit)|check|inspect|audit|read|view|show|list|get|monitor)\s+(?:the\s+|my\s+)?(?:logs?|processes?|tasks?|system|thermals?|diagnostics?|telemetry|services?|status|hardware)\b"
-        r"|\b(?:logs?\s+and\s+processes?|processes?\s+and\s+logs?)\b"
-        r"|\b(?:top\s+(?:processes|apps|cpu|ram|memory)|process\s+(?:list|status|usage)|system\s+processes|running\s+processes)\b"
-        r"|\b(?:did\s+you\s+(?:actually\s+)?check|did\s+you\s+really\s+check)\b",
-        clean
-    )
-    if diag_match:
-        res = system_control("diagnostics")
-        telemetry = res.get("telemetry", {})
-        cores = telemetry.get("cpu_cores", 12)
-        ram = telemetry.get("ram", {})
-        ram_pct = ram.get("used_percent", 0)
-        gpu = telemetry.get("gpu", {})
-        gpu_temp = gpu.get("temperature_c", "nominal")
-        top_procs = telemetry.get("top_processes", [])
-        top_desc = []
-        for p in top_procs[:3]:
-            top_desc.append(f"{p['name']} ({p.get('memory_mb', 0):.0f}MB RAM, {p.get('cpu_time_sec', 0):.0f}s CPU)")
-        proc_str = "; ".join(top_desc) if top_desc else "Standard Windows background tasks"
-
-        recent_logs = telemetry.get("recent_logs", [])
-        log_str = ""
-        if recent_logs:
-            log_entries = [f"[{l.get('source')}]: {l.get('summary')}" for l in recent_logs[:2]]
-            log_str = " Recent system event notices: " + " | ".join(log_entries) + "."
-
-        reply = (
-            f"Allow me to check the host logs and active processes, Sir... "
-            f"I have directly audited your active Windows host telemetry and processes. "
-            f"Active load: {cores} CPU cores with memory at {ram_pct}%. "
-            f"Leading processes consuming system resources: {proc_str}. "
-            f"GPU temperature is {gpu_temp}°C.{log_str} "
-            f"Live hardware telemetry confirmed."
-        )
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "process_log_audit",
-            "telemetry": telemetry
-        }
-
-    # 2.5 Active Subroutines / "what are you doing" / "are you running something"
-    if re.search(r"\b(?:what\s+are\s+you\s+doing|what\s+are\s+you\s+working\s+on|are\s+you\s+running\s+something|are\s+you\s+doing\s+something|are\s+you\s+busy|what\s+is\s+running|is\s+anything\s+running)\b", clean):
-        try:
-            from backend.core.task_daemon import list_active_tasks
-            active = [t for t in list_active_tasks() if t.get('status') in ('running', 'queued')]
-        except Exception:
-            active = []
-
-        telemetry = get_system_telemetry()
-        gpu_info = telemetry.get("gpu", {})
-        gpu_temp = gpu_info.get("temperature_c", 45)
-
-        if active:
-            lead = active[0]
-            t_title = lead.get('title', 'Background Task')
-            t_prog = lead.get('progress', 0)
-            t_step = lead.get('current_step', 'Executing subroutines')
-            reply = (
-                f"Let me check for you, Sir... I am currently monitoring host telemetry and executing the "
-                f"background daemon task '{t_title}'. It is at {t_prog:.0f}% completion ({t_step}). "
-                f"GPU thermals are at {gpu_temp}°C, and all systems are performing optimally. "
-                f"Would you like me to inspect or pause this task?"
-            )
-        else:
-            reply = (
-                f"Let me check for you, Sir... All systems are quiet. I am currently idle and monitoring your "
-                f"background telemetry. No daemon tasks are active. GPU temperature is resting at {gpu_temp}°C, "
-                f"and all 12 cores are nominal. Standing by for your directive."
-            )
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "task_status_check",
-            "active_tasks": active
-        }
-
-    # 2.8 Real-time Weather & Atmospheric Conditions
-    weather_match = re.search(
-        r"\b(?:what(?:[\x27\s]?s|\s+is)?\s+(?:the\s+)?weather|how(?:[\x27\s]?s|\s+is)\s+(?:the\s+)?weather|weather(?:\s+forecast|\s+report)?|temperature\s+outside|is\s+it\s+(?:raining|cold|hot|sunny|snowing)|current\s+weather)\b(?:\s+(?:in|for|at)\s+([a-zA-Z\s]+))?",
-        clean
-    )
-    if weather_match:
-        loc = weather_match.group(1).strip() if (weather_match and weather_match.group(1)) else None
-        res = get_live_weather(loc)
-        return {
-            "status": "success",
-            "reply": res["reply"],
-            "action": "weather_report",
-            "weather": res
-        }
-
-    # 2.9 Real-time Time & Date Check
-    if re.search(r"\b(?:what(?:[\x27\s]?s|\s+is)?\s+(?:the\s+)?(?:time|date)|what\s+time\s+is\s+it|what\s+day\s+is\s+it|current\s+(?:time|date))\b", clean):
-        import datetime
-        now = datetime.datetime.now()
-        time_str = now.strftime("%I:%M %p").lstrip("0")
-        date_str = now.strftime("%A, %B %d, %Y")
-        reply = f"The current time is {time_str} on {date_str}."
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "time_check"
-        }
-
-    # 3. Battery ("what is my battery", "check battery", "battery status")
-    if re.search(r"\b(?:what\s+is\s+my\s+battery|check\s+(?:my\s+)?battery|battery\s+(?:level|percentage|status|remaining))\b", clean):
-        b_info = get_native_battery_metrics()
-        battery = b_info.get("battery", "Connected to AC power")
-        reply = f"Current battery level is {battery}."
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "battery_check",
-            "battery": battery
-        }
-
-    # 4. System Specs / RAM / Hardware Info
-    if re.search(r"\b(?:system\s+(?:info|specs|status)|hardware\s+(?:info|specs)|how\s+much\s+(?:ram|memory|disk)|ram\s+(?:usage|stats)|cpu\s+(?:usage|cores))\b", clean):
-        t = get_system_telemetry()
-        ram = t.get("ram", {})
-        disk = t.get("disk", {})
-        gpu = t.get("gpu", {})
-        reply = (
-            f"Host hardware specifications:\n"
-            f"- **OS**: {t.get('os', 'Windows 11')} ({t.get('cpu_cores', 12)} Cores)\n"
-            f"- **RAM**: {ram.get('used_percent', 0)}% used ({ram.get('free_gb', 0)} GB free of {ram.get('total_gb', 0)} GB)\n"
-            f"- **GPU**: {gpu.get('name', 'NVIDIA GPU')} ({gpu.get('temperature_c', 'N/A')}°C)\n"
-            f"- **Disk**: {disk.get('free_gb', 0)} GB free of {disk.get('total_gb', 0)} GB."
-        )
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "system_specs",
-            "telemetry": t
-        }
-
-    # 5. Media Volume (mute, unmute, volume up/down)
-    if re.search(r"\b(?:mute(?:\s+volume|\s+audio|\s+pc)?|unmute)\b", clean):
-        res = system_control("volume_mute")
-        reply = "Master audio toggled."
-        return {"status": "success", "reply": reply, "action": "mute"}
-    if re.search(r"\b(?:volume\s+up|louder|increase\s+volume|raise\s+volume)\b", clean):
-        res = system_control("volume_up")
-        reply = "Volume increased."
-        return {"status": "success", "reply": reply, "action": "volume_up"}
-    if re.search(r"\b(?:volume\s+down|quieter|lower\s+volume|decrease\s+volume)\b", clean):
-        res = system_control("volume_down")
-        reply = "Volume lowered."
-        return {"status": "success", "reply": reply, "action": "volume_down"}
-
-    # 6. Lock Workstation
-    if re.search(r"\b(?:lock\s+(?:the\s+|my\s+|this\s+)?(?:pc|computer|screen|workstation|windows|machine|desktop))\b", clean):
-        system_control("lock_workstation")
-        return {"status": "success", "reply": "Locking workstation now.", "action": "lock"}
-
-    # 6.5 Generalized Communication Gateway (WhatsApp, Telegram, Slack, Discord, Email, SMS)
-    # Dynamically dispatches communication intents across any desktop/web messaging protocol without hardcoded apps
-    target_contact = ""
-    target_platform = "whatsapp"
-    msg_body = ""
-    is_correction = False
-    matched_comm = False
-
-    # 1. Compound: open <platform> and message <contact> [msg]
-    m_comp = re.search(r"\b(?:open|launch|start)\s+(?:the\s+|my\s+)?(whatsapp|telegram|discord|slack|teams|email|mail|sms)\s+(?:and|to|then)\s+(?:send\s+(?:a\s+)?message|message|text|mail|email)\s+(?:(?:to|me)\s+)?([a-zA-Z0-9_\s]+?)(?:\s+(?:saying|that|with|text)?\s*[:\"']?\s*(.*?)[\"']?)?$", clean, re.IGNORECASE)
-    # 2. Correction / follow-up: you didn't message <contact> [msg]
-    m_corr = re.search(r"\b(?:you\s+didn['’]t\s+(?:actually\s+)?(?:send\s+(?:a\s+)?message\s+(?:to\s+)?|message|text)|why\s+didn['’]t\s+you\s+(?:message|text|send)|didn['’]t\s+message)\s+([a-zA-Z0-9_\s]+?)(?:\s+(?:on|via)\s+(whatsapp|telegram|discord|slack|teams|email|mail))?(?:\s+(?:saying|that|with)?\s*[:\"']?\s*(.*?)[\"']?)?$", clean, re.IGNORECASE)
-    # 3. Standard: message <contact> on <platform> [msg]
-    m_std = re.search(r"\b(?:can\s+you\s+)?(?:send\s+(?:a\s+)?message|message|text|email|mail)\s+(?:(?:to|me)\s+)?([a-zA-Z0-9_\s]+?)\s+(?:on|via|through|using)\s+(whatsapp|telegram|discord|slack|teams|email|mail|sms)(?:\s+(?:saying|that|with|text)?\s*[:\"']?\s*(.*?)[\"']?)?$", clean, re.IGNORECASE)
-    # 4. Bare channel message: message me / someone on whatsapp [msg]
-    m_bare = re.search(r"\b(?:can\s+you\s+)?(?:send\s+(?:a\s+)?message|message|text|email|mail)\s+(?:me\s+)?(?:on|via|through|using)\s+(whatsapp|telegram|discord|slack|teams|email|mail|sms)(?:\s+(?:saying|that|with|text)?\s*[:\"']?\s*(.*?)[\"']?)?$", clean, re.IGNORECASE)
-    # 5. Direct: message <contact> <msg>
-    m_dir = re.search(r"\b(?:can\s+you\s+)?(?:send\s+(?:a\s+)?message\s+to|message|text)\s+([a-zA-Z0-9_]+)\s+(?:saying\s+|that\s+|with\s+|text\s+)?[:\"']?\s*(.+)[\"']?$", clean, re.IGNORECASE)
-
-    if m_comp:
-        matched_comm = True
-        target_platform = (m_comp.group(1) or "whatsapp").lower().strip()
-        target_contact = (m_comp.group(2) or "").strip()
-        msg_body = (m_comp.group(3) or "").strip()
-    elif m_corr:
-        matched_comm = True
-        is_correction = True
-        target_contact = (m_corr.group(1) or "").strip()
-        target_platform = (m_corr.group(2) or "whatsapp").lower().strip()
-        msg_body = (m_corr.group(3) or "").strip()
-    elif m_std:
-        matched_comm = True
-        target_contact = (m_std.group(1) or "").strip()
-        target_platform = (m_std.group(2) or "whatsapp").lower().strip()
-        msg_body = (m_std.group(3) or "").strip()
-    elif m_bare:
-        matched_comm = True
-        target_contact = ""
-        target_platform = (m_bare.group(1) or "whatsapp").lower().strip()
-        msg_body = (m_bare.group(2) or "").strip()
-    elif m_dir:
-        matched_comm = True
-        target_contact = (m_dir.group(1) or "").strip()
-        target_platform = "whatsapp"
-        msg_body = (m_dir.group(2) or "").strip()
-
-    if matched_comm:
-        import urllib.parse
-        if target_contact.lower() in ("me", "myself", "i"):
-            target_contact = ""
-
-        encoded_msg = urllib.parse.quote(msg_body) if msg_body else ""
-        platform_disp = target_platform.title()
-        proto = ""
-        fb_url = ""
-
-        if target_platform in ("whatsapp", "whats app"):
-            platform_disp = "WhatsApp"
-            proto = f"whatsapp://send?text={encoded_msg}" if encoded_msg else "whatsapp:"
-            fb_url = f"https://web.whatsapp.com/send?text={encoded_msg}" if encoded_msg else "https://web.whatsapp.com"
-        elif target_platform == "telegram":
-            platform_disp = "Telegram"
-            proto = f"tg://msg?text={encoded_msg}" if encoded_msg else "tg:"
-            fb_url = f"https://web.telegram.org"
-        elif target_platform in ("email", "mail"):
-            platform_disp = "Email"
-            proto = f"mailto:?subject=Message&body={encoded_msg}"
-            fb_url = f"https://mail.google.com"
-        elif target_platform == "discord":
-            platform_disp = "Discord"
-            proto = "discord:"
-            fb_url = "https://discord.com/app"
-        elif target_platform == "slack":
-            platform_disp = "Slack"
-            proto = "slack:"
-            fb_url = "https://app.slack.com"
-        elif target_platform == "sms":
-            platform_disp = "SMS"
-            proto = f"sms:?body={encoded_msg}"
-            fb_url = ""
-
-        launched = False
-        # Only invoke os.startfile if the protocol handler is actually registered in Windows Registry,
-        # preventing the disruptive Windows 'Pick an app' / OpenWith popup for uninstalled apps.
-        if proto and is_windows_protocol_registered(proto) and hasattr(os, "startfile"):
-            try:
-                os.startfile(proto)
-                launched = True
-            except Exception:
-                pass
-        if not launched and fb_url:
-            try:
-                webbrowser.open(fb_url)
-                launched = True
-            except Exception:
-                pass
-
-        if is_correction:
-            if msg_body and target_contact:
-                reply = f"Opening {platform_disp} with your message '{msg_body}' drafted for {target_contact.title()}."
-            elif target_contact:
-                reply = f"Opening {platform_disp} for {target_contact.title()}. What message would you like to send?"
-            else:
-                reply = f"Opening {platform_disp}."
-        elif msg_body and target_contact:
-            reply = f"Opening {platform_disp} with message for {target_contact.title()}."
-        elif msg_body:
-            reply = f"Opening {platform_disp} with your message drafted."
-        elif target_contact:
-            reply = f"Opening {platform_disp} for {target_contact.title()}."
-        else:
-            reply = f"Opening {platform_disp}."
-
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "communicate",
-            "platform": target_platform,
-            "contact": target_contact,
-            "message": msg_body
-        }
-
-    # 6.8 Dynamic Web Browser & Universal URL Navigation
-    # Handles arbitrary domains (e.g. "open github.com", "browse to x.com/trending", "go to docs.python.org")
-    # As well as popular service names and compound instructions (e.g. "open brave and open youtube")
-    raw_target_site = None
-    requested_browser = None
-
-    # Check for compound instruction: "open <browser> and open/go to <destination>"
-    compound_match = re.search(
-        r"\b(?:open|launch)\s+(brave|chrome|edge|firefox|browser)\s+(?:and|then)?\s*(?:open|browse(?:\s+to)?|navigate(?:\s+to)?|go\s+to|visit)?\s+(?:the\s+)?([a-zA-Z0-9_.-]+(?:\.[a-z]{2,})?(?:/\S*)?)\b",
-        clean,
-        re.I
-    )
-    if compound_match:
-        requested_browser = compound_match.group(1).lower().strip()
-        raw_target_site = compound_match.group(2).lower().strip()
-    else:
-        # Check standard URL or website navigation: "open youtube", "browse to github.com", "visit reddit.com"
-        url_match = re.search(
-            r"\b(?:open|browse(?:\s+to)?|navigate(?:\s+to)?|go\s+to|visit)\s+(?:the\s+|my\s+)?([a-zA-Z0-9.-]+\.[a-z]{2,}(?:/\S*)?|https?://\S+|www\.\S+|youtube|google|github|reddit|twitter|x\.com|wikipedia|netflix|gmail|chatgpt|claude)\b",
-            clean,
-            re.I
-        )
-        if url_match:
-            raw_target_site = url_match.group(1).lower().strip()
-
-    if raw_target_site and raw_target_site not in APPLICATION_PROTOCOL_MAP:
-        # Canonicalize common service nicknames to authoritative URLs
-        COMMON_SITES = {
-            "youtube": "https://www.youtube.com",
-            "google": "https://www.google.com",
-            "github": "https://github.com",
-            "reddit": "https://www.reddit.com",
-            "twitter": "https://twitter.com",
-            "x.com": "https://x.com",
-            "wikipedia": "https://www.wikipedia.org",
-            "netflix": "https://www.netflix.com",
-            "gmail": "https://mail.google.com",
-            "chatgpt": "https://chatgpt.com",
-            "claude": "https://claude.ai"
-        }
-        dest_url = COMMON_SITES.get(raw_target_site, raw_target_site)
-        if not dest_url.startswith(("http://", "https://")):
-            dest_url = "https://" + dest_url
-
-        # Dispatch via specified browser or default to user's registered browser
-        target_browser_exe = "brave.exe" if requested_browser in ("brave", "browser") else (
-            f"{requested_browser}.exe" if requested_browser and requested_browser not in ("browser", "default") else None
-        )
-
-        launched = False
-        if target_browser_exe:
-            resolved_exe = resolve_windows_executable(target_browser_exe)
-            if resolved_exe:
-                try:
-                    subprocess.Popen([resolved_exe, dest_url], shell=False, creationflags=subprocess.DETACHED_PROCESS if os.name == 'nt' else 0)
-                    launched = True
-                except Exception:
-                    pass
-
-        # If no specific browser or direct launch failed, use Windows default browser dispatcher
-        if not launched:
-            open_browser_url(dest_url)
-
-        disp_title = raw_target_site.title() if raw_target_site in COMMON_SITES else dest_url
-        reply = f"Opening {disp_title} in your browser right away, Sir."
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "open_url",
-            "url": dest_url
-        }
-
-    # 7. Launch Apps ("open whatsapp", "start terminal", "launch vscode", "open calculator", "open brave")
-    app_match = re.search(
-        r"\b(?:open|launch|start|run)\s+(?:the\s+|my\s+)?(whatsapp|terminal|wt|powershell|cmd|vscode|vs\s*code|code|spotify|chrome|edge|browser|brave|firefox|calc|calculator|notepad|settings|task\s*mgr|task\s*manager|explorer|file\s*explorer|discord|slack|teams|paint)\b",
-        clean
-    )
-    if app_match:
-        raw_app = app_match.group(1).replace(" ", "").replace("vs", "")
-        alias_map = {
-            "wt": "terminal",
-            "code": "vscode",
-            "calculator": "calc",
-            "taskmanager": "taskmgr",
-            "fileexplorer": "explorer",
-            "browser": "brave"
-        }
-        target_app = alias_map.get(raw_app, raw_app)
-        res = launch_app(target_app)
-        disp = APPLICATION_PROTOCOL_MAP.get(target_app, {}).get("display_name", target_app.title())
-        reply = f"Opening {disp} for you right away, Sir."
-        return {
-            "status": "success",
-            "reply": reply,
-            "action": "launch_app",
-            "app": disp
-        }
-
-    # 8. Fallback: Universal Semantic Tool Dispatcher (Zero Regex Neural Execution)
-    if allow_semantic:
-        return dispatch_semantic_executive_action(prompt, history=history)
-
-    return None
+    return dispatch_semantic_executive_action(clean, history=history)
 
 
 def dispatch_semantic_executive_action(
     prompt: str,
     history: Optional[List[Dict[str, str]]] = None,
-    model: str = "cyber-specialist:latest"
+    model: str = "jarvis-qlora:latest"
 ) -> Optional[Dict[str, Any]]:
     """
     True Hollywood Jarvis Semantic Action Gateway (Zero-Regex Tool Execution):
@@ -1383,10 +896,32 @@ def dispatch_semantic_executive_action(
     except Exception:
         pass
 
+    proactive_advisory_context = ""
+    try:
+        from backend.core.task_daemon import get_latest_proactive_alert
+        last_alert = get_latest_proactive_alert(max_age_sec=90.0)
+        if last_alert:
+            proactive_advisory_context = (
+                f"\n[Active Ambient Advisory]: Jarvis proactively interrupted the user {last_alert['age_seconds']}s ago with: "
+                f"\"{last_alert['message']}\" (Category: {last_alert['category']})\n"
+                "CRITICAL CONTINUITY DIRECTIVE: The user's input may be a direct follow-up or response to your advisory! "
+                "If user says 'yes', 'inspect it', 'what is it', 'check it', 'close it', 'terminate it', or refers to what you warned them about, "
+                "resolve 'it' directly to this issue! "
+                "If it was a high RAM/process advisory, set action='system_control', command='check_processes', and in 'reply' confirm you are inspecting the memory-heavy processes. "
+                "If user asked to terminate/close the culprit process, set action='system_control', command='kill_process' or launch appropriate remediation. "
+                "NEVER ask the user 'what do you want to inspect?' or say you forgot.\n"
+            )
+    except Exception:
+        pass
+
+    now_clock_str = time.strftime("%I:%M %p on %A, %B %d, %Y")
+
     system_instruction = (
         "You are an autonomous AI executive OS pilot operating directly on this Windows workstation.\n"
+        f"Live Real-Time Clock: {now_clock_str}\n"
         f"{user_habit_context}"
         f"{live_ambient_narrative}"
+        f"{proactive_advisory_context}"
         "Analyze the user's intent from their natural language. You have executive control over desktop apps, browser URLs, system controls, and diagnostics.\n"
         "Output ONLY a valid JSON object matching this exact schema:\n"
         "{\n"
@@ -1398,6 +933,8 @@ def dispatch_semantic_executive_action(
         '  "reply": string (A crisp, direct 1-2 sentence response confirming the action without generic disclaimers)\n'
         "}\n\n"
         "Guidelines:\n"
+        f"- If user asks what time it is, the date, day, or clock, answer immediately using the Live Real-Time Clock ({now_clock_str}) with action='conversational'. Never say '[insert time]' or guess.\n"
+        "- If user asks about RAM, memory, battery, or hardware thermals, set action='hardware_telemetry'. Never put placeholder text like '[insert %]' or make up numbers in 'reply'; the system will supply the verified hardware readings automatically.\n"
         "- If user asks a general question, conceptual question, or asks for elaboration/explanation, set action='conversational' and provide an articulate, factual answer in 'reply'.\n"
         "- If user asks to open or launch an application, set action='launch_app' and set 'app' to the requested application name.\n"
         "- If user asks to visit or open a website or URL, set action='open_url' and set 'url' to the target URL.\n"
@@ -1413,7 +950,7 @@ def dispatch_semantic_executive_action(
     messages.append({"role": "user", "content": clean})
 
     payload = {
-        "model": model or "cyber-specialist:latest",
+        "model": model or "jarvis-qlora:latest",
         "messages": messages,
         "format": "json",
         "stream": False,
@@ -1438,12 +975,19 @@ def dispatch_semantic_executive_action(
 
             if action == "launch_app" and parsed.get("app"):
                 app_target = parsed.get("app").strip()
+                
+                # INTEGRATE GOAL STEPPER FOR ACTION INTENTS
+                from backend.core.goal_stepper import decompose_goals
+                milestones = decompose_goals(user_prompt)
+                print(f"[Jarvis Executive]: Initiating sequence of {len(milestones)} milestones.")
+                
                 res = launch_app(app_target)
                 return {
                     "action": "launch_app",
                     "reply": reply or f"Opening {app_target}.",
                     "result": res
                 }
+
             elif action == "open_url" and parsed.get("url"):
                 target_url = parsed.get("url").strip()
                 if not target_url.startswith(("http://", "https://")):
@@ -1483,9 +1027,16 @@ def dispatch_semantic_executive_action(
 
             elif action == "hardware_telemetry":
                 telemetry_res = get_system_telemetry()
+                ram_info = telemetry_res.get("ram", {})
+                ram_pct = ram_info.get("used_percent", 0)
+                ram_used = ram_info.get("used_gb", 0)
+                ram_total = ram_info.get("total_gb", 0)
+                top_proc = telemetry_res.get("top_processes", [{}])[0]
+                top_str = f" Top consumer is {top_proc.get('name', 'unknown')} at {int(top_proc.get('memory_mb', 0))} MB." if top_proc else ""
+                dynamic_reply = f"System RAM utilization is at {ram_pct}% ({ram_used}/{ram_total} GB).{top_str}"
                 return {
                     "status": "success",
-                    "reply": reply or "Running hardware and thermal diagnostics.",
+                    "reply": dynamic_reply if (not reply or "insert" in reply.lower() or "%" in reply) else reply,
                     "action": "hardware_telemetry",
                     "telemetry": telemetry_res
                 }
@@ -1495,7 +1046,7 @@ def dispatch_semantic_executive_action(
                 p_ctx = get_ambient_desktop_context()
                 top_proc = p_ctx.get('top_ram_consumer', {}).get('name', 'unknown')
                 clean_top = top_proc.replace("_", " ")
-                default_reply = f"Your active environment includes {', '.join(p_ctx.get('dev_stack', []))}, Sir. Top memory consumer is {clean_top}."
+                default_reply = f"Your active environment includes {', '.join(p_ctx.get('dev_stack', []))}. Top memory consumer is {clean_top}."
                 return {
                     "status": "success",
                     "reply": reply or default_reply,

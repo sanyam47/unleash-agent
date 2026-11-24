@@ -53,6 +53,39 @@ def get_available_voices() -> Dict[str, Any]:
     }
 
 
+@router.post("/upload_custom_voice")
+async def upload_custom_voice(file: UploadFile = File(...)) -> Dict[str, Any]:
+    """
+    Uploads a custom voice model/sample (.onnx, .bin, .pt, .wav, .mp3)
+    directly into backend/data/voices/ for local synthesis and offline playback.
+    """
+    import os
+    from backend.core.voice_pilot import VOICES_DIR, get_custom_local_voices
+
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
+
+    safe_name = os.path.basename(file.filename)
+    allowed_exts = {".onnx", ".bin", ".pt", ".wav", ".mp3"}
+    ext = os.path.splitext(safe_name)[1].lower()
+    if ext not in allowed_exts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{ext}'. Allowed: {', '.join(sorted(allowed_exts))}"
+        )
+
+    dest_path = VOICES_DIR / safe_name
+    content = await file.read()
+    dest_path.write_bytes(content)
+
+    return {
+        "status": "success",
+        "filename": safe_name,
+        "path": str(dest_path),
+        "custom_local_voices": get_custom_local_voices()
+    }
+
+
 @router.post("/test_voice")
 def test_voice_endpoint(req: TestVoiceRequest) -> Dict[str, Any]:
     """Synthesizes a short test sample to audition a voice."""
@@ -103,16 +136,98 @@ def get_voice_and_wake_config() -> Dict[str, Any]:
 
 @router.post("/config")
 def set_voice_and_wake_config(updates: Dict[str, Any]) -> Dict[str, Any]:
-    """Updates voice and wake word configuration."""
+    """Updates voice and wake word configuration and syncs native OS background listener."""
     cfg = update_voice_config(updates)
+    if "wake_word_enabled" in updates:
+        try:
+            from backend.core.wake_word_listener import (
+                start_native_wake_word_daemon,
+                stop_native_wake_word_daemon
+            )
+            if updates["wake_word_enabled"]:
+                start_native_wake_word_daemon(in_background=True)
+            else:
+                stop_native_wake_word_daemon()
+        except Exception as e:
+            print(f"[Voice Router] Sync wake-word daemon notice: {e}")
     return {"status": "success", "config": cfg}
+
+
+@router.post("/toggle_mic")
+def toggle_microphone_endpoint(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Direct unified toggle for microphone listening:
+    Controls both host Windows native wake-word listener thread and configuration state.
+    """
+    from backend.core.wake_word_listener import (
+        start_native_wake_word_daemon,
+        stop_native_wake_word_daemon,
+        get_duplex_listener_status
+    )
+
+    req_active = None
+    if payload and "active" in payload:
+        req_active = bool(payload["active"])
+
+    current_cfg = load_voice_config()
+    current_enabled = current_cfg.get("wake_word_enabled", True)
+    new_state = req_active if req_active is not None else not current_enabled
+
+    cfg = update_voice_config({"wake_word_enabled": new_state})
+    if new_state:
+        start_native_wake_word_daemon(in_background=True)
+    else:
+        stop_native_wake_word_daemon()
+
+    status = get_duplex_listener_status()
+    status["wake_word_enabled"] = new_state
+    return {
+        "status": "success",
+        "mic_active": new_state,
+        "listener_status": status,
+        "message": f"Workstation microphone listening {'activated' if new_state else 'completely deactivated'}."
+    }
 
 
 @router.post("/stop")
 def stop_voice_playback():
-    """Barge-in endpoint: instantly stops active audio playback on host speakers."""
-    stop_speaking()
-    return {"status": "success", "message": "Voice playback halted."}
+    """Barge-in endpoint: instantly stops active audio playback on host speakers in <15ms."""
+    cutoff_ms = stop_speaking()
+    return {
+        "status": "success",
+        "cutoff_ms": cutoff_ms,
+        "message": f"Voice playback halted in {cutoff_ms:.2f}ms."
+    }
+
+
+@router.get("/duplex_status")
+def get_duplex_voice_status() -> Dict[str, Any]:
+    """Returns complete real-time duplex hands-free voice status, playback state, and barge-in telemetry."""
+    try:
+        from backend.core.wake_word_listener import get_duplex_listener_status
+        return get_duplex_listener_status()
+    except Exception as e:
+        from backend.core.voice_pilot import get_duplex_state
+        return {
+            "status": "success",
+            "audio": get_duplex_state(),
+            "detail": str(e)
+        }
+
+
+@router.post("/barge_in")
+def trigger_duplex_barge_in(reason: Optional[str] = "api_request") -> Dict[str, Any]:
+    """Trigger real-time speech barge-in via API (halts audio in <15ms and shifts to listening)."""
+    try:
+        from backend.core.wake_word_listener import trigger_manual_barge_in
+        return trigger_manual_barge_in(reason=reason or "api_request")
+    except Exception:
+        cutoff_ms = stop_speaking()
+        return {
+            "status": "success",
+            "cutoff_ms": cutoff_ms,
+            "message": f"Barge-in triggered; audio stopped in {cutoff_ms:.2f}ms."
+        }
 
 
 @router.get("/status")

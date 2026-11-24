@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="frontend/assets/logo.svg" width="88" height="88" alt="Unleash-Agent Studio Logo" />
+
 # ⚡ Unleash-Agent Studio
 
 ### The Autonomous Local AI Operating System & Multi-Agent Swarm Platform

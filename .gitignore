@@ -108,3 +108,7 @@ backend/data/voices/*.onnx.json
 
 # Scratch Directory
 scratch/
+temp_klog/
+unsloth_compiled_cache/
+data/
+dataset.jsonl

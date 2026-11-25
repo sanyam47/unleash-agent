@@ -15,14 +15,22 @@ sub-millisecond execution and complete Windows 11 compatibility.
 import os
 import sys
 import time
+import json
 import ctypes
-from ctypes import wintypes
+import subprocess
 from typing import Dict, Any, List, Optional, Tuple
 
-user32 = ctypes.windll.user32
+if os.name == "nt":
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+else:
+    wintypes = None
+    user32 = None
 
 def _ensure_desktop_station():
     """Attaches current thread to interactive desktop WinSta0\\Default if running in subshell."""
+    if os.name != "nt" or user32 is None:
+        return
     try:
         WINSTA_ALL = 0x37F
         DESKTOP_ALL = 0x1FF
@@ -36,45 +44,46 @@ def _ensure_desktop_station():
         pass
 
 
-# Win32 INPUT Structures
-class MOUSEINPUT(ctypes.Structure):
-    _fields_ = [
-        ("dx", wintypes.LONG),
-        ("dy", wintypes.LONG),
-        ("mouseData", wintypes.DWORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
-    ]
+if os.name == "nt":
+    # Win32 INPUT Structures
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", wintypes.LONG),
+            ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
+        ]
 
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", wintypes.WORD),
-        ("wScan", wintypes.WORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
-    ]
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [
+            ("wVk", wintypes.WORD),
+            ("wScan", wintypes.WORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG)),
+        ]
 
-class HARDWAREINPUT(ctypes.Structure):
-    _fields_ = [
-        ("uMsg", wintypes.DWORD),
-        ("wParamL", wintypes.WORD),
-        ("wParamH", wintypes.WORD),
-    ]
+    class HARDWAREINPUT(ctypes.Structure):
+        _fields_ = [
+            ("uMsg", wintypes.DWORD),
+            ("wParamL", wintypes.WORD),
+            ("wParamH", wintypes.WORD),
+        ]
 
-class _INPUT_UNION(ctypes.Union):
-    _fields_ = [
-        ("mi", MOUSEINPUT),
-        ("ki", KEYBDINPUT),
-        ("hi", HARDWAREINPUT),
-    ]
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [
+            ("mi", MOUSEINPUT),
+            ("ki", KEYBDINPUT),
+            ("hi", HARDWAREINPUT),
+        ]
 
-class INPUT(ctypes.Structure):
-    _fields_ = [
-        ("type", wintypes.DWORD),
-        ("u", _INPUT_UNION),
-    ]
+    class INPUT(ctypes.Structure):
+        _fields_ = [
+            ("type", wintypes.DWORD),
+            ("u", _INPUT_UNION),
+        ]
 
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
@@ -342,3 +351,81 @@ def desktop_scroll(amount: int = 3, direction: str = "down") -> Dict[str, Any]:
         "amount": clicks,
         "message": f"Scrolled mouse wheel {direction} ({clicks} units)."
     }
+
+
+def list_ui_elements(window_title: Optional[str] = None, limit: int = 25) -> Dict[str, Any]:
+    """
+    Inspects real native desktop UI controls (buttons, inputs, menu items) via Windows UI Automation
+    and returns their names, types, and exact center (x, y) coordinates — eliminating blind pixel guessing.
+    """
+    if os.name != "nt":
+        return {"status": "error", "error": "Native UI Automation currently supported on Windows hosts only."}
+
+    safe_limit = max(1, min(int(limit or 25), 50))
+    title_filter = str(window_title or "").replace("'", "''").strip()
+
+    ps_script = f"""
+Add-Type -AssemblyName UIAutomationClient
+Add-Type -AssemblyName UIAutomationTypes
+$root = [System.Windows.Automation.AutomationElement]::RootElement
+$target = $null
+if ('{title_filter}' -ne '') {{
+    $wins = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)
+    foreach ($w in $wins) {{
+        if ($w.Current.Name -like '*{title_filter}*') {{ $target = $w; break }}
+    }}
+}}
+if ($null -eq $target) {{
+    $focused = [System.Windows.Automation.AutomationElement]::FocusedElement
+    if ($null -ne $focused) {{
+        $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
+        $curr = $focused
+        while ($null -ne $curr -and $walker.GetParent($curr) -ne $root) {{
+            $curr = $walker.GetParent($curr)
+        }}
+        $target = $curr
+    }}
+}}
+if ($null -eq $target) {{ Write-Output '[]'; exit 0 }}
+$cond = New-Object System.Windows.Automation.OrCondition(
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)),
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Edit)),
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)),
+    (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::ListItem))
+)
+$els = $target.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+$out = @()
+foreach ($el in $els) {{
+    if ($out.Count -ge {safe_limit}) {{ break }}
+    $r = $el.Current.BoundingRectangle
+    if ($r.Width -lt 4 -or $r.Height -lt 4 -or [double]::IsInfinity($r.X)) {{ continue }}
+    $name = ($el.Current.Name -replace '\\s+', ' ').Trim()
+    if ($name -eq '') {{ continue }}
+    $cx = [int]($r.X + ($r.Width / 2))
+    $cy = [int]($r.Y + ($r.Height / 2))
+    $out += [PSCustomObject]@{{ name = $name.Substring(0, [Math]::Min(60, $name.Length)); type = $el.Current.ControlType.ProgrammaticName -replace '^ControlType\\.',''; x = $cx; y = $cy }}
+}}
+$out | ConvertTo-Json -Compress
+"""
+    try:
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=6,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        )
+        raw = (proc.stdout or "").strip()
+        if not raw:
+            return {"status": "success", "window_filter": title_filter or "focused", "elements": []}
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            parsed = [parsed]
+        return {
+            "status": "success",
+            "window_filter": title_filter or "focused",
+            "count": len(parsed),
+            "elements": parsed,
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"UI Automation inspection failed: {str(e)}"}

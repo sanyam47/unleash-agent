@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,13 +20,32 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Unleash-Agent API")
 
+_raw_cors = os.getenv(
+    "UNLEASH_CORS_ORIGINS",
+    "http://127.0.0.1:8001,http://localhost:8001,http://127.0.0.1:8000,http://localhost:8000"
+)
+_allowed_origins = [o.strip() for o in _raw_cors.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def optional_api_token_auth(request: Request, call_next):
+    """Enforces Bearer / X-API-Key authentication on /api/* when UNLEASH_API_TOKEN is configured."""
+    expected_token = os.getenv("UNLEASH_API_TOKEN", "").strip()
+    if expected_token and request.url.path.startswith("/api/"):
+        auth_header = request.headers.get("Authorization", "")
+        api_key = request.headers.get("X-API-Key", "")
+        bearer = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+        if bearer != expected_token and api_key != expected_token:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized: invalid or missing API token."})
+    return await call_next(request)
 
 app.include_router(lab_router.router)
 app.include_router(llm_studio_router.router, prefix="/api")

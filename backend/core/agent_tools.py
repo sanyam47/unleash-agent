@@ -1650,6 +1650,12 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         from backend.core.gui_pilot import desktop_cursor_pos
         return desktop_cursor_pos()
 
+    elif tool_name in ("list_ui_elements", "inspect_ui_elements", "ui_tree"):
+        from backend.core.gui_pilot import list_ui_elements
+        w_title = args.get("window_title") or args.get("window") or None
+        lim = int(args.get("limit") or 25)
+        return list_ui_elements(window_title=str(w_title) if w_title else None, limit=lim)
+
     elif tool_name in ("speak_aloud", "speak", "say_aloud", "talk", "tts_speak"):
         from backend.core.voice_pilot import speak_aloud
         txt = args.get("text") or args.get("message") or args.get("content") or ""
@@ -1948,6 +1954,13 @@ FRONTIER_PRO_EXTRA_TOOLS = [
         "description": "Safely delete an obsolete file (auto-creates a rollback snapshot first).",
         "parameters": {
             "file_path": "File path to delete"
+        }
+    },
+    {
+        "name": "list_ui_elements",
+        "description": "Inspect real interactive UI controls (buttons, inputs, menu items) and their exact (x, y) coordinates in an open native Windows app via UI Automation.",
+        "parameters": {
+            "window_title": "Optional partial window title (defaults to focused window)"
         }
     }
 ]

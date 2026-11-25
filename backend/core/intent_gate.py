@@ -151,21 +151,29 @@ def classify_user_action_intent(prompt: str) -> Tuple[bool, str]:
     if any(re.search(pat, clean) for pat in opinion_and_exploratory_patterns):
         return False, "brainstorming_inquiry"
 
-    # Explicit imperative software creation commands
+    # Explicit imperative software, workstation, file, or multi-step browser commands
     imperative_build_patterns = (
-        r"^(?:please\s+)?(?:build|create|make|code|implement|generate|develop|scaffold|write|setup|fix|repair|debug|refactor|add)\b",
+        r"^(?:please\s+)?(?:build|create|make|code|implement|generate|develop|scaffold|write|setup|fix|repair|debug|refactor|add|list|read|inspect|audit|search|find|edit|modify|update|delete|remove|run|execute|test|analyze|check|summarize)\b",
         r"\b(?:build\s+(?:me|this|a|an)|create\s+(?:me|this|a|an)|code\s+(?:me|this|a|an)|implement\s+(?:this|the)|write\s+(?:a|an|the)\s+(?:script|code|app|program))\b",
-        r"\b(add feature|add endpoint|create endpoint|add route|setup routes|mount workspace|clone repo|run test|verify code)\b"
+        r"\b(add feature|add endpoint|create endpoint|add route|setup routes|mount workspace|clone repo|run test|verify code|list (?:the )?files|read (?:the )?(?:first|last|\d+)?\s*lines?|inspect (?:the )?file)\b",
+        r"(?:[a-zA-Z]:[\\/][^\s]+|~/[^\s]+)",
+        r"\b[a-zA-Z0-9_\-]+\.(?:py|js|ts|jsx|tsx|html|css|json|md|bat|sh|yml|yaml|sql)\b"
     )
     has_imperative_build = any(re.search(pat, clean) for pat in imperative_build_patterns)
 
-    # If it is framed as a question and has no direct imperative build directive -> Conversational
+    # Multi-step browser flow (e.g. "open github and search for...", "go to X and click...")
+    has_browser_flow = bool(re.search(r"\b(?:open|go\s+to|visit|navigate\s+to)\s+[a-zA-Z0-9_\-\.]+\s+(?:and|then)\s+", clean))
+    if has_browser_flow:
+        return True, "frontier_task"
+
+    # If it is framed as a question and has no direct imperative/file directive -> Conversational
     if starts_as_question and not has_imperative_build:
         return False, "inquiry"
 
-    # If it explicitly has an imperative build verb -> Action
+    # If it explicitly has an imperative build/workstation directive -> Action
     if has_imperative_build:
-        return True, "build_task"
+        is_pure_build = bool(re.search(r"\b(?:build|create|make|code|implement|generate|develop|scaffold)\b", clean))
+        return True, ("build_task" if is_pure_build else "frontier_task")
 
     # Heuristic: If prompt mentions code syntax/trace without asking to build -> Question
     if any(k in clean for k in ("error trace", "stack trace", "why is", "what does this mean")):

@@ -4427,10 +4427,11 @@ window.sendChatArenaMessage = async function() {
         window._chatTimedOut = false;
         const chatAbortController = new AbortController();
         window._currentChatAbortController = chatAbortController;
+        const timeoutMs = isAgentic ? 300000 : 120000;
         const chatWatchdogTimer = setTimeout(() => {
             window._chatTimedOut = true;
             chatAbortController.abort();
-        }, 90000);
+        }, timeoutMs);
 
         const wasVoicePrompt = Boolean(window.jarvisLastPromptWasVoice);
         window.jarvisLastPromptWasVoice = false;
@@ -5033,7 +5034,10 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             const stepNum = idx + 1;
             const thoughtText = st.thought ? `<div style="color:var(--text-secondary); margin-bottom:4px; font-style:italic;">Thought: ${escapeHtml(st.thought)}</div>` : '';
             const actionText = st.action ? `<div style="font-family:var(--font-mono); color:#38bdf8; font-size:0.72rem;">⚡ ${escapeHtml(st.action)} ${st.args ? escapeHtml(JSON.stringify(st.args)) : ''}</div>` : '';
-            const obsText = st.observation ? `<div style="color:var(--text-muted); font-size:0.70rem; margin-top:2px;">↳ ${escapeHtml(String(st.observation).substring(0, 150))}</div>` : '';
+            const rawObs = (typeof st.observation === 'object' && st.observation !== null)
+                ? (st.observation.message || st.observation.error || JSON.stringify(st.observation))
+                : st.observation;
+            const obsText = rawObs ? `<div style="color:var(--text-muted); font-size:0.70rem; margin-top:2px;">↳ ${escapeHtml(String(rawObs).substring(0, 180))}</div>` : '';
             return `
                 <div style="padding: 6px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; font-size: 0.73rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; font-weight:600; color:var(--text-primary);">
@@ -7393,8 +7397,8 @@ window.toggleAgenticMode = function() {
     window.updateAgenticModeUI();
 };
 
-// Dynamic Multi-Agent Swarm Mode (Runs automatically in background for all code tasks)
-window.swarmModeEnabled = true;
+// Dynamic Multi-Agent Swarm Mode (Opt-in via toggle, or auto-triggered in backend for greenfield web/app builds)
+window.swarmModeEnabled = false;
 window.activeMountedWorkspacePath = null;
 window.activeMountedProjectName = null;
 window.updateSwarmModeUI = function() {};

@@ -79,7 +79,7 @@ Available Tools:
 3. ONE STEP AT A TIME: Do NOT rush to write an entire solution in one turn. Output one clear `Thought:` and ONE `Action:` per turn, then pause so the system executes it and gives you the real `Observation:`.
 4. SURGICAL EDITS & VERIFICATION: Prefer `edit_file` over overwriting whole files. Whenever you modify code or scripts, run a check/test via `run_command` to verify exit_code 0 before marking the task done.
 5. SELF-CORRECTION: If any tool or command returns an error (`"status": "error"` or non-zero `exit_code`), read the traceback carefully in `Thought:`, diagnose why it failed, fix it, and re-test.
-6. HONEST FINAL ANSWER: Only state file paths, outputs, and test results you directly observed in tool outputs. Never invent results.
+6. HONEST FINAL ANSWER: Only state file paths, outputs, and test results you directly observed in tool outputs. Never invent results. Once you have observed everything needed to answer the user's request, STOP calling tools and output `Final Answer:` immediately — do NOT inspect unrelated local workspace files.
 
 === STRICT TURN FORMAT ===
 Thought: <clear reasoning about what to inspect, plan, change, or verify next>
@@ -378,7 +378,7 @@ def extract_balanced_json_object(text: str, start_pos: int = 0) -> Tuple[Optiona
 
 
 
-def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
+def parse_react_output(text: Optional[str], allow_code_harvest: bool = True) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]], Optional[str]]:
 
     """
 
@@ -614,7 +614,9 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
         return thought, None, None, final_answer
 
 
-    # Check for direct markdown code blocks emitted by local models (HTML, CSS, JS, Python)
+    # Check for direct markdown code blocks emitted by local models (HTML, CSS, JS, Python) — Builder mode only
+    if not allow_code_harvest:
+        return None, None, None, None
 
     code_blocks = list(re.finditer(r"```(html|xml|css|javascript|js|json|python|py)\b(?:\s*[:\-]?\s*([a-zA-Z0-9_\-\.]+))?\s*\n([\s\S]+?)```", text, re.IGNORECASE))
 
@@ -1026,7 +1028,7 @@ def run_agentic_react_loop(
     is_trivial_os_shortcut = (
         intent_type == "jarvis_os_action"
         and bool(re.search(r"^(?:hey\s+|please\s+)?(?:open|launch|start|mute|unmute|volume|lock|what(?:'s|\s+is)\s+(?:the\s+)?(?:time|date|weather)|send\s+desktop\s+notification)\b", p_lower))
-        and not re.search(r"\b(and\s+then|step\s+by\s+step|slowly|file|code|script|bug|fix|check\s+.*and)\b", p_lower)
+        and not re.search(r"\b(and|then|step\s+by\s+step|slowly|file|code|script|bug|fix|read|search|click|type|extract|summarize|inspect|find)\b", p_lower)
     )
     is_greenfield_app = bool(
         re.search(r"\b(make|build|create|develop|generate)\s+(?:a|an)\s+(?:full[- ]?stack\s+)?(?:web\s*app|website|web\s*page|dashboard|landing\s*page|portfolio|calculator\s+app|todo\s+app|game|snake|tetris|chess|clone)\b", p_lower)
@@ -1722,7 +1724,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
 
 
-            thought, action, args, final_ans = parse_react_output(content)
+            thought, action, args, final_ans = parse_react_output(content, allow_code_harvest=(not is_frontier_mode))
 
             step_record["thought"] = thought or "Analyzing task requirements..."
 
@@ -2314,7 +2316,19 @@ Final Answer: <Your clear, professional, factual answer to the user>
                 else:
                     final_reply = "Jarvis executive command processed."
             elif is_frontier_mode:
-                final_reply = f"Completed {len(steps)} deliberative step(s) for '{clean_proj}'."
+                try:
+                    synth_msgs = list(messages) + [{
+                        "role": "user",
+                        "content": "You have reached the step limit. Do NOT call any tools. Output `Final Answer:` summarizing ONLY what you directly observed in the tool outputs above."
+                    }]
+                    last_resp = call_unified_chat(model, synth_msgs, temperature=0.2, context_window=context_window)
+                    total_eval_tokens += last_resp.get("eval_count", 0)
+                    total_time_sec += last_resp.get("duration_sec", 0.1)
+                    raw_sum = last_resp.get("content", "").strip()
+                    _, _, _, parsed_ans = parse_react_output(raw_sum, allow_code_harvest=False)
+                    final_reply = parsed_ans or raw_sum or f"Completed {len(steps)} deliberative step(s) for '{clean_proj}'."
+                except Exception:
+                    final_reply = f"Completed {len(steps)} deliberative step(s) for '{clean_proj}'."
             else:
                 summary_prompt = (
                     f"You have finished building the workspace files for project '{clean_proj}'. "

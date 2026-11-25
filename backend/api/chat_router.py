@@ -699,6 +699,12 @@ def send_chat_message(req: ChatRequest):
 
     if should_execute_agentic:
         try:
+            if req.project_name:
+                try:
+                    from backend.core.agent_progress import set_project_progress
+                    set_project_progress(req.project_name, phase="planning", headline="Starting Frontier Agent...", detail="Preparing tools & workspace")
+                except Exception:
+                    pass
             if intent_type == "build_task":
                 if allow_speech:
                     try:

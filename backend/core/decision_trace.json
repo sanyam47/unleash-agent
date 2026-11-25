@@ -1,0 +1,46 @@
+[
+  {
+    "id": "evt_1795622029947",
+    "timestamp": "2026-11-25 21:23:49",
+    "type": "intent_analysis",
+    "headline": "Prompt Received: List the files in c:\\coding\\ai-trainer\\backend\\core and read",
+    "rationale": "Analyzing prompt under lite_edge tier. Existing files on disk: ['adaptive_tier.py', 'agent_engine.py', 'agent_manifest.py', 'agent_progress.py', 'agent_tools.py', 'analytics_engine.py', 'app_discovery.py', 'browser_gate.py', 'browser_pilot.py', 'chunked_writer.py', 'cloud_gpu_bridge.py', 'cloud_llm_client.py', 'config.py', 'container_runner.py', 'council.py', 'credential_vault.py', 'cyber_rag.py', 'data_validator.py', 'decision_tracer.py', 'desktop_perception.py', 'execution_controller.py', 'fast_path_router.py', 'gemini_client.py', 'goal_stepper.py', 'gui_pilot.py', 'habit_miner.py', 'intent_gate.py', 'jarvis_executive.py', 'knowledge_broker.py', 'knowledge_gateway.py', 'mcp_client.py', 'memory_manager.py', 'memory_pilot.py', 'package_verifier.py', 'paths.py', 'permission_controller.py', 'preflight_inspector.py', 'prompt_injection_guard.py', 'resource_cache.py', 'router.py', 'sandbox.py', 'schemas.py', 'scout_agent.py', 'secret_scrubber.py', 'security_scanner.py', 'skill_router.py', 'symbol_extractor.py', 'synthetic_studio.py', 'task_daemon.py', 'vision_pilot.py', 'visual_inspector.py', 'voice_pilot.py', 'wake_word_listener.py', 'workspace_snapshot.py', 'workspace_validator.py', 'workstation_sensors.py']",
+    "details": {
+      "tier": "lite_edge",
+      "context_window": 4096
+    }
+  },
+  {
+    "id": "evt_1795622262016",
+    "timestamp": "2026-11-25 21:27:42",
+    "type": "intent_analysis",
+    "headline": "Prompt Received: List the files in c:\\coding\\ai-trainer\\backend\\core and read",
+    "rationale": "Analyzing prompt under lite_edge tier. Existing files on disk: ['adaptive_tier.py', 'agent_engine.py', 'agent_manifest.py', 'agent_progress.py', 'agent_tools.py', 'analytics_engine.py', 'app_discovery.py', 'browser_gate.py', 'browser_pilot.py', 'chunked_writer.py', 'cloud_gpu_bridge.py', 'cloud_llm_client.py', 'config.py', 'container_runner.py', 'council.py', 'credential_vault.py', 'cyber_rag.py', 'data_validator.py', 'decision_trace.json', 'decision_tracer.py', 'desktop_perception.py', 'execution_controller.py', 'fast_path_router.py', 'gemini_client.py', 'goal_stepper.py', 'gui_pilot.py', 'habit_miner.py', 'intent_gate.py', 'jarvis_executive.py', 'knowledge_broker.py', 'knowledge_gateway.py', 'mcp_client.py', 'memory_manager.py', 'memory_pilot.py', 'package_verifier.py', 'paths.py', 'permission_controller.py', 'preflight_inspector.py', 'prompt_injection_guard.py', 'resource_cache.py', 'router.py', 'sandbox.py', 'schemas.py', 'scout_agent.py', 'secret_scrubber.py', 'security_scanner.py', 'skill_router.py', 'symbol_extractor.py', 'synthetic_studio.py', 'task_daemon.py', 'vision_pilot.py', 'visual_inspector.py', 'voice_pilot.py', 'wake_word_listener.py', 'workspace_snapshot.py', 'workspace_validator.py', 'workstation_sensors.py']",
+    "details": {
+      "tier": "lite_edge",
+      "context_window": 4096
+    }
+  },
+  {
+    "id": "evt_1795622406097",
+    "timestamp": "2026-11-25 21:30:06",
+    "type": "intent_analysis",
+    "headline": "Prompt Received: List the files in c:\\coding\\ai-trainer\\backend\\core and read",
+    "rationale": "Analyzing prompt under lite_edge tier. Existing files on disk: ['adaptive_tier.py', 'agent_engine.py', 'agent_manifest.py', 'agent_progress.py', 'agent_tools.py', 'analytics_engine.py', 'app_discovery.py', 'browser_gate.py', 'browser_pilot.py', 'chunked_writer.py', 'cloud_gpu_bridge.py', 'cloud_llm_client.py', 'config.py', 'container_runner.py', 'council.py', 'credential_vault.py', 'cyber_rag.py', 'data_validator.py', 'decision_trace.json', 'decision_tracer.py', 'desktop_perception.py', 'execution_controller.py', 'fast_path_router.py', 'gemini_client.py', 'goal_stepper.py', 'gui_pilot.py', 'habit_miner.py', 'intent_gate.py', 'jarvis_executive.py', 'knowledge_broker.py', 'knowledge_gateway.py', 'mcp_client.py', 'memory_manager.py', 'memory_pilot.py', 'package_verifier.py', 'paths.py', 'permission_controller.py', 'preflight_inspector.py', 'prompt_injection_guard.py', 'resource_cache.py', 'router.py', 'sandbox.py', 'schemas.py', 'scout_agent.py', 'secret_scrubber.py', 'security_scanner.py', 'skill_router.py', 'symbol_extractor.py', 'synthetic_studio.py', 'task_daemon.py', 'vision_pilot.py', 'visual_inspector.py', 'voice_pilot.py', 'wake_word_listener.py', 'workspace_snapshot.py', 'workspace_validator.py', 'workstation_sensors.py']",
+    "details": {
+      "tier": "lite_edge",
+      "context_window": 4096
+    }
+  },
+  {
+    "id": "evt_1795622670795",
+    "timestamp": "2026-11-25 21:34:30",
+    "type": "intent_analysis",
+    "headline": "Prompt Received: List the files in c:\\coding\\ai-trainer\\backend\\core and read",
+    "rationale": "Analyzing prompt under lite_edge tier. Existing files on disk: ['adaptive_tier.py', 'agent_engine.py', 'agent_manifest.py', 'agent_progress.py', 'agent_tools.py', 'analytics_engine.py', 'app_discovery.py', 'browser_gate.py', 'browser_pilot.py', 'chunked_writer.py', 'cloud_gpu_bridge.py', 'cloud_llm_client.py', 'config.py', 'container_runner.py', 'council.py', 'credential_vault.py', 'cyber_rag.py', 'data_validator.py', 'decision_trace.json', 'decision_tracer.py', 'desktop_perception.py', 'execution_controller.py', 'fast_path_router.py', 'gemini_client.py', 'goal_stepper.py', 'gui_pilot.py', 'habit_miner.py', 'intent_gate.py', 'jarvis_executive.py', 'knowledge_broker.py', 'knowledge_gateway.py', 'main.py', 'mcp_client.py', 'memory_manager.py', 'memory_pilot.py', 'package_verifier.py', 'paths.py', 'permission_controller.py', 'preflight_inspector.py', 'prompt_injection_guard.py', 'resource_cache.py', 'router.py', 'sandbox.py', 'schemas.py', 'scout_agent.py', 'secret_scrubber.py', 'security_scanner.py', 'skill_router.py', 'symbol_extractor.py', 'synthetic_studio.py', 'task_daemon.py', 'vision_pilot.py', 'visual_inspector.py', 'voice_pilot.py', 'wake_word_listener.py', 'workspace_snapshot.py', 'workspace_validator.py', 'workstation_sensors.py']",
+    "details": {
+      "tier": "lite_edge",
+      "context_window": 4096
+    }
+  }
+]

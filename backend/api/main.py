@@ -205,3 +205,11 @@ app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 def read_index():
     from fastapi.responses import FileResponse
     return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
+
+
+def run_studio_cli():
+    """CLI entrypoint for `unleash-studio` (pip install -e .)."""
+    import uvicorn
+    port = int(os.getenv("UNLEASH_PORT", "8001"))
+    host = os.getenv("UNLEASH_HOST", "127.0.0.1")
+    uvicorn.run("backend.api.main:app", host=host, port=port, reload=False)

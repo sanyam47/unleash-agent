@@ -101,6 +101,7 @@ scratch/
 backend/data/execution_checkpoints/
 backend/data/browser_screenshots/
 backend/data/browser_profile/
+**/decision_trace.json
 
 # Voice Audio Cache & Large Binary Models
 backend/data/voice_profiles/cache/

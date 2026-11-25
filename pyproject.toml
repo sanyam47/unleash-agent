@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unleash-agent"
+version = "2.0.0"
+description = "The Secure, Air-Gapped Autonomous Agent Runtime & Local LLM Studio"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Sanyam Asopa", email = "sanyam4747@gmail.com" }
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "sqlalchemy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.9",
+    "requests>=2.31.0",
+    "httpx>=0.27.0",
+    "psutil>=5.9.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+unleash = "unleash_agent:main"
+unleash-studio = "backend.api.main:run_studio_cli"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "tools*"]

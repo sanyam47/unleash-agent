@@ -1,0 +1,56 @@
+name: Unleash-Agent CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install core runtime & test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi uvicorn sqlalchemy pydantic pydantic-settings python-dotenv python-multipart requests httpx psutil pyyaml starlette
+
+      - name: Python syntax gate (compileall)
+        run: python -m compileall -q -x "backend/data" backend
+
+      - name: Frontend JS syntax gate
+        run: node -c frontend/script_v2.js
+
+      - name: Run Deliberative Frontier Agent test suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python backend/tests/verify_frontier_agent_loop.py
+
+      - name: Run Cross-Platform Workstation Sensors suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python backend/tests/verify_workstation_sensors.py
+
+      - name: Run Phase 2 Closed-Loop Tool & ReAct suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python backend/tests/verify_phase2_closed_loop.py
+
+      - name: Run Phase 5 Ambient Watchdog suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+        run: python backend/tests/verify_phase5_ambient_watchdog.py

@@ -42,21 +42,23 @@ def get_realtime_gpu_headroom_mb() -> Dict[str, Any]:
                 free_mb = float(parts[2])
                 used_mb = float(parts[3])
 
-                if free_mb >= 2500:
+                if total_mb <= 6500:
+                    # 6GB Consumer GPU (e.g. RTX 3050): keep consistent 4096 ctx so KV cache stays in VRAM
+                    # and never force num_gpu=0 when Ollama itself holds the resident weights in VRAM.
+                    ctx_rec = 4096
+                    clamped = True
+                    status_label = "6GB VRAM (4K Stable)"
+                    num_gpu = 1
+                elif free_mb >= 2500:
                     ctx_rec = 8192
                     clamped = False
                     status_label = "Optimal"
                     num_gpu = 1
-                elif free_mb >= 1200:
-                    ctx_rec = 2048
-                    clamped = True
-                    status_label = "Clamped (2K Context)"
-                    num_gpu = 1
                 else:
-                    ctx_rec = 2048
+                    ctx_rec = 4096
                     clamped = True
-                    status_label = "CPU Memory Fallback (<1.2GB Free)"
-                    num_gpu = 0
+                    status_label = "VRAM Guard (4K Context)"
+                    num_gpu = 1
 
                 short_gpu = gpu_name.replace("NVIDIA GeForce ", "").replace(" Laptop GPU", "")
                 return {

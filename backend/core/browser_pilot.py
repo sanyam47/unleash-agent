@@ -20,10 +20,12 @@ from typing import Dict, Any, Optional, List, Tuple
 
 logger = logging.getLogger("unleash.browser_pilot")
 
-# Screenshot and download staging directory
+# Screenshot, profile, and download staging directories
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SCREENSHOTS_DIR = DATA_DIR / "browser_screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+PROFILE_DIR = DATA_DIR / "browser_profile"
+PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class BrowserSessionManager:
@@ -38,7 +40,7 @@ class BrowserSessionManager:
     _context = None
     _page = None
     _last_active: float = 0.0
-    _is_headless: bool = True
+    _is_headless: bool = False
 
     @classmethod
     def get_instance(cls) -> "BrowserSessionManager":
@@ -46,36 +48,51 @@ class BrowserSessionManager:
             cls._instance = BrowserSessionManager()
         return cls._instance
 
-    def _ensure_browser(self, headless: bool = True):
-        """Initializes or reuses the browser session with Chrome/Edge channels."""
+    def _ensure_browser(self, headless: bool = False):
+        """Initializes or reuses the browser session (persistent profile when visible)."""
         now = time.time()
-        # If running in a different headless state or session timed out (>5 min), recycle
-        if self._browser is not None:
-            if self._is_headless != headless or (now - self._last_active > 300):
+        # If running in a different headless state or session timed out (>10 min), recycle
+        if self._context is not None or self._browser is not None:
+            if self._is_headless != headless or (now - self._last_active > 600):
                 self.close()
 
         if self._playwright is None:
             from playwright.sync_api import sync_playwright
             self._playwright = sync_playwright().start()
 
-        if self._browser is None:
+        if self._context is None:
             channels = ["chrome", "msedge", None]
             launched = False
             last_err = None
+            launch_args = [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage"
+            ]
 
             for ch in channels:
                 try:
-                    kwargs = {
-                        "headless": headless,
-                        "args": [
-                            "--disable-blink-features=AutomationControlled",
-                            "--no-sandbox",
-                            "--disable-dev-shm-usage"
-                        ]
-                    }
-                    if ch:
-                        kwargs["channel"] = ch
-                    self._browser = self._playwright.chromium.launch(**kwargs)
+                    if not headless:
+                        # Visible interactive mode: use persistent profile so logins (GitHub, WhatsApp Web, etc.) persist
+                        kwargs: Dict[str, Any] = {
+                            "user_data_dir": str(PROFILE_DIR),
+                            "headless": False,
+                            "viewport": {"width": 1280, "height": 800},
+                            "args": launch_args,
+                        }
+                        if ch:
+                            kwargs["channel"] = ch
+                        self._context = self._playwright.chromium.launch_persistent_context(**kwargs)
+                        self._browser = None
+                    else:
+                        kwargs = {"headless": True, "args": launch_args}
+                        if ch:
+                            kwargs["channel"] = ch
+                        self._browser = self._playwright.chromium.launch(**kwargs)
+                        self._context = self._browser.new_context(
+                            viewport={"width": 1280, "height": 800},
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                        )
                     self._is_headless = headless
                     launched = True
                     break
@@ -86,14 +103,9 @@ class BrowserSessionManager:
             if not launched:
                 raise RuntimeError(f"Failed to launch Chrome or Edge via Playwright: {last_err}")
 
-        if self._context is None:
-            self._context = self._browser.new_context(
-                viewport={"width": 1280, "height": 800},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-            )
-
-        if self._page is None:
-            self._page = self._context.new_page()
+        if self._page is None or self._page.is_closed():
+            existing_pages = self._context.pages if hasattr(self._context, "pages") else []
+            self._page = existing_pages[0] if existing_pages else self._context.new_page()
             self._page.set_default_timeout(15000)
             try:
                 self._page.on("dialog", lambda d: d.dismiss())
@@ -103,10 +115,46 @@ class BrowserSessionManager:
         self._last_active = time.time()
         return self._page
 
-    def navigate(self, url: str, headless: bool = True) -> Dict[str, Any]:
+    def _get_interactive_elements(self, limit: int = 16) -> List[Dict[str, str]]:
+        """Extracts a compact list of visible interactive inputs, buttons, and links with usable selectors."""
+        if not self._page:
+            return []
+        try:
+            return self._page.evaluate(
+                """(maxItems) => {
+                    const out = [];
+                    const seen = new Set();
+                    const els = document.querySelectorAll('input, textarea, button, [role="button"], a[href]');
+                    for (const el of els) {
+                        if (out.length >= maxItems) break;
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width < 8 || rect.height < 8) continue;
+                        const tag = el.tagName.toLowerCase();
+                        const type = (el.getAttribute('type') || '').toLowerCase();
+                        if (tag === 'input' && type === 'hidden') continue;
+                        const text = (el.innerText || el.value || el.getAttribute('placeholder') || el.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim().slice(0, 50);
+                        if (!text && tag === 'a') continue;
+                        let sel = '';
+                        if (el.id) sel = '#' + CSS.escape(el.id);
+                        else if (el.getAttribute('name')) sel = `${tag}[name="${el.getAttribute('name')}"]`;
+                        else if (el.getAttribute('aria-label')) sel = `${tag}[aria-label="${el.getAttribute('aria-label').replace(/"/g, '\\\\"')}"]`;
+                        else if (el.getAttribute('placeholder')) sel = `${tag}[placeholder="${el.getAttribute('placeholder').replace(/"/g, '\\\\"')}"]`;
+                        else if (text) sel = `text=${text}`;
+                        if (!sel || seen.has(sel)) continue;
+                        seen.add(sel);
+                        out.push({ tag, label: text || tag, selector: sel });
+                    }
+                    return out;
+                }""",
+                limit,
+            ) or []
+        except Exception:
+            return []
+
+    def navigate(self, url: str, headless: bool = False) -> Dict[str, Any]:
         """Navigates current browser page to the specified URL."""
         clean_url = str(url or "").strip()
-        if not clean_url.startswith(("http://", "https://")):
+        if not clean_url.startswith(("http://", "https://", "data:", "file://")):
             clean_url = "https://" + clean_url
 
         try:
@@ -118,12 +166,13 @@ class BrowserSessionManager:
             title = page.title()
             status_code = resp.status if resp else 200
 
-            # Brief body text preview
             try:
-                body_text = page.inner_text("body", timeout=3000)[:600]
+                body_text = page.inner_text("body", timeout=3000)[:500]
                 body_clean = re.sub(r'\s+', ' ', body_text).strip()
             except Exception:
                 body_clean = ""
+
+            elements = self._get_interactive_elements(limit=16)
 
             return {
                 "status": "success",
@@ -133,6 +182,7 @@ class BrowserSessionManager:
                 "http_status": status_code,
                 "elapsed_sec": elapsed,
                 "snippet": body_clean,
+                "interactive_elements": elements,
                 "message": f"Navigated to '{title}' ({page.url}) in {elapsed}s"
             }
         except Exception as e:
@@ -161,6 +211,7 @@ class BrowserSessionManager:
                 "target": target,
                 "new_url": self._page.url,
                 "new_title": self._page.title(),
+                "interactive_elements": self._get_interactive_elements(limit=16),
                 "message": f"Successfully clicked element '{target}'. Current page: '{self._page.title()}'"
             }
         except Exception as e:
@@ -182,7 +233,7 @@ class BrowserSessionManager:
                 self._page.press(selector, "Enter")
                 time.sleep(1.0)
 
-            return {
+            res = {
                 "status": "success",
                 "action": "type_text",
                 "selector": selector,
@@ -191,6 +242,9 @@ class BrowserSessionManager:
                 "current_url": self._page.url,
                 "message": f"Typed '{text}' into '{selector}'" + (" and submitted Enter." if press_enter else ".")
             }
+            if press_enter:
+                res["interactive_elements"] = self._get_interactive_elements(limit=16)
+            return res
         except Exception as e:
             return {"status": "error", "error": f"Failed to type text into '{selector}': {str(e)}"}
 
@@ -389,7 +443,7 @@ class BrowserSessionManager:
 
 
 # Module-level convenience functions for tool dispatcher
-def browser_navigate(url: str, headless: bool = True) -> Dict[str, Any]:
+def browser_navigate(url: str, headless: bool = False) -> Dict[str, Any]:
     return BrowserSessionManager.get_instance().navigate(url, headless=headless)
 
 def browser_click(selector: str, text: Optional[str] = None) -> Dict[str, Any]:

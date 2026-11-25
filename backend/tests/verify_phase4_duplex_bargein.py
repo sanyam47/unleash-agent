@@ -86,22 +86,27 @@ def test_duplex_state_reporting():
 
 def test_api_duplex_status_endpoint():
     print_step(3, "Testing API GET /api/voice/duplex_status")
-    req = urllib.request.Request(f"{BASE_URL}/api/voice/duplex_status")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        assert resp.status == 200
-        data = json.loads(resp.read().decode("utf-8"))
-        print(f"API duplex_status: {json.dumps(data, indent=2)}")
+    from starlette.testclient import TestClient
+    from backend.api.main import app
+    client = TestClient(app)
+    resp = client.get("/api/voice/duplex_status")
+    assert resp.status_code == 200
+    data = resp.json()
+    print(f"API duplex_status: {json.dumps(data, indent=2)}")
 
-        assert data.get("status") == "success"
-        assert "duplex_state" in data
-        assert "barge_in_enabled" in data
-        assert data.get("barge_in_enabled") is True
+    assert data.get("status") == "success"
+    assert "duplex_state" in data
+    assert "barge_in_enabled" in data
+    assert data.get("barge_in_enabled") is True
 
     print("PASS: GET /api/voice/duplex_status endpoint validated.")
 
 
 def test_api_barge_in_endpoint():
     print_step(4, "Testing API POST /api/voice/barge_in and POST /api/voice/stop")
+    from starlette.testclient import TestClient
+    from backend.api.main import app
+    client = TestClient(app)
 
     # 1. Start audio playback via voice_pilot
     from backend.core.voice_pilot import play_audio_file, AUDIO_CACHE_DIR
@@ -110,33 +115,23 @@ def test_api_barge_in_endpoint():
     time.sleep(0.04)
 
     # 2. Trigger Barge-In via API POST /api/voice/barge_in
-    req = urllib.request.Request(
-        f"{BASE_URL}/api/voice/barge_in",
-        data=b"{}",
-        headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        assert resp.status == 200
-        data = json.loads(resp.read().decode("utf-8"))
-        print(f"POST /api/voice/barge_in response: {json.dumps(data, indent=2)}")
+    resp = client.post("/api/voice/barge_in", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    print(f"POST /api/voice/barge_in response: {json.dumps(data, indent=2)}")
 
-        assert data.get("status") == "success"
-        cutoff_ms = data.get("cutoff_ms", 999.0)
-        assert cutoff_ms < 15.0, f"API Barge-in cutoff must be < 15ms! Got: {cutoff_ms}ms"
+    assert data.get("status") == "success"
+    cutoff_ms = data.get("cutoff_ms", 999.0)
+    assert cutoff_ms < 15.0, f"API Barge-in cutoff must be < 15ms! Got: {cutoff_ms}ms"
 
     # 3. Test POST /api/voice/stop endpoint
-    req_stop = urllib.request.Request(
-        f"{BASE_URL}/api/voice/stop",
-        data=b"{}",
-        headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req_stop, timeout=10) as resp:
-        assert resp.status == 200
-        data_stop = json.loads(resp.read().decode("utf-8"))
-        print(f"POST /api/voice/stop response: {json.dumps(data_stop, indent=2)}")
-        assert data_stop.get("status") == "success"
-        assert "cutoff_ms" in data_stop
-        assert data_stop.get("cutoff_ms", 999.0) < 15.0
+    resp_stop = client.post("/api/voice/stop", json={})
+    assert resp_stop.status_code == 200
+    data_stop = resp_stop.json()
+    print(f"POST /api/voice/stop response: {json.dumps(data_stop, indent=2)}")
+    assert data_stop.get("status") == "success"
+    assert "cutoff_ms" in data_stop
+    assert data_stop.get("cutoff_ms", 999.0) < 15.0
 
     print("PASS: API barge_in and stop endpoints validated.")
 

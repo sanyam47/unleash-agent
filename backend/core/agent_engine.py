@@ -51,6 +51,62 @@ JARVIS_EXECUTIVE_TOOLS = {
 
 
 
+def format_frontier_system_prompt(base_system: str, project_name: str, skills_prompt: Optional[str] = None, workspace_dir: Optional[str] = None, pro_tools: bool = False) -> str:
+    """
+    Deliberative Frontier Agent Prompt:
+    Guides local models (8B-70B) to work methodically and slowly — plan first via update_plan,
+    inspect files/folders before editing, make surgical edits, verify via run_command, and self-correct on errors.
+    """
+    from backend.core.agent_tools import get_tool_schemas
+    tools_formatted = []
+    schema_mode = "frontier_pro" if pro_tools else "frontier"
+    for t in get_tool_schemas(mode=schema_mode):
+        param_desc = ", ".join([f'"{k}": <{v}>' for k, v in t.get("parameters", {}).items()])
+        tools_formatted.append(f"- {t['name']}({{{param_desc}}}): {t['description']}")
+    tools_text = "\n".join(tools_formatted)
+
+    ws_info = workspace_dir or sanitize_project_name(project_name)
+
+    instructions = f"""You are Unleash-Agent, a methodical, deliberative autonomous workstation & engineering agent.
+Your current workspace is: '{ws_info}'. You can also inspect and operate on safe absolute Windows paths (e.g. C:\\coding\\..., ~\\Desktop\\...) requested by the user.
+
+Available Tools:
+{tools_text}
+
+=== DELIBERATIVE FRONTIER WORKFLOW (WORK SLOWLY & METHODICALLY) ===
+1. PLAN FIRST: For any multi-step task, your first Action should be `update_plan` with a concise, ordered checklist of steps (e.g. 2 to 8 steps depending on complexity), marking the first step `"in_progress"`. Update the plan as you finish steps.
+2. INSPECT BEFORE ACTING: Never guess what is in a file or folder. Call `list_dir`, `search_files`, or `read_file` (use `start_line`/`end_line` for large files) before editing or answering.
+3. ONE STEP AT A TIME: Do NOT rush to write an entire solution in one turn. Output one clear `Thought:` and ONE `Action:` per turn, then pause so the system executes it and gives you the real `Observation:`.
+4. SURGICAL EDITS & VERIFICATION: Prefer `edit_file` over overwriting whole files. Whenever you modify code or scripts, run a check/test via `run_command` to verify exit_code 0 before marking the task done.
+5. SELF-CORRECTION: If any tool or command returns an error (`"status": "error"` or non-zero `exit_code`), read the traceback carefully in `Thought:`, diagnose why it failed, fix it, and re-test.
+6. HONEST FINAL ANSWER: Only state file paths, outputs, and test results you directly observed in tool outputs. Never invent results.
+
+=== STRICT TURN FORMAT ===
+Thought: <clear reasoning about what to inspect, plan, change, or verify next>
+Action: tool_name({{"param": "value"}})
+
+CRITICAL: Output ONLY ONE Thought + Action pair and STOP immediately. NEVER write "Observation:" yourself — the system will execute your Action and send you the real Observation.
+
+When all steps in your plan are verified and `"done"`, conclude with:
+Thought: <confirmation of observed verification results>
+Final Answer: <concise, accurate markdown summary of what was done and verified>"""
+
+    if skills_prompt:
+        instructions += f"\n\n=== ATTACHED SKILL INSTRUCTIONS ===\n{skills_prompt}"
+    if base_system and base_system.strip():
+        instructions += f"\n\n=== PERSONA ===\n{base_system.strip()}"
+
+    try:
+        from backend.core.memory_manager import format_memory_for_system_prompt
+        mem_block = format_memory_for_system_prompt()
+        if mem_block:
+            instructions += f"\n\n{mem_block}"
+    except Exception:
+        pass
+
+    return instructions
+
+
 def format_agentic_system_prompt(base_system: str, project_name: str, skills_prompt: Optional[str] = None, toolset_mode: str = "full") -> str:
     """Builds the authoritative ReAct prompt guiding the model to plan, code, and build complete software."""
     clean_proj = sanitize_project_name(project_name)
@@ -355,6 +411,28 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
 
         search_start = action_match.end()
 
+        # If model emitted update_plan first AND a concrete tool Action immediately after in the same turn,
+        # extract the second Action as primary if update_plan is paired with a real inspection/edit tool.
+        if action_name in ("update_plan", "update_steps", "set_plan"):
+            next_action_match = re.search(r"Action\s*:\s*([a-zA-Z0-9_]+)", text[search_start:], re.IGNORECASE)
+            if next_action_match:
+                plan_args, _ = extract_balanced_json_object(text, search_start)
+                if plan_args and isinstance(plan_args.get("steps"), list):
+                    try:
+                        from backend.core.agent_tools import update_plan as _apply_plan_inline
+                        # Will be updated cleanly using project_name inside loop if needed; store in args
+                        next_name = next_action_match.group(1).strip()
+                        next_args, _ = extract_balanced_json_object(text, search_start + next_action_match.end())
+                        if next_args is not None:
+                            next_args["__inline_plan_steps"] = plan_args["steps"]
+                            action_name = next_name
+                            action_args = next_args
+                            thought_match = re.search(r"Thought\s*:\s*([\s\S]+?)(?=Action|$)", text, re.IGNORECASE)
+                            thought = thought_match.group(1).strip() if thought_match else f"Executing tool {action_name}"
+                            return thought, action_name, action_args, None
+                    except Exception:
+                        pass
+
 
 
         # Extract balanced JSON arguments
@@ -485,8 +563,55 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
 
                 cmd = obj.get("command") or obj.get("cmd")
 
-                return f"Executing command '{cmd}'", "run_terminal_command", {"command": str(cmd)}, None
+                return f"Executing command '{cmd}'", "run_command", {"command": str(cmd)}, None
 
+            # Direct plan payload: {"steps": [...]}
+
+            if "steps" in obj and isinstance(obj.get("steps"), list):
+
+                return "Updating execution plan checklist", "update_plan", {"steps": obj["steps"]}, None
+
+
+    # Check for PROPOSE_INSTALL request before auto-harvesting code blocks
+
+    install_match = re.search(r"PROPOSE_INSTALL\s*:\s*(\{[\s\S]+?\})", text, re.IGNORECASE)
+
+    if install_match:
+
+        try:
+
+            req_data = json.loads(install_match.group(1), strict=False)
+
+            pkg = req_data.get("package")
+
+            reason = req_data.get("reason", "Required dependency")
+
+            pkg_type = req_data.get("type", "pip")
+
+            final_text = f"The agent needs **{pkg}** ({reason}). Please approve installation below."
+
+            return "Requesting permission to install " + pkg, None, None, f"[INSTALL_PROPOSAL:{pkg_type}:{pkg}:{reason}]\n\n" + final_text
+
+        except Exception:
+
+            pass
+
+
+    # Check for Final Answer BEFORE auto-harvesting markdown blocks (prevents illustrative snippets in Final Answer from triggering file writes)
+
+    final_match = re.search(r"Final\s*Answer\s*:\s*([\s\S]+)", text, re.IGNORECASE)
+
+    if final_match:
+
+        final_answer = final_match.group(1).strip()
+
+        thought_match = re.search(r"Thought\s*:\s*([\s\S]+?)(?=Final\s*Answer)", text, re.IGNORECASE)
+
+        if thought_match:
+
+            thought = thought_match.group(1).strip()
+
+        return thought, None, None, final_answer
 
 
     # Check for direct markdown code blocks emitted by local models (HTML, CSS, JS, Python)
@@ -557,50 +682,6 @@ def parse_react_output(text: Optional[str]) -> Tuple[Optional[str], Optional[str
 
 
 
-    # Check for PROPOSE_INSTALL request
-
-    install_match = re.search(r"PROPOSE_INSTALL\s*:\s*(\{[\s\S]+?\})", text, re.IGNORECASE)
-
-    if install_match:
-
-        try:
-
-            req_data = json.loads(install_match.group(1), strict=False)
-
-            pkg = req_data.get("package")
-
-            reason = req_data.get("reason", "Required dependency")
-
-            pkg_type = req_data.get("type", "pip")
-
-            final_text = f"The agent needs **{pkg}** ({reason}). Please approve installation below."
-
-            return "Requesting permission to install " + pkg, None, None, f"[INSTALL_PROPOSAL:{pkg_type}:{pkg}:{reason}]\n\n" + final_text
-
-        except Exception:
-
-            pass
-
-
-
-    # Check for Final Answer
-
-    final_match = re.search(r"Final\s*Answer\s*:\s*([\s\S]+)", text, re.IGNORECASE)
-
-    if final_match:
-
-        final_answer = final_match.group(1).strip()
-
-        thought_match = re.search(r"Thought\s*:\s*([\s\S]+?)(?=Final\s*Answer)", text, re.IGNORECASE)
-
-        if thought_match:
-
-            thought = thought_match.group(1).strip()
-
-        return thought, None, None, final_answer
-
-
-
     return None, None, None, None
 
 
@@ -632,9 +713,12 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
         from backend.core.adaptive_tier import get_realtime_gpu_headroom_mb
         headroom = get_realtime_gpu_headroom_mb()
         if headroom.get("context_clamped"):
-            clamped_limit = headroom.get("dynamic_context_window", 2048)
+            clamped_limit = headroom.get("dynamic_context_window", 4096)
             actual_ctx = min(actual_ctx, clamped_limit)
-        if headroom.get("recommended_num_gpu") == 0:
+        elif headroom.get("vram_free_gb", 8.0) < 6.5:
+            # Keep 8B Q4 models 100% inside 6GB RTX 3050 VRAM without CPU spill
+            actual_ctx = min(actual_ctx, 4096)
+        if not headroom.get("has_gpu", True) and headroom.get("recommended_num_gpu") == 0:
             extra_opts["num_gpu"] = 0
     except Exception:
         pass
@@ -643,7 +727,8 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
         "temperature": temperature,
         "top_p": 0.9,
         "num_predict": 2048,
-        "num_ctx": actual_ctx
+        "num_ctx": actual_ctx,
+        "stop": ["\nObservation:", "Observation:", "\nPlan updated:"]
     }
     options.update(extra_opts)
 
@@ -849,6 +934,64 @@ def check_and_handle_repair_escalation(
 
 
 
+def compact_frontier_messages(
+    messages: List[Dict[str, Any]],
+    context_window: int,
+    steps: List[Dict[str, Any]],
+    project_name: str,
+    keep_recent_messages: int = 8
+) -> List[Dict[str, Any]]:
+    """
+    Industry-standard dynamic context compaction (Observation Windowing):
+    - Scales automatically with ANY model's context_window (4K, 16K, 32K, 65K+).
+    - Only compacts when estimated tokens exceed 72% of context_window.
+    - Preserves System Prompt, initial User Prompt, active update_plan checklist,
+      and the most recent turns in full verbatim detail.
+    """
+    if len(messages) <= keep_recent_messages + 2:
+        return messages
+
+    est_tokens = sum(len(str(m.get("content", ""))) for m in messages) / 3.5
+    budget = max(2048, int(context_window))
+    if est_tokens <= budget * 0.72:
+        return messages
+
+    sys_msg = messages[0]
+    first_user_msg = messages[1]
+    recent_tail = messages[-keep_recent_messages:]
+    omitted_count = len(messages) - 2 - keep_recent_messages
+
+    plan_lines = []
+    try:
+        from backend.core.agent_progress import get_project_progress
+        prog = get_project_progress(project_name)
+        for idx, st in enumerate(prog.get("plan_steps", []), 1):
+            plan_lines.append(f"  {idx}. [{st.get('status', 'pending')}] {st.get('title', '')}")
+    except Exception:
+        pass
+
+    step_summaries = []
+    earlier_steps = steps[:-max(1, keep_recent_messages // 2)] if len(steps) > (keep_recent_messages // 2) else steps
+    for st in earlier_steps[-12:]:
+        act = st.get("action") or "think"
+        status = st.get("status", "ok")
+        args_d = st.get("args") if isinstance(st.get("args"), dict) else {}
+        target = args_d.get("file_path") or args_d.get("dir_path") or args_d.get("command") or ""
+        target_str = f"({str(target)[:45]})" if target else ""
+        step_summaries.append(f"- Step {st.get('step', '?')}: {act}{target_str} -> {status}")
+
+    summary_parts = [
+        f"[CONTEXT COMPACTION: Compressed {omitted_count} earlier messages to fit {budget}-token budget]"
+    ]
+    if plan_lines:
+        summary_parts.append("Active Execution Plan:\n" + "\n".join(plan_lines))
+    if step_summaries:
+        summary_parts.append("Earlier Completed Actions (re-read a file if you need its contents again):\n" + "\n".join(step_summaries))
+
+    summary_msg = {"role": "user", "content": "\n\n".join(summary_parts)}
+    return [sys_msg, first_user_msg, summary_msg] + recent_tail
+
+
 def run_agentic_react_loop(
     model: str,
     user_prompt: str,
@@ -859,31 +1002,55 @@ def run_agentic_react_loop(
     context_window: int = 8192,
     max_steps: int = DEFAULT_MAX_STEPS,
     chat_history: Optional[List[Dict[str, Any]]] = None,
-    resume_checkpoint: Optional[Dict[str, Any]] = None
+    resume_checkpoint: Optional[Dict[str, Any]] = None,
+    agent_mode: Optional[str] = None
 ) -> Dict[str, Any]:
 
     """
 
     Executes the multi-turn Antigravity ReAct loop:
 
-    1. Injects tool schema and ReAct protocol
-
-    2. Prompts model for Thought + Action
-
-    3. Executes Action in isolated project workspace
-
-    4. Feeds Observation back into message context
-
-    5. Repeats until Final Answer or max_steps reached
+    - 'frontier' (Deliberative Frontier Mode): Plan first via update_plan, inspect/read before acting,
+      edit surgically, verify via run_command, and self-correct on errors.
+    - 'builder': Full-stack greenfield application scaffolding with Scout + Goal Stepper + Acceptance Gate.
+    - 'executive': High-speed 1-turn Jarvis OS shortcut (launch app, mute, time, weather).
 
     """
 
     clean_proj = sanitize_project_name(project_name or f"project_{int(time.time())}")
 
-    # Check if this is a Jarvis Host Executive OS task (launch app, hardware telemetry, volume, browser, host CLI)
     from backend.core.intent_gate import classify_user_action_intent
     _, intent_type = classify_user_action_intent(user_prompt)
-    is_jarvis_action = (intent_type == "jarvis_os_action")
+
+    p_lower = (user_prompt or "").lower().strip()
+    is_trivial_os_shortcut = (
+        intent_type == "jarvis_os_action"
+        and bool(re.search(r"^(?:hey\s+|please\s+)?(?:open|launch|start|mute|unmute|volume|lock|what(?:'s|\s+is)\s+(?:the\s+)?(?:time|date|weather)|send\s+desktop\s+notification)\b", p_lower))
+        and not re.search(r"\b(and\s+then|step\s+by\s+step|slowly|file|code|script|bug|fix|check\s+.*and)\b", p_lower)
+    )
+    is_greenfield_app = bool(
+        re.search(r"\b(make|build|create|develop|generate)\s+(?:a|an)\s+(?:full[- ]?stack\s+)?(?:web\s*app|website|web\s*page|dashboard|landing\s*page|portfolio|calculator\s+app|todo\s+app|game|snake|tetris|chess|clone)\b", p_lower)
+    )
+
+    if agent_mode == "frontier":
+        is_frontier_mode = True
+        is_jarvis_action = False
+    elif agent_mode == "executive":
+        is_frontier_mode = False
+        is_jarvis_action = True
+    elif agent_mode == "builder":
+        is_frontier_mode = False
+        is_jarvis_action = False
+    else:
+        if is_trivial_os_shortcut:
+            is_jarvis_action = True
+            is_frontier_mode = False
+        elif is_greenfield_app:
+            is_jarvis_action = False
+            is_frontier_mode = False
+        else:
+            is_jarvis_action = False
+            is_frontier_mode = True
 
     # Register start with Execution Controller
     try:
@@ -900,13 +1067,27 @@ def run_agentic_react_loop(
 
     tier_profile = probe_active_compute_tier(model_name=model)
 
-    if max_steps == DEFAULT_MAX_STEPS:
+    caller_custom_steps = (max_steps != DEFAULT_MAX_STEPS)
+    if not caller_custom_steps:
         max_steps = tier_profile["max_steps"]
 
     if is_jarvis_action:
         max_steps = 3
+    elif is_frontier_mode and not caller_custom_steps:
+        tier_key = tier_profile.get("tier", "lite_edge")
+        if tier_key == "frontier_ultra":
+            max_steps = max(tier_profile["max_steps"], 40)
+        elif tier_key in ("cloud_balanced", "cloud_metered"):
+            max_steps = max(tier_profile["max_steps"], 30)
+        elif tier_key == "lite_edge":
+            max_steps = max(tier_profile["max_steps"], 24)
+        else:
+            max_steps = max(tier_profile["max_steps"], 16)
 
-    context_window = max(context_window, tier_profile["context_window"])
+    if tier_profile.get("context_clamped"):
+        context_window = min(context_window, tier_profile["context_window"])
+    else:
+        context_window = max(context_window, tier_profile["context_window"])
 
     viewports = tier_profile.get("viewports", [])
 
@@ -957,8 +1138,8 @@ def run_agentic_react_loop(
 
 
 
-    # Auto-snapshot before modifying existing project
-    if existing_files:
+    # Auto-snapshot before modifying existing project (skip polluting arbitrary host dirs in frontier mode)
+    if existing_files and (not is_frontier_mode or "data" in str(proj_dir)):
         try:
             from backend.core.workspace_snapshot import create_snapshot
             create_snapshot(clean_proj, "pre_turn", f"Checkpoint before: {user_prompt[:60]}")
@@ -981,7 +1162,7 @@ def run_agentic_react_loop(
     # Detect if user is asking to build a completely new project/application
     # CRITICAL: If resuming a saved checkpoint, NEVER treat as a brand new app and NEVER wipe existing files!
     is_resume = bool(resume_checkpoint)
-    is_new_app_creation = (not is_resume) and (not is_jarvis_action) and bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
+    is_new_app_creation = (not is_resume) and (not is_jarvis_action) and (not is_frontier_mode) and bool(re.search(r'\b(make|build|create|code|develop)\s+(?:a|an)\s+([a-zA-Z0-9_\-\s]{3,40})\b', user_prompt, re.IGNORECASE))
 
     # If starting a brand new project in default sandbox, reset so previous unrelated project files do not collide
     # NOTE: Never wipe an existing custom directory! Only sandbox projects if requested to build new.
@@ -1039,6 +1220,19 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
         if base_system_prompt and base_system_prompt.strip():
             system_prompt += f"\n\n=== PERSONA ===\n{base_system_prompt.strip()}"
+    elif is_frontier_mode:
+        use_pro_tools = tier_profile.get("tier") in ("cloud_balanced", "frontier_ultra")
+        system_prompt = format_frontier_system_prompt(
+            base_system_prompt,
+            clean_proj,
+            skills_prompt,
+            workspace_dir=str(proj_dir),
+            pro_tools=use_pro_tools
+        )
+        if existing_files:
+            from backend.core.symbol_extractor import get_workspace_tree
+            workspace_tree_str = get_workspace_tree(proj_dir)
+            system_prompt += f"\n\n=== CURRENT WORKSPACE FILES ===\n{workspace_tree_str}\n"
     else:
         system_prompt = format_agentic_system_prompt(base_system_prompt, clean_proj, skills_prompt, toolset_mode=toolset_mode)
 
@@ -1094,6 +1288,16 @@ Final Answer: <Your clear, professional, factual answer to the user>
     if is_jarvis_action:
         from backend.core.agent_progress import set_project_progress
         set_project_progress(clean_proj, phase="executive", headline="Jarvis OS Bridge Active", detail="Executing host executive action", step=1)
+        scout_res = {
+            "is_data_app": False, "is_game": False, "is_tool": False, "is_cli": False,
+            "keywords": [], "dataset_info": None, "files_plan": [], "dom_contract": {},
+            "contract_text": "", "elapsed_ms": 1, "entities": {}
+        }
+        target_files = []
+        goals = []
+    elif is_frontier_mode:
+        from backend.core.agent_progress import set_project_progress
+        set_project_progress(clean_proj, phase="planning", headline="Formulating execution plan...", detail="Deliberative Frontier Agent active", step=1)
         scout_res = {
             "is_data_app": False, "is_game": False, "is_tool": False, "is_cli": False,
             "keywords": [], "dataset_info": None, "files_plan": [], "dom_contract": {},
@@ -1169,6 +1373,8 @@ Final Answer: <Your clear, professional, factual answer to the user>
                 "status": "success"
             }
         ]
+    elif is_frontier_mode:
+        steps: List[Dict[str, Any]] = []
     else:
         steps: List[Dict[str, Any]] = [
             {
@@ -1222,7 +1428,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
     is_conversational_interrupt = bool(re.search(stop_pattern, user_prompt, re.IGNORECASE))
 
-    is_build_request = bool(re.search(tool_intent_pattern, user_prompt, re.IGNORECASE)) and not is_conversational_interrupt and not is_jarvis_action
+    is_build_request = bool(re.search(tool_intent_pattern, user_prompt, re.IGNORECASE)) and not is_conversational_interrupt and not is_jarvis_action and not is_frontier_mode
 
 
 
@@ -1268,14 +1474,19 @@ Final Answer: <Your clear, professional, factual answer to the user>
     import shutil
 
     has_docker = bool(get_docker_desktop_executable()) or bool(shutil.which("docker"))
-    use_docker = (not is_jarvis_action) and (os.getenv("UNLEASH_DOCKER_ENABLED", "1" if has_docker else "0") == "1")
+    use_docker = (not is_jarvis_action) and (not is_frontier_mode) and (os.getenv("UNLEASH_DOCKER_ENABLED", "1" if has_docker else "0") == "1")
 
     with DockerEphemeralSession(enabled=use_docker):
         self_repair_attempts = 0
         self_repair_cap = tier_profile.get("self_repair_cap", 3)
         rate_pace_sec = tier_profile.get("rate_pace_seconds", 0.0)
+        recent_action_sigs: List[str] = []
+        edited_since_last_cmd: List[str] = []
+        keep_recent_turns = 14 if tier_profile.get("tier") in ("cloud_balanced", "frontier_ultra") else 8
 
         for step_num in range(start_step, max_steps + 1):
+            if is_frontier_mode:
+                messages = compact_frontier_messages(messages, context_window, steps, clean_proj, keep_recent_messages=keep_recent_turns)
             # Check execution controls: Cancellation
             if AgentExecutionController.is_cancel_requested(clean_proj):
                 set_project_progress(clean_proj, phase="cancelled", headline="Execution cancelled by user", detail="Halted active turn", step=step_num)
@@ -1527,13 +1738,29 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
 
 
-                target_fname = (args or {}).get("file_path") or (args or {}).get("file")
+                target_fname = (args or {}).get("file_path") or (args or {}).get("file") or (args or {}).get("path")
 
                 prog_phase = "coding"
 
                 prog_headline = f"Executing {action}..."
 
-                if target_fname:
+                if action in ("update_plan", "update_steps", "set_plan"):
+                    prog_phase = "planning"
+                    prog_headline = "Updating execution plan..."
+                elif action in ("list_dir", "list_directory", "ls", "dir"):
+                    prog_phase = "analyzing"
+                    prog_headline = f"Inspecting folder {(args or {}).get('dir_path', '.')}..."
+                elif action in ("read_file", "read_project_file", "view_file"):
+                    prog_phase = "analyzing"
+                    prog_headline = f"Reading {target_fname or 'file'}..."
+                elif action in ("search_files", "grep_search", "grep", "find_in_files"):
+                    prog_phase = "analyzing"
+                    prog_headline = f"Searching for '{(args or {}).get('query', '')}'..."
+                elif action in ("run_command", "run_shell", "powershell", "shell", "run_host_cli", "run_terminal_command"):
+                    prog_phase = "validating"
+                    cmd_preview = str((args or {}).get("command") or (args or {}).get("cmd") or "")[:45]
+                    prog_headline = f"Running: {cmd_preview}"
+                elif target_fname:
 
                     sfname = str(target_fname).lower()
 
@@ -1618,6 +1845,13 @@ Final Answer: <Your clear, professional, factual answer to the user>
                 # Execute tool safely
 
                 try:
+                    if isinstance(args, dict) and "__inline_plan_steps" in args:
+                        inline_steps = args.pop("__inline_plan_steps")
+                        try:
+                            from backend.core.agent_tools import update_plan as _apply_inline_plan
+                            _apply_inline_plan(clean_proj, inline_steps)
+                        except Exception:
+                            pass
 
                     tool_result = dispatch_tool(action, args or {}, context)
 
@@ -1646,6 +1880,24 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
 
                     obs_str = json.dumps(tool_result, indent=2)
+                    if is_frontier_mode:
+                        if tool_result.get("status") == "success":
+                            if action in ("edit_file", "edit_project_file", "patch_project_file", "write_file", "write_project_file", "append_project_file"):
+                                ef = str((args or {}).get("file_path") or (args or {}).get("path") or (args or {}).get("filename") or "")
+                                if ef.lower().endswith((".py", ".js", ".ts", ".jsx", ".tsx", ".json", ".bat", ".sh")) and ef not in edited_since_last_cmd:
+                                    edited_since_last_cmd.append(ef)
+                            elif action in ("run_command", "run_shell", "powershell", "shell", "run_host_cli", "run_terminal_command", "run_in_sandbox"):
+                                if not isinstance(tool_result.get("exit_code"), int) or tool_result.get("exit_code") == 0:
+                                    edited_since_last_cmd.clear()
+                        sig = f"{action}:{json.dumps(args or {}, sort_keys=True)}"
+                        recent_action_sigs.append(sig)
+                        if len(recent_action_sigs) >= 3 and len(set(recent_action_sigs[-3:])) == 1:
+                            obs_str += "\n\n[LOOP GUARD]: You repeated the exact same action 3 times in a row. Stop repeating it — inspect a different file, adjust your arguments, or summarize what is blocking you in Final Answer:."
+                        elif (
+                            tool_result.get("status") == "error"
+                            or (isinstance(tool_result.get("exit_code"), int) and tool_result.get("exit_code") != 0)
+                        ):
+                            obs_str += "\n\n[SELF-CORRECTION]: That action returned an error or non-zero exit code. Analyze the exact error above in your Thought:, fix the cause, and verify again."
 
                 except Exception as e:
 
@@ -1728,6 +1980,23 @@ Final Answer: <Your clear, professional, factual answer to the user>
                     set_project_progress(clean_proj, phase="completed", headline="Jarvis Action Complete", detail="Executed OS task successfully", step=step_num+1)
                     step_record["status"] = "completed"
                     step_record["observation"] = "Jarvis executive action completed."
+                    steps.append(step_record)
+                    final_reply = final_ans
+                    break
+                if is_frontier_mode:
+                    if edited_since_last_cmd and step_num < max_steps:
+                        unverified_list = ", ".join(edited_since_last_cmd)
+                        edited_since_last_cmd.clear()  # Prompt once so model doesn't loop if no test exists
+                        step_record["status"] = "re-prompted"
+                        step_record["observation"] = f"Verification gate triggered for unverified edits: {unverified_list}"
+                        steps.append(step_record)
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": f"Observation: VERIFICATION GATE: You modified [{unverified_list}] after your last command check. Run a quick verification command via `run_command` (e.g. syntax check or test suite) to confirm it passes before giving your Final Answer:."})
+                        continue
+                    from backend.core.agent_progress import set_project_progress
+                    set_project_progress(clean_proj, phase="completed", headline="Task Complete", detail="Deliberative execution verified", step=step_num+1)
+                    step_record["status"] = "completed"
+                    step_record["observation"] = "Deliberative frontier task completed."
                     steps.append(step_record)
                     final_reply = final_ans
                     break
@@ -1861,6 +2130,22 @@ Final Answer: <Your clear, professional, factual answer to the user>
                         steps.append(step_record)
                         final_reply = content
                         break
+
+                if is_frontier_mode:
+                    if len(steps) == 0 and step_num < max_steps and not is_conversational_interrupt:
+                        step_record["status"] = "re-prompted"
+                        step_record["observation"] = "Prompted agent to execute step-by-step tools rather than replying directly without inspection."
+                        steps.append(step_record)
+                        messages.append({"role": "assistant", "content": content})
+                        messages.append({"role": "user", "content": "Observation: Continue step-by-step. Use Thought: ... followed by Action: tool_name({...}) (such as update_plan, list_dir, read_file, or run_command) to inspect and execute, or conclude with Final Answer: once verified."})
+                        continue
+                    from backend.core.agent_progress import set_project_progress
+                    set_project_progress(clean_proj, phase="completed", headline="Task Complete", detail="Finished deliberative response", step=step_num+1)
+                    step_record["status"] = "completed"
+                    step_record["observation"] = "Concluded response."
+                    steps.append(step_record)
+                    final_reply = content
+                    break
 
                 # If this was a build/fix request and model did not write or modify any code files yet, force an action!
 
@@ -2028,6 +2313,8 @@ Final Answer: <Your clear, professional, factual answer to the user>
                     final_reply = msg or f"Executed Jarvis command '{last_tool.get('action')}' successfully."
                 else:
                     final_reply = "Jarvis executive command processed."
+            elif is_frontier_mode:
+                final_reply = f"Completed {len(steps)} deliberative step(s) for '{clean_proj}'."
             else:
                 summary_prompt = (
                     f"You have finished building the workspace files for project '{clean_proj}'. "
@@ -2070,7 +2357,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
     # ensuring the project workspace is never empty and preview never 404s.
 
-    if proj_dir.exists() and not is_jarvis_action:
+    if proj_dir.exists() and not is_jarvis_action and not is_frontier_mode:
 
         all_texts = [final_reply] + [m.get("content", "") for m in messages if m.get("role") == "assistant"]
 

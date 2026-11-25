@@ -32,6 +32,8 @@ def register_custom_workspace(project_name: str, custom_dir: Path):
     global _CUSTOM_WORKSPACE_REGISTRY
     clean_proj = sanitize_project_name(project_name)
     resolved = Path(custom_dir).resolve()
+    if resolved.exists() and resolved.is_file():
+        resolved = resolved.parent
     resolved.mkdir(parents=True, exist_ok=True)
     _CUSTOM_WORKSPACE_REGISTRY[clean_proj] = resolved
     
@@ -130,19 +132,27 @@ def get_project_dir(project_name: str) -> Path:
     return proj_dir
 
 def extract_workspace_path_from_prompt(text: str) -> Optional[Path]:
-    """Extracts a Windows filesystem path if the user explicitly specifies one in their prompt."""
+    """Extracts a Windows filesystem directory if the user explicitly specifies one in their prompt."""
     if not text:
         return None
     # 1. Quoted path: "C:\path with spaces" or 'C:/path'
     m_quoted = re.search(r'(?:at|in|to|into|path|folder|directory)\s+["\'`]([a-zA-Z]:[\\/][^"\'`\r\n]+)["\'`]', text, re.IGNORECASE)
     if m_quoted:
         p = Path(m_quoted.group(1).strip().rstrip('\\/')).resolve()
+        if p.exists() and p.is_file():
+            p = p.parent
+        elif not p.exists() and p.suffix and len(p.suffix) <= 6:
+            p = p.parent
         return _validate_safe_os_path(p)
 
     # 2. Unquoted path: at C:\coding\my_project
     m_unquoted = re.search(r'(?:at|in|to|into|path|folder|directory)\s+([a-zA-Z]:[\\/][^\s"\'`<>]+)', text, re.IGNORECASE)
     if m_unquoted:
         p = Path(m_unquoted.group(1).strip().rstrip('.,;:!\\/')).resolve()
+        if p.exists() and p.is_file():
+            p = p.parent
+        elif not p.exists() and p.suffix and len(p.suffix) <= 6:
+            p = p.parent
         return _validate_safe_os_path(p)
     return None
 
@@ -184,21 +194,29 @@ def sanitize_project_name(name: Any) -> str:
 
 def resolve_safe_project_path(project_name: str, file_path: str) -> Path:
     """
-    Resolves file_path within the project directory jail.
-    Guarantees strict containment: blocks any traversal outside the project directory.
-    Supports default sandbox under PROJECTS_ROOT or custom user-specified OS workspace.
+    Resolves file_path either:
+    1. As a validated host OS absolute/home path (e.g. C:\\coding\\app\\main.py, ~/Desktop/note.txt)
+       verified against _validate_safe_os_path() to block system/protected roots.
+    2. Or relative within the project directory jail, blocking directory traversal (../).
     """
+    raw_input = str(file_path or "").strip()
+    if raw_input.startswith(("~/", "~\\")) or raw_input == "~":
+        raw_input = os.path.expanduser(raw_input)
+
+    is_abs = bool(re.match(r'^[a-zA-Z]:[\\/]', raw_input)) or raw_input.startswith("/") or os.path.isabs(raw_input)
+    if is_abs:
+        candidate = Path(raw_input).resolve()
+        if _validate_safe_os_path(candidate) is None:
+            raise PermissionError(f"Security Alert: Access to protected OS path '{file_path}' is blocked.")
+        return candidate
+
     clean_proj = sanitize_project_name(project_name)
     proj_dir = get_project_dir(clean_proj)
 
-    # Clean requested file path
-    clean_file = file_path.replace("\\", "/").strip().lstrip("/")
-    # Disallow absolute drives like C:/
-    clean_file = re.sub(r'^[a-zA-Z]:[/]', '', clean_file)
-
+    clean_file = raw_input.replace("\\", "/").lstrip("/")
     target_path = (proj_dir / clean_file).resolve()
 
-    # Enforce jail containment check
+    # Enforce jail containment check for relative workspace paths
     try:
         target_path.relative_to(proj_dir)
     except ValueError:
@@ -350,22 +368,164 @@ def append_project_file(project_name: str, file_path: str, content: str, is_fina
         return {"status": "error", "error": f"Failed to append to '{file_path}': {str(e)}"}
 
 
-def read_project_file(project_name: str, file_path: str) -> Dict[str, Any]:
-    """Reads a file from the project directory (capped at 64KB for safe context)."""
+def read_project_file(
+    project_name: str,
+    file_path: str,
+    start_line: Optional[int] = None,
+    end_line: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Reads a file (numbered lines) from the project directory or any safe workstation path.
+    Supports economical line-range slicing (start_line..end_line) for local 8B context budgets.
+    """
     try:
         target = resolve_safe_project_path(project_name, file_path)
         if not target.exists() or not target.is_file():
-            return {"status": "error", "error": f"File '{file_path}' does not exist in project '{project_name}'"}
+            return {"status": "error", "error": f"File '{file_path}' does not exist."}
 
-        text = target.read_text(encoding="utf-8", errors="replace")[:MAX_READ_BYTES]
-        return {
+        raw_text = target.read_text(encoding="utf-8", errors="replace")
+        all_lines = raw_text.splitlines()
+        total_lines = len(all_lines)
+
+        s_line = max(1, int(start_line)) if start_line is not None else 1
+        default_cap = 220
+        e_line = min(total_lines, int(end_line)) if end_line is not None else min(total_lines, s_line + default_cap - 1)
+
+        if s_line > total_lines and total_lines > 0:
+            return {"status": "error", "error": f"start_line {s_line} exceeds total lines ({total_lines}) in '{file_path}'."}
+
+        selected = all_lines[s_line - 1 : e_line]
+        numbered = "\n".join(f"{s_line + idx}: {line}" for idx, line in enumerate(selected))
+        if len(numbered) > MAX_READ_BYTES:
+            numbered = numbered[:MAX_READ_BYTES] + "\n... [truncated due to byte limit]"
+
+        res: Dict[str, Any] = {
             "status": "success",
-            "file": file_path,
-            "content": text,
-            "bytes_read": len(text)
+            "file": str(target),
+            "start_line": s_line,
+            "end_line": e_line,
+            "total_lines": total_lines,
+            "content": numbered,
+            "bytes_read": len(numbered)
         }
+        if e_line < total_lines:
+            res["note"] = f"Showing lines {s_line}-{e_line} of {total_lines}. Pass start_line={e_line + 1}, end_line={min(total_lines, e_line + default_cap)} to read further."
+        return res
     except Exception as e:
         return {"status": "error", "error": f"Failed to read file '{file_path}': {str(e)}"}
+
+
+def list_dir(project_name: str, dir_path: str = ".") -> Dict[str, Any]:
+    """Lists files and folders inside the project workspace or any safe host OS directory."""
+    try:
+        raw_dir = str(dir_path or ".").strip()
+        target_dir = resolve_safe_project_path(project_name, raw_dir if raw_dir != "." else "")
+        if not target_dir.exists() or not target_dir.is_dir():
+            return {"status": "error", "error": f"Directory '{dir_path}' does not exist."}
+
+        skip_names = {".git", "__pycache__", "node_modules", ".venv", "venv"}
+        entries = []
+        for entry in sorted(target_dir.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())):
+            if entry.name in skip_names:
+                entries.append({"name": entry.name, "type": "dir (skipped)", "size_bytes": 0})
+                continue
+            if entry.is_dir():
+                entries.append({"name": entry.name, "type": "dir"})
+            else:
+                try:
+                    sz = entry.stat().st_size
+                except Exception:
+                    sz = 0
+                entries.append({"name": entry.name, "type": "file", "size_bytes": sz})
+            if len(entries) >= 120:
+                break
+
+        return {
+            "status": "success",
+            "directory": str(target_dir),
+            "count": len(entries),
+            "entries": entries
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to list directory '{dir_path}': {str(e)}"}
+
+
+def search_files(project_name: str, query: str, dir_path: str = ".", file_pattern: Optional[str] = None) -> Dict[str, Any]:
+    """Searches for a text or regex pattern across files in a workspace or safe OS folder."""
+    try:
+        if not query or not str(query).strip():
+            return {"status": "error", "error": "Search query cannot be empty."}
+
+        raw_dir = str(dir_path or ".").strip()
+        target_dir = resolve_safe_project_path(project_name, raw_dir if raw_dir != "." else "")
+        if not target_dir.exists():
+            return {"status": "error", "error": f"Path '{dir_path}' does not exist."}
+
+        skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+        try:
+            pattern = re.compile(str(query), re.IGNORECASE)
+        except re.error:
+            pattern = re.compile(re.escape(str(query)), re.IGNORECASE)
+
+        matches = []
+        files_scanned = 0
+        search_roots = [target_dir] if target_dir.is_file() else target_dir.rglob(file_pattern or "*")
+
+        for p in search_roots:
+            if not p.is_file():
+                continue
+            if any(part in skip_dirs for part in p.parts):
+                continue
+            if p.suffix.lower() in (".pyc", ".exe", ".dll", ".png", ".jpg", ".jpeg", ".ico", ".zip", ".gguf", ".bin", ".onnx"):
+                continue
+            files_scanned += 1
+            if files_scanned > 600:
+                break
+            try:
+                if p.stat().st_size > 512 * 1024:
+                    continue
+                content = p.read_text(encoding="utf-8", errors="ignore")
+                for line_idx, line in enumerate(content.splitlines(), start=1):
+                    if pattern.search(line):
+                        matches.append({
+                            "file": str(p),
+                            "line": line_idx,
+                            "text": line.strip()[:160]
+                        })
+                        if len(matches) >= 40:
+                            break
+            except Exception:
+                continue
+            if len(matches) >= 40:
+                break
+
+        return {
+            "status": "success",
+            "query": query,
+            "directory": str(target_dir),
+            "files_scanned": files_scanned,
+            "match_count": len(matches),
+            "matches": matches
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Search failed: {str(e)}"}
+
+
+def update_plan(project_name: str, steps: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Updates the agent's live step-by-step execution checklist shown to the user."""
+    try:
+        from backend.core.agent_progress import set_project_plan
+        if not isinstance(steps, list) or not steps:
+            return {"status": "error", "error": "Provide a non-empty list of step objects: [{'title': '...', 'status': 'in_progress|pending|done'}]"}
+        normalized = set_project_plan(project_name, steps)
+        return {
+            "status": "success",
+            "step_count": len(normalized),
+            "steps": normalized,
+            "message": f"Plan updated ({sum(1 for s in normalized if s['status'] == 'done')}/{len(normalized)} done)."
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to update plan: {str(e)}"}
 
 
 def list_project_files(project_name: str) -> Dict[str, Any]:
@@ -1250,8 +1410,37 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         target_proj = args.get("project_name") or args.get("project") or project_name
         path = args.get("file_path") or args.get("path") or args.get("filename")
         if not path:
-            return {"status": "error", "error": "Missing 'file_path' argument for read_project_file"}
-        return read_project_file(str(target_proj), str(path))
+            return {"status": "error", "error": "Missing 'file_path' argument for read_file"}
+        s_line = args.get("start_line")
+        e_line = args.get("end_line")
+        return read_project_file(str(target_proj), str(path), start_line=s_line, end_line=e_line)
+
+    elif tool_name in ("list_dir", "list_directory", "ls", "dir"):
+        d_path = args.get("dir_path") or args.get("path") or args.get("directory") or "."
+        return list_dir(project_name, str(d_path))
+
+    elif tool_name in ("search_files", "grep_search", "grep", "find_in_files"):
+        q = args.get("query") or args.get("pattern") or args.get("q") or ""
+        d_path = args.get("dir_path") or args.get("path") or args.get("directory") or "."
+        f_pat = args.get("file_pattern") or args.get("glob") or None
+        return search_files(project_name, str(q), dir_path=str(d_path), file_pattern=str(f_pat) if f_pat else None)
+
+    elif tool_name in ("update_plan", "update_steps", "set_plan"):
+        steps_arg = args.get("steps") or []
+        return update_plan(project_name, steps_arg)
+
+    elif tool_name in ("run_command", "run_shell", "powershell", "shell"):
+        cmd = args.get("command") or args.get("cmd") or ""
+        cwd = args.get("cwd") or args.get("dir") or None
+        timeout = int(args.get("timeout") or 30)
+        if not cmd:
+            return {"status": "error", "error": "Missing 'command' argument for run_command"}
+        if not cwd:
+            proj_dir = get_project_dir(sanitize_project_name(project_name))
+            if proj_dir.exists() and any(proj_dir.iterdir()):
+                cwd = str(proj_dir)
+        from backend.core.jarvis_executive import run_host_cli
+        return run_host_cli(str(cmd), timeout=timeout, cwd=str(cwd) if cwd else None)
 
     elif tool_name in ("remember_preference", "remember_user_preference", "save_memory", "record_memory"):
         from backend.core.memory_manager import remember_preference
@@ -1360,7 +1549,7 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
     elif tool_name in ("browser_navigate", "web_navigate", "goto_url", "navigate_browser"):
         from backend.core.browser_pilot import browser_navigate
         url = args.get("url") or args.get("link") or ""
-        headless = bool(args.get("headless", True))
+        headless = bool(args.get("headless", False))
         return browser_navigate(str(url), headless=headless)
 
     elif tool_name in ("browser_click", "web_click", "click_element"):
@@ -1629,8 +1818,147 @@ LEAN_TOOLS_SCHEMA = [
 ]
 
 
+FRONTIER_TOOLS_SCHEMA = [
+    {
+        "name": "update_plan",
+        "description": "Create or update your live step-by-step execution checklist shown to the user. Always call this before starting multi-step tasks and update statuses as you complete each step.",
+        "parameters": {
+            "steps": "Array of objects: [{\"title\": \"Short step description\", \"status\": \"in_progress|pending|done|failed\"}]"
+        }
+    },
+    {
+        "name": "list_dir",
+        "description": "List files and subdirectories in a folder (relative to workspace or any safe Windows path like C:\\coding\\my_app or ~\\Desktop).",
+        "parameters": {
+            "dir_path": "Directory path to list (default '.')"
+        }
+    },
+    {
+        "name": "read_file",
+        "description": "Read numbered lines from a file (relative to workspace or safe Windows path). Use start_line and end_line to read large files economically.",
+        "parameters": {
+            "file_path": "File path to read",
+            "start_line": "Optional 1-indexed start line",
+            "end_line": "Optional 1-indexed end line"
+        }
+    },
+    {
+        "name": "edit_file",
+        "description": "Surgically replace an exact existing block of text/code in a file. Always read_file first so 'target' matches existing lines accurately.",
+        "parameters": {
+            "file_path": "File path to modify",
+            "target": "Exact existing lines to replace",
+            "replacement": "New replacement lines"
+        }
+    },
+    {
+        "name": "write_file",
+        "description": "Create a new file or completely overwrite an existing file at a relative or safe absolute OS path.",
+        "parameters": {
+            "file_path": "File path to write",
+            "content": "Full file content"
+        }
+    },
+    {
+        "name": "search_files",
+        "description": "Search for a keyword or regex pattern across files in a directory.",
+        "parameters": {
+            "query": "Text or regex pattern to search for",
+            "dir_path": "Optional directory path (default '.')"
+        }
+    },
+    {
+        "name": "run_command",
+        "description": "Run a shell/terminal command on the Windows host (e.g. python tests, git status, dir, powershell scripts) and observe stdout, stderr, and exit_code.",
+        "parameters": {
+            "command": "Command string to execute",
+            "cwd": "Optional working directory path"
+        }
+    },
+    {
+        "name": "get_workstation_telemetry",
+        "description": "Inspect real-time physical RAM, GPU thermals/load, battery, active window, and top processes.",
+        "parameters": {}
+    },
+    {
+        "name": "launch_application",
+        "description": "Launch a desktop application discovered dynamically on Windows/macOS/Linux (e.g. vscode, chrome, notepad, terminal).",
+        "parameters": {
+            "app_name": "Application name to open"
+        }
+    },
+    {
+        "name": "browser_navigate",
+        "description": "Open or navigate the stateful visible browser to any URL (preserves logins across turns) and inspect its visible interactive elements (inputs, buttons, links).",
+        "parameters": {
+            "url": "URL to open (e.g. 'https://github.com', 'https://youtube.com')"
+        }
+    },
+    {
+        "name": "browser_type",
+        "description": "Type text into an input or search box in the open browser (optionally pressing Enter).",
+        "parameters": {
+            "selector": "CSS selector from interactive_elements (e.g. 'input[name=\"q\"]')",
+            "text": "Text to type",
+            "press_enter": "Optional boolean (true to submit with Enter)"
+        }
+    },
+    {
+        "name": "browser_click",
+        "description": "Click a button, link, or item in the open browser by CSS selector or visible text.",
+        "parameters": {
+            "selector": "CSS selector or empty string if clicking by text",
+            "text": "Optional visible text to click"
+        }
+    },
+    {
+        "name": "browser_extract",
+        "description": "Read the visible text content and top links from the currently open browser page.",
+        "parameters": {}
+    }
+]
+
+
+FRONTIER_PRO_EXTRA_TOOLS = [
+    {
+        "name": "search_web_docs",
+        "description": "Search privacy-preserving web documentation for library APIs, error fixes, or modern frameworks.",
+        "parameters": {
+            "query": "Documentation or error query to search"
+        }
+    },
+    {
+        "name": "remember_preference",
+        "description": "Persist an architectural decision, user preference, or key project fact across sessions.",
+        "parameters": {
+            "category": "'profile', 'guideline', 'rule', or 'fact'",
+            "key": "Short identifier key",
+            "value": "Fact or rule to remember"
+        }
+    },
+    {
+        "name": "recall_memory",
+        "description": "Recall previously saved facts, preferences, or project notes from persistent memory.",
+        "parameters": {
+            "query": "Topic or keyword to recall"
+        }
+    },
+    {
+        "name": "delete_project_file",
+        "description": "Safely delete an obsolete file (auto-creates a rollback snapshot first).",
+        "parameters": {
+            "file_path": "File path to delete"
+        }
+    }
+]
+
+
 def get_tool_schemas(mode: str = "full") -> List[Dict[str, Any]]:
-    """Returns tool schemas according to compute tier: lean (3 tools) or full (all tools + MCP)."""
+    """Returns tool schemas according to compute tier: frontier (9 tools), frontier_pro (13 tools), lean (4 tools), or full."""
+    if mode == "frontier":
+        return list(FRONTIER_TOOLS_SCHEMA)
+    if mode == "frontier_pro":
+        return list(FRONTIER_TOOLS_SCHEMA) + list(FRONTIER_PRO_EXTRA_TOOLS)
     if mode == "lean":
         return list(LEAN_TOOLS_SCHEMA)
     return get_all_tool_schemas()

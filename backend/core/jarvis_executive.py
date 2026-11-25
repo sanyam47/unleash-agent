@@ -650,7 +650,7 @@ def send_desktop_notification(title: str, message: str) -> Dict[str, Any]:
 # 5. HOST CLI GATEWAY (Safe Host Execution)
 # ============================================================================
 
-def run_host_cli(command: str, timeout: int = 15, confirm: bool = False) -> Dict[str, Any]:
+def run_host_cli(command: str, timeout: int = 15, confirm: bool = False, cwd: Optional[str] = None) -> Dict[str, Any]:
     """
     Executes a shell command directly on the host Windows machine (outside container).
     Audited for destructive commands to safeguard system integrity.
@@ -658,6 +658,17 @@ def run_host_cli(command: str, timeout: int = 15, confirm: bool = False) -> Dict
     cmd_clean = str(command or "").strip()
     if not cmd_clean:
         return {"status": "error", "error": "Command cannot be empty."}
+
+    safe_cwd: Optional[str] = None
+    if cwd:
+        from pathlib import Path
+        from backend.core.agent_tools import _validate_safe_os_path
+        resolved_cwd = Path(os.path.expanduser(str(cwd).strip())).resolve()
+        if _validate_safe_os_path(resolved_cwd) is None:
+            return {"status": "error", "error": f"SECURITY BLOCK: Execution directory '{cwd}' is protected."}
+        if not resolved_cwd.exists() or not resolved_cwd.is_dir():
+            return {"status": "error", "error": f"Directory '{cwd}' does not exist."}
+        safe_cwd = str(resolved_cwd)
 
     # Pre-Execution Impact Verification & Blast-Radius Audit (Tiered Clearance)
     try:
@@ -698,6 +709,7 @@ def run_host_cli(command: str, timeout: int = 15, confirm: bool = False) -> Dict
         proc = subprocess.run(
             cmd_clean,
             shell=True,
+            cwd=safe_cwd,
             capture_output=True,
             text=True,
             timeout=timeout,

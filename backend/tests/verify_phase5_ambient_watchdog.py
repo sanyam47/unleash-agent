@@ -51,43 +51,44 @@ def test_dynamic_salutation_and_polite_phrasing():
 
 def test_watchdog_status_api():
     print_step(2, "Testing API GET /api/daemon/watchdog/status")
-    req = urllib.request.Request(f"{BASE_URL}/api/daemon/watchdog/status")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        assert resp.status == 200
-        data = json.loads(resp.read().decode("utf-8"))
-        print(f"Watchdog status response: {json.dumps(data, indent=2)}")
+    from starlette.testclient import TestClient
+    from backend.api.main import app
+    from backend.core.task_daemon import start_proactive_watchdog_loop
+    start_proactive_watchdog_loop(interval_sec=20)
+    client = TestClient(app)
+    resp = client.get("/api/daemon/watchdog/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    print(f"Watchdog status response: {json.dumps(data, indent=2)}")
 
-        assert data.get("status") == "success"
-        assert data.get("active") is True, "Watchdog loop must be active"
-        assert "config" in data
-        assert "operator_salutation" in data
-        assert "telemetry_sample" in data
+    assert data.get("status") == "success"
+    assert data.get("active") is True, "Watchdog loop must be active"
+    assert "config" in data
+    assert "operator_salutation" in data
+    assert "telemetry_sample" in data
 
     print("PASS: Watchdog status endpoint validated.")
 
 
 def test_watchdog_configure_api():
     print_step(3, "Testing API POST /api/daemon/watchdog/configure")
+    from starlette.testclient import TestClient
+    from backend.api.main import app
     payload = {
         "ram_threshold_pct": 88,
         "gpu_temp_threshold_c": 80,
         "interval_sec": 15
     }
+    client = TestClient(app)
+    resp = client.post("/api/daemon/watchdog/configure", json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    print(f"Watchdog configure response: {json.dumps(data, indent=2)}")
 
-    req = urllib.request.Request(
-        f"{BASE_URL}/api/daemon/watchdog/configure",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        assert resp.status == 200
-        data = json.loads(resp.read().decode("utf-8"))
-        print(f"Watchdog configure response: {json.dumps(data, indent=2)}")
-
-        cfg = data.get("config", {})
-        assert cfg.get("ram_threshold_pct") == 88
-        assert cfg.get("gpu_temp_threshold_c") == 80
-        assert cfg.get("interval_sec") == 15
+    cfg = data.get("config", {})
+    assert cfg.get("ram_threshold_pct") == 88
+    assert cfg.get("gpu_temp_threshold_c") == 80
+    assert cfg.get("interval_sec") == 15
 
     print("PASS: Watchdog configuration endpoint validated.")
 

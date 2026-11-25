@@ -725,17 +725,17 @@ def send_chat_message(req: ChatRequest):
                 req.project_name = p_name
 
             # Dynamic Swarm Auto-Dispatch:
-            # Automatically activates the 3-Worker Swarm (Builder ➔ Verifier ➔ Auditor) for:
-            # 1. Explicit user request (req.use_swarm is True)
-            # 2. Swarm keywords (swarm, multi-agent, pair-program)
-            # 3. Any Agentic coding, building, refactoring, or repair task
-            # Jarvis OS actions run in lean executive mode without multi-worker swarm overhead
-            is_code_task = bool(re.search(r'\b(build|create|implement|code|make|fix|refactor|debug|test|audit|develop|add|generate|mount)\b', latest_prompt, re.IGNORECASE))
+            # Activates the 3-Worker Swarm (Builder ➔ Verifier ➔ Auditor) ONLY for explicit swarm requests
+            # or multi-file greenfield web/app/game builds. General coding, debugging, inspecting, file edits,
+            # and OS workstation tasks route directly to the single-agent Deliberative Frontier ReAct loop.
+            is_greenfield_app = bool(
+                re.search(r"\b(make|build|create|develop|generate)\s+(?:a|an)\s+(?:full[- ]?stack\s+)?(?:web\s*app|website|web\s*page|dashboard|landing\s*page|portfolio|calculator\s+app|todo\s+app|game|snake|tetris|chess|clone)\b", latest_prompt, re.IGNORECASE)
+            )
             use_swarm_mode = (
                 intent_type != "jarvis_os_action" and (
                     req.use_swarm is True
                     or bool(re.search(r'\b(swarm|multi-agent|pair-program)\b', latest_prompt, re.IGNORECASE))
-                    or (is_code_task and req.use_swarm is not False)
+                    or (is_greenfield_app and req.use_swarm is not False)
                 )
             )
             if use_swarm_mode:

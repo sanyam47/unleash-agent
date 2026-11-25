@@ -14,77 +14,89 @@ import sys
 import time
 import ctypes
 import threading
-from ctypes import wintypes
 from typing import Dict, Any, List, Optional
 import subprocess
 
-# Win32 Structures
-class SYSTEM_POWER_STATUS(ctypes.Structure):
-    _fields_ = [
-        ('ACLineStatus', wintypes.BYTE),
-        ('BatteryFlag', wintypes.BYTE),
-        ('BatteryLifePercent', wintypes.BYTE),
-        ('SystemStatusFlag', wintypes.BYTE),
-        ('BatteryLifeTime', wintypes.DWORD),
-        ('BatteryFullLifeTime', wintypes.DWORD),
-    ]
+# Win32 Structures (Windows-only guard so macOS & Linux import cleanly)
+if os.name == "nt":
+    from ctypes import wintypes
 
+    class SYSTEM_POWER_STATUS(ctypes.Structure):
+        _fields_ = [
+            ('ACLineStatus', wintypes.BYTE),
+            ('BatteryFlag', wintypes.BYTE),
+            ('BatteryLifePercent', wintypes.BYTE),
+            ('SystemStatusFlag', wintypes.BYTE),
+            ('BatteryLifeTime', wintypes.DWORD),
+            ('BatteryFullLifeTime', wintypes.DWORD),
+        ]
 
-class MEMORYSTATUSEX(ctypes.Structure):
-    _fields_ = [
-        ('dwLength', wintypes.DWORD),
-        ('dwMemoryLoad', wintypes.DWORD),
-        ('ullTotalPhys', ctypes.c_uint64),
-        ('ullAvailPhys', ctypes.c_uint64),
-        ('ullTotalPageFile', ctypes.c_uint64),
-        ('ullAvailPageFile', ctypes.c_uint64),
-        ('ullTotalVirtual', ctypes.c_uint64),
-        ('ullAvailVirtual', ctypes.c_uint64),
-        ('ullAvailExtendedVirtual', ctypes.c_uint64),
-    ]
+    class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ('dwLength', wintypes.DWORD),
+            ('dwMemoryLoad', wintypes.DWORD),
+            ('ullTotalPhys', ctypes.c_uint64),
+            ('ullAvailPhys', ctypes.c_uint64),
+            ('ullTotalPageFile', ctypes.c_uint64),
+            ('ullAvailPageFile', ctypes.c_uint64),
+            ('ullTotalVirtual', ctypes.c_uint64),
+            ('ullAvailVirtual', ctypes.c_uint64),
+            ('ullAvailExtendedVirtual', ctypes.c_uint64),
+        ]
 
+    TH32CS_SNAPPROCESS = 0x00000002
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
-TH32CS_SNAPPROCESS = 0x00000002
-PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    class PROCESSENTRY32(ctypes.Structure):
+        _fields_ = [
+            ('dwSize', wintypes.DWORD),
+            ('cntUsage', wintypes.DWORD),
+            ('th32ProcessID', wintypes.DWORD),
+            ('th32DefaultHeapID', ctypes.POINTER(wintypes.ULONG)),
+            ('th32ModuleID', wintypes.DWORD),
+            ('cntThreads', wintypes.DWORD),
+            ('th32ParentProcessID', wintypes.DWORD),
+            ('pcPriClassBase', wintypes.LONG),
+            ('dwFlags', wintypes.DWORD),
+            ('szExeFile', ctypes.c_char * 260)
+        ]
 
-
-class PROCESSENTRY32(ctypes.Structure):
-    _fields_ = [
-        ('dwSize', wintypes.DWORD),
-        ('cntUsage', wintypes.DWORD),
-        ('th32ProcessID', wintypes.DWORD),
-        ('th32DefaultHeapID', ctypes.POINTER(wintypes.ULONG)),
-        ('th32ModuleID', wintypes.DWORD),
-        ('cntThreads', wintypes.DWORD),
-        ('th32ParentProcessID', wintypes.DWORD),
-        ('pcPriClassBase', wintypes.LONG),
-        ('dwFlags', wintypes.DWORD),
-        ('szExeFile', ctypes.c_char * 260)
-    ]
-
-
-class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
-    _fields_ = [
-        ('cb', wintypes.DWORD),
-        ('PageFaultCount', wintypes.DWORD),
-        ('PeakWorkingSetSize', ctypes.c_size_t),
-        ('WorkingSetSize', ctypes.c_size_t),
-        ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
-        ('QuotaPagedPoolUsage', ctypes.c_size_t),
-        ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
-        ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
-        ('PagefileUsage', ctypes.c_size_t),
-        ('PeakPagefileUsage', ctypes.c_size_t),
-        ('PrivateUsage', ctypes.c_size_t),
-    ]
+    class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+        _fields_ = [
+            ('cb', wintypes.DWORD),
+            ('PageFaultCount', wintypes.DWORD),
+            ('PeakWorkingSetSize', ctypes.c_size_t),
+            ('WorkingSetSize', ctypes.c_size_t),
+            ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+            ('QuotaPagedPoolUsage', ctypes.c_size_t),
+            ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+            ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+            ('PagefileUsage', ctypes.c_size_t),
+            ('PeakPagefileUsage', ctypes.c_size_t),
+            ('PrivateUsage', ctypes.c_size_t),
+        ]
 
 
 def get_live_ram_metrics() -> Dict[str, Any]:
     """
-    Reads physical Windows RAM metrics in ~0.04ms directly via kernel32.GlobalMemoryStatusEx.
+    Reads physical RAM metrics via kernel32.GlobalMemoryStatusEx on Windows
+    and psutil.virtual_memory() on macOS/Linux.
     """
     if os.name != "nt":
-        return {"total_gb": 16.0, "free_gb": 8.0, "used_gb": 8.0, "used_percent": 50}
+        try:
+            import psutil
+            vm = psutil.virtual_memory()
+            total_gb = vm.total / (1024 ** 3)
+            free_gb = vm.available / (1024 ** 3)
+            used_gb = total_gb - free_gb
+            return {
+                "total_gb": round(total_gb, 1),
+                "free_gb": round(free_gb, 1),
+                "used_gb": round(used_gb, 1),
+                "used_percent": int(vm.percent)
+            }
+        except Exception:
+            return {"total_gb": 16.0, "free_gb": 8.0, "used_gb": 8.0, "used_percent": 50}
 
     try:
         stat = MEMORYSTATUSEX()
@@ -107,10 +119,21 @@ def get_live_ram_metrics() -> Dict[str, Any]:
 
 def get_live_battery_metrics() -> Dict[str, Any]:
     """
-    Reads battery charge and AC power status in ~0.05ms directly via kernel32.GetSystemPowerStatus.
+    Reads battery charge and AC power status via kernel32 on Windows
+    and psutil.sensors_battery() on macOS/Linux.
     """
     if os.name != "nt":
-        return {"battery": "AC Power", "percent": 100, "ac": True}
+        try:
+            import psutil
+            bat = psutil.sensors_battery()
+            if bat is None:
+                return {"battery": "AC Power", "percent": 100, "ac": True}
+            pct = int(bat.percent)
+            ac = bool(bat.power_plugged)
+            ac_str = "Plugged in" if ac else "On Battery"
+            return {"battery": f"{pct}% ({ac_str})", "percent": pct, "ac": ac}
+        except Exception:
+            return {"battery": "AC Power", "percent": 100, "ac": True}
 
     try:
         status = SYSTEM_POWER_STATUS()
@@ -256,10 +279,26 @@ def get_live_active_window() -> Dict[str, Any]:
 
 def get_live_top_processes(top_n: int = 5) -> List[Dict[str, Any]]:
     """
-    Gathers top memory-consuming processes in ~15ms via native Toolhelp32 snapshot.
+    Gathers top memory-consuming processes via Toolhelp32 on Windows and psutil on macOS/Linux.
     """
     if os.name != "nt":
-        return []
+        try:
+            import psutil
+            procs = []
+            for p in psutil.process_iter(["pid", "name", "memory_info"]):
+                try:
+                    mi = p.info.get("memory_info")
+                    if mi:
+                        procs.append({
+                            "name": p.info.get("name") or "unknown",
+                            "pid": p.info.get("pid") or 0,
+                            "memory_mb": round(mi.rss / (1024 * 1024), 1),
+                        })
+                except Exception:
+                    continue
+            return sorted(procs, key=lambda x: x["memory_mb"], reverse=True)[:top_n]
+        except Exception:
+            return []
 
     procs = []
     try:

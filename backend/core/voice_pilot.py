@@ -534,12 +534,30 @@ def split_sentences_for_pipeline(text: str) -> list:
     return sentences if sentences else [clean] if clean else []
 
 
-def stop_speaking():
+_LAST_CUTOFF_MS: float = 0.0
+
+
+def get_duplex_state() -> Dict[str, Any]:
+    """Returns real-time duplex voice playback & barge-in readiness state."""
+    return {
+        "is_speaking": is_speaking(),
+        "last_cutoff_ms": _LAST_CUTOFF_MS,
+        "barge_in_ready": True,
+    }
+
+
+def stop_speaking() -> float:
     """Immediately stops all active audio playback and flushes the queue (Duplex Barge-in)."""
-    global _IS_SPEAKING
+    global _IS_SPEAKING, _LAST_CUTOFF_MS
+    t0 = time.perf_counter()
     _STOP_REQUESTED.set()
     _IS_SPEAKING = False
-    winmm = ctypes.windll.winmm
+    if os.name == "nt":
+        try:
+            winmm = ctypes.windll.winmm
+            winmm.mciSendStringW("close all", None, 0, None)
+        except Exception:
+            pass
     with _SPEECH_LOCK:
         while not _SPEECH_QUEUE.empty():
             try:
@@ -547,11 +565,10 @@ def stop_speaking():
                 _SPEECH_QUEUE.task_done()
             except Exception:
                 break
-        try:
-            winmm.mciSendStringW("close all", None, 0, None)
-        except Exception:
-            pass
     threading.Timer(0.3, _STOP_REQUESTED.clear).start()
+    cutoff_ms = round((time.perf_counter() - t0) * 1000.0, 3)
+    _LAST_CUTOFF_MS = cutoff_ms
+    return cutoff_ms
 
 
 def speak_pipelined_async(

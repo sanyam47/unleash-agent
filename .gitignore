@@ -94,9 +94,13 @@ test_model_upload.pkl
 # OS generated files
 .DS_Store
 Thumbs.db
+temp_klog2/
+out.wav
+scratch/
 .snapshots/
 backend/data/execution_checkpoints/
 backend/data/browser_screenshots/
+backend/data/browser_profile/
 
 # Voice Audio Cache & Large Binary Models
 backend/data/voice_profiles/cache/

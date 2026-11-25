@@ -5368,6 +5368,7 @@ function appendTypingIndicator(modelName, projectName) {
                         Frontier intent classification & pre-flight routing
                     </div>
                 </div>
+                <div id="${id}_plan" style="display: none; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);"></div>
             </div>
         `;
 
@@ -5401,6 +5402,21 @@ function appendTypingIndicator(modelName, projectName) {
                 }
                 if (detailEl && (pData.detail || pData.file)) {
                     detailEl.textContent = pData.file ? `Target: ${pData.file} — ${pData.detail || ''}` : pData.detail;
+                }
+
+                const planEl = document.getElementById(`${id}_plan`);
+                if (planEl && Array.isArray(pData.plan_steps) && pData.plan_steps.length > 0) {
+                    planEl.style.display = 'flex';
+                    planEl.innerHTML = pData.plan_steps.map(st => {
+                        const status = (st.status || 'pending').toLowerCase();
+                        let icon = '○';
+                        let color = 'var(--text-muted)';
+                        let weight = '400';
+                        if (status === 'done') { icon = '✓'; color = '#10b981'; }
+                        else if (status === 'in_progress') { icon = '●'; color = '#60a5fa'; weight = '600'; }
+                        else if (status === 'failed') { icon = '✕'; color = '#ef4444'; }
+                        return `<div style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:${color}; font-weight:${weight};"><span>${icon}</span><span>${escapeHtml(st.title || '')}</span></div>`;
+                    }).join('');
                 }
 
                 if (phaseEl && pData.phase) {

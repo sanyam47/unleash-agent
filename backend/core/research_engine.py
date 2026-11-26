@@ -33,9 +33,11 @@ class ResearchSource:
     source_id: str
     title: str
     location: str
-    source_type: str  # "web" | "pdf" | "file" | "rag"
+    source_type: str  # "web" | "pdf" | "docx" | "pptx" | "file" | "rag"
     snippet: str
     raw_text: str
+    reliability_score: float = 0.65
+    reliability_tier: str = "MEDIUM"
     retrieved_at: float = field(default_factory=time.time)
 
 
@@ -47,7 +49,22 @@ class ResearchClaim:
     quote: str
     source_id: str
     status: str = "UNVERIFIED"  # "VERIFIED" | "CONFLICTING" | "UNVERIFIED"
+    confidence_score: int = 0
     verification_note: str = ""
+
+
+def _score_source_reliability(location: str, source_type: str) -> Tuple[float, str]:
+    """Scores source authority (0.0-1.0) based on domain/document type."""
+    loc = (location or "").lower()
+    if source_type in ("pdf", "docx", "pptx"):
+        return 0.90, "HIGH"
+    if any(k in loc for k in (".gov/", ".gov.", ".edu/", ".edu.", "arxiv.org", "ieee.org", "acm.org", "nature.com", "pubmed", "ietf.org", "w3.org", "nist.gov", "github.com", "//docs.", "//developer.")):
+        return 0.92, "HIGH"
+    if any(k in loc for k in ("wikipedia.org", "reuters.com", "apnews.com", "bbc.com", "iso.org")) or source_type in ("rag", "file"):
+        return 0.78, "MEDIUM-HIGH"
+    if any(k in loc for k in ("reddit.com", "quora.com", "medium.com", "substack.com", "blogspot.com", "wordpress.com")):
+        return 0.48, "LOW"
+    return 0.65, "MEDIUM"
 
 
 class EvidenceLedger:
@@ -76,6 +93,7 @@ class EvidenceLedger:
                 if s.location.strip() == norm_loc:
                     return s
         sid = f"S{len(self.sources) + 1}"
+        rel_score, rel_tier = _score_source_reliability(norm_loc, source_type)
         src = ResearchSource(
             source_id=sid,
             title=(title or sid).strip()[:160],
@@ -83,6 +101,8 @@ class EvidenceLedger:
             source_type=source_type,
             snippet=(snippet or "")[:1200],
             raw_text=(raw_text or snippet or "")[:8000],
+            reliability_score=rel_score,
+            reliability_tier=rel_tier,
         )
         self.sources[sid] = src
         if norm_loc:
@@ -170,9 +190,10 @@ def _run_research_planner(
 
 
 def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
-    """Fetches and strips HTML to clean readable text for deep claim verification."""
+    """Fetches clean readable text via HTTP, falling back to Playwright browser_extract for JS-rendered pages."""
     if not url or not url.lower().startswith(("http://", "https://")):
         return ""
+    cleaned = ""
     try:
         req = urllib.request.Request(
             url,
@@ -180,17 +201,29 @@ def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
         )
         with urllib.request.urlopen(req, timeout=6) as resp:
             ctype = (resp.headers.get("Content-Type") or "").lower()
-            if "text/html" not in ctype and "text/plain" not in ctype and "application/json" not in ctype:
-                return ""
-            raw_bytes = resp.read(250_000)
-            raw_html = raw_bytes.decode("utf-8", errors="replace")
-        cleaned = re.sub(r"(?is)<(script|style|noscript|svg|header|footer|nav)\b[^>]*>.*?</\1>", " ", raw_html)
-        cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
-        cleaned = html.unescape(cleaned)
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
-        return cleaned[:max_chars]
+            if "text/html" in ctype or "text/plain" in ctype or "application/json" in ctype:
+                raw_bytes = resp.read(250_000)
+                raw_html = raw_bytes.decode("utf-8", errors="replace")
+                cleaned = re.sub(r"(?is)<(script|style|noscript|svg|header|footer|nav)\b[^>]*>.*?</\1>", " ", raw_html)
+                cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
+                cleaned = html.unescape(cleaned)
+                cleaned = re.sub(r"\s+", " ", cleaned).strip()
     except Exception:
-        return ""
+        cleaned = ""
+
+    if len(cleaned) >= 150:
+        return cleaned[:max_chars]
+
+    # Automatic Playwright sandbox fallback for JS-rendered or anti-bot pages
+    try:
+        from backend.core.browser_pilot import browser_extract
+        b_res = browser_extract(url=url)
+        b_txt = (b_res.get("text") or b_res.get("content") or "").strip() if isinstance(b_res, dict) else ""
+        if len(b_txt) > len(cleaned):
+            return b_txt[:max_chars]
+    except Exception:
+        pass
+    return cleaned[:max_chars]
 
 
 def _discover_sources_for_queries(
@@ -350,25 +383,35 @@ def _verify_evidence_and_detect_conflicts(
     if not ledger.claims:
         return [f"{ledger.objective[:90]} evidence statistics"], 0.0, 0
 
-    # Deterministic lexical grounding check first: verify quote words appear in source raw_text
+    # Deterministic lexical grounding check + confidence scoring (0-100%)
     for c in ledger.claims:
         src = ledger.sources.get(c.source_id)
         if not src:
             c.status = "UNVERIFIED"
+            c.confidence_score = 10
             c.verification_note = "Referenced source ID missing from ledger."
             continue
         haystack = (src.raw_text or src.snippet).lower()
         quote_words = [w for w in re.findall(r"[a-z0-9]{4,}", c.quote.lower())][:6]
+        corroborating = sum(
+            1 for other in ledger.claims
+            if other.source_id != c.source_id and other.subquestion == c.subquestion
+        )
         if quote_words:
             hits = sum(1 for w in quote_words if w in haystack)
+            match_ratio = hits / len(quote_words)
+            base_conf = int(round(src.reliability_score * 55 + match_ratio * 35 + (10 if corroborating > 0 else 0)))
             if hits >= max(1, len(quote_words) // 2):
                 c.status = "VERIFIED"
-                c.verification_note = f"Grounded in {c.source_id} ({hits}/{len(quote_words)} key quote terms matched)."
+                c.confidence_score = max(40, min(100, base_conf))
+                c.verification_note = f"Grounded in {c.source_id} ({src.reliability_tier} authority, {hits}/{len(quote_words)} quote terms matched)."
             else:
                 c.status = "UNVERIFIED"
+                c.confidence_score = min(35, max(10, base_conf // 2))
                 c.verification_note = f"Quote did not match raw text of {c.source_id}."
         else:
             c.status = "UNVERIFIED"
+            c.confidence_score = int(round(src.reliability_score * 30))
             c.verification_note = "No verbatim quote provided."
 
     claims_json = json.dumps(
@@ -398,6 +441,7 @@ def _verify_evidence_and_detect_conflicts(
                 for cl in ledger.claims:
                     if cl.claim_id == cid:
                         cl.status = "CONFLICTING"
+                        cl.confidence_score = max(15, cl.confidence_score - 35)
                         cl.verification_note = str(con.get("summary"))[:180]
 
     followups = [str(q).strip() for q in (parsed.get("followup_queries") or []) if str(q).strip()][:2]
@@ -460,7 +504,7 @@ def _synthesize_verified_report(
     if ledger.sources and "### Sources" not in safe_report:
         src_lines = ["", "### Sources"]
         for s in ledger.sources.values():
-            src_lines.append(f"- **[{s.source_id}]** {s.title} — `{s.location}` ({s.source_type})")
+            src_lines.append(f"- **[{s.source_id}]** {s.title} — `{s.location}` ({s.source_type} · {s.reliability_tier} authority: {int(round(s.reliability_score * 100))}%)")
         safe_report = safe_report + "\n" + "\n".join(src_lines)
 
     return safe_report, float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))

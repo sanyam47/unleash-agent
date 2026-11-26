@@ -556,6 +556,16 @@ def send_chat_message(req: ChatRequest):
     skill_blocks = []
     knowledge_proposal = None
 
+    # Dynamic Compute Tiering Profile (CPU Safe / Lite Edge / Cloud Metered / Cloud Balanced / Frontier Ultra)
+    tier_profile: Dict[str, Any] = {}
+    try:
+        from backend.core.adaptive_tier import probe_active_compute_tier
+        tier_profile = probe_active_compute_tier(model_name=req.model)
+    except Exception:
+        tier_profile = {}
+    chat_profile = tier_profile.get("chat_profile", {})
+    memory_profile = tier_profile.get("memory_profile", {})
+
     specialist_persona = SPECIALIST_SYSTEM_INTEGRATION_DIRECTIVE
 
     # Proactive Ambient Advisory Continuity Context
@@ -706,21 +716,26 @@ def send_chat_message(req: ChatRequest):
             base_sys = f"{base_sys}\n\n{rag_context_text}"
 
         try:
-            from backend.core.memory_pilot import get_injected_context
-            if latest_prompt:
-                mem_block = get_injected_context(latest_prompt)
-                if mem_block:
-                    base_sys = f"{base_sys}\n\n{mem_block}"
-        except Exception as e:
-            print(f"[Memory Pilot] Chat injection notice: {e}")
-
-        try:
             from backend.core.task_daemon import get_daemon_context_injection
             daemon_block = get_daemon_context_injection()
             if daemon_block:
                 base_sys = f"{base_sys}\n\n{daemon_block}"
         except Exception as e:
             print(f"[Task Daemon] Chat injection notice: {e}")
+
+    # Associative Cognitive Memory & Vector RAG Injection (Unified across Chat & Agentic paths)
+    try:
+        from backend.core.memory_pilot import get_injected_context
+        if latest_prompt:
+            mem_block = get_injected_context(
+                latest_prompt,
+                max_chars=int(memory_profile.get("max_inject_chars", 1800)),
+                top_k=int(memory_profile.get("top_k", 6)),
+            )
+            if mem_block:
+                base_sys = f"{base_sys}\n\n{mem_block}" if base_sys else mem_block
+    except Exception as e:
+        print(f"[Memory Pilot] Chat injection notice: {e}")
 
     # Live Win32 Sensory Telemetry Guardrail:
     # Injects live hardware registers (<12ms execution) so the model knows its actual host environment
@@ -742,11 +757,12 @@ def send_chat_message(req: ChatRequest):
 
     payload_messages = [{"role": "system", "content": base_sys}] if base_sys.strip() else []
 
-    # For conversational fast path, keep recent conversation history (last 6 messages)
-    # so prompt eval stays sub-second on local GPU VRAM, while full history is preserved in coding/agentic mode.
+    # Scale conversational history budget dynamically by compute tier
+    # (6 on Lite Edge 6GB -> 14 on Cloud Balanced -> 24 on Frontier Ultra)
+    history_cap = int(chat_profile.get("history_limit", 6))
     relevant_messages = req.messages
-    if not is_actionable and len(req.messages) > 6:
-        relevant_messages = req.messages[-6:]
+    if not is_actionable and len(req.messages) > history_cap:
+        relevant_messages = req.messages[-history_cap:]
 
     for idx, m in enumerate(relevant_messages):
         msg_dict = {"role": m.role, "content": m.content}
@@ -927,9 +943,7 @@ def send_chat_message(req: ChatRequest):
             raise HTTPException(status_code=500, detail=f"Agentic loop failed: {str(err)}")
 
     # 0.3 Strict Agentic OFF Policy:
-    # If the user toggled Agentic Mode OFF, honor their strict constraint:
-    # Never interrupt with nagging proposals; directly generate pure text and code in the chat stream without tools.
-    if not req.agentic:
+    if not req.agentic and payload_messages and payload_messages[0].get("role") == "system":
         payload_messages[0]["content"] += (
             "\n\n[USER DIRECTIVE: Agentic Mode is OFF. Do NOT use tools or attempt to create workspace files. "
             "Provide all code implementations and technical explanations directly inside your markdown chat response.]"
@@ -939,11 +953,14 @@ def send_chat_message(req: ChatRequest):
     try:
         from backend.core.cloud_llm_client import is_cloud_model, call_cloud_llm_chat
         if is_cloud_model(req.model):
+            cloud_max_tok = req.max_tokens or int(
+                chat_profile.get("num_predict_action" if is_actionable else "num_predict_chat", 4096)
+            )
             cloud_res = call_cloud_llm_chat(
                 model=req.model,
                 messages=payload_messages,
                 temperature=req.temperature or 0.35,
-                max_tokens=req.max_tokens or 4096
+                max_tokens=cloud_max_tok
             )
             reply_content = sanitize_executive_response(cloud_res["content"])
             eval_count = cloud_res.get("eval_count", 0)
@@ -953,11 +970,30 @@ def send_chat_message(req: ChatRequest):
             if knowledge_proposal and "[KNOWLEDGE_ACQUIRE_PROPOSAL:" not in reply_content:
                 reply_content += f"\n\n[KNOWLEDGE_ACQUIRE_PROPOSAL:{knowledge_proposal['domain_key']}:{knowledge_proposal['database_name']}:{knowledge_proposal['description']}:{knowledge_proposal['source_url']}]"
 
+            try:
+                import threading
+                from backend.core.memory_pilot import extract_memories_from_turn
+                threading.Thread(
+                    target=extract_memories_from_turn,
+                    args=(latest_prompt, reply_content),
+                    kwargs={
+                        "project_name": req.project_name or "",
+                        "mode": "cloud_chat",
+                        "model_name": req.model,
+                        "allow_llm_triples": bool(memory_profile.get("llm_triple_extraction", False)),
+                    },
+                    daemon=True,
+                ).start()
+            except Exception:
+                pass
+
             return {
                 "status": "success",
                 "model": req.model,
                 "reply": reply_content,
                 "role": "assistant",
+                "compute_tier": tier_profile.get("tier"),
+                "tier_display": tier_profile.get("tier_display"),
                 "rag_sources": rag_sources,
                 "active_skills": active_skills_names,
                 "bake_recommendation": bake_recommendation,
@@ -973,13 +1009,21 @@ def send_chat_message(req: ChatRequest):
         if is_cloud_model(req.model):
             raise HTTPException(status_code=500, detail=f"Cloud LLM API error: {str(e)}")
 
-    num_predict = req.max_tokens
-    ctx_window = min(req.context_window or 4096, 4096)
-    # If conversational inquiry or brainstorming without direct code generation, provide 256 tokens
-    # and 2048 ctx so answers complete their sentences without cutting off mid-word, while keeping prompt eval fast (<0.4s)!
-    if not is_actionable:
-        num_predict = min(req.max_tokens or 256, 256)
-        ctx_window = 2048
+    tier_ctx_cap = int(chat_profile.get("context_window", 4096))
+    tier_chat_tok = int(chat_profile.get("num_predict_chat", 512))
+    tier_action_tok = int(chat_profile.get("num_predict_action", 2048))
+
+    if tier_profile.get("tier") in ("cpu_safe", "lite_edge"):
+        ctx_window = min(req.context_window or tier_ctx_cap, tier_ctx_cap)
+        if not is_actionable:
+            num_predict = min(req.max_tokens or tier_chat_tok, tier_chat_tok)
+            ctx_window = min(ctx_window, 2048 if tier_profile.get("tier") == "cpu_safe" else 4096)
+        else:
+            num_predict = req.max_tokens or tier_action_tok
+    else:
+        # Cloud Balanced / Frontier Ultra / High-VRAM GPU: unlock deep context and generous output tokens
+        ctx_window = max(req.context_window or tier_ctx_cap, min(tier_ctx_cap, 32768))
+        num_predict = max(req.max_tokens or tier_chat_tok, tier_action_tok if is_actionable else tier_chat_tok)
 
     ollama_payload = {
         "model": req.model,
@@ -1079,7 +1123,12 @@ def send_chat_message(req: ChatRequest):
             threading.Thread(
                 target=extract_memories_from_turn,
                 args=(latest_prompt, reply_content),
-                kwargs={"project_name": req.project_name or "", "mode": "chat"},
+                kwargs={
+                    "project_name": req.project_name or "",
+                    "mode": "chat",
+                    "model_name": req.model,
+                    "allow_llm_triples": bool(memory_profile.get("llm_triple_extraction", False)),
+                },
                 daemon=True,
             ).start()
         except Exception:
@@ -1090,6 +1139,8 @@ def send_chat_message(req: ChatRequest):
             "model": req.model,
             "reply": sanitize_executive_response(reply_content),
             "role": msg.get("role", "assistant"),
+            "compute_tier": tier_profile.get("tier"),
+            "tier_display": tier_profile.get("tier_display"),
             "rag_sources": rag_sources,
             "active_skills": active_skills_names,
             "bake_recommendation": bake_recommendation,

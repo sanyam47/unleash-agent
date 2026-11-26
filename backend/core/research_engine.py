@@ -219,30 +219,36 @@ class EvidenceLedger:
 
 
 def _get_model_profile(model: str) -> Dict[str, Any]:
-    """Adapts research batch sizes & retry scaffolding between small local 7-14B models and large/cloud LLMs."""
-    m = (model or "").lower()
-    is_large = any(
-        tok in m
-        for tok in (
-            "gpt-", "o1", "o3", "o4", "gemini", "claude", "deepseek",
-            "32b", "34b", "70b", "72b", "405b", "mixtral", "sonnet", "opus", "pro",
-        )
-    )
-    if is_large:
+    """Dynamically derives research concurrency, depth, and workflow combining from the active Compute Tier."""
+    try:
+        from backend.core.adaptive_tier import probe_active_compute_tier
+        tier_info = probe_active_compute_tier(model_name=model)
+        r_prof = dict(tier_info.get("research_profile") or {})
+        r_prof["tier"] = tier_info.get("tier", "lite_edge")
+        r_prof["tier_display"] = tier_info.get("tier_display", "Lite Edge")
+        r_prof["context_window"] = int(tier_info.get("context_window", 4096))
+        r_prof.setdefault("combine_extract_verify", False)
+        r_prof.setdefault("max_queries", 3)
+        r_prof.setdefault("max_sources_extract", 6)
+        r_prof.setdefault("excerpt_chars", 1400)
+        r_prof.setdefault("max_fetch_urls", 3)
+        r_prof.setdefault("max_doc_pages", 10)
+        r_prof.setdefault("rate_pace_seconds", 0.0)
+        return r_prof
+    except Exception:
         return {
-            "tier": "large",
-            "max_queries": 4,
-            "max_sources_extract": 12,
-            "excerpt_chars": 2500,
-            "max_fetch_urls": 4,
+            "tier": "lite_edge",
+            "tier_display": "Lite Edge (Fallback)",
+            "context_window": 4096,
+            "mode": "4_step_scaffolding",
+            "combine_extract_verify": False,
+            "max_queries": 3,
+            "max_sources_extract": 6,
+            "excerpt_chars": 1300,
+            "max_fetch_urls": 3,
+            "max_doc_pages": 10,
+            "rate_pace_seconds": 0.0,
         }
-    return {
-        "tier": "small_local",
-        "max_queries": 3,
-        "max_sources_extract": 6,
-        "excerpt_chars": 1300,
-        "max_fetch_urls": 3,
-    }
 
 
 def _extract_json_block(text: str) -> Any:
@@ -334,6 +340,8 @@ def _discover_sources_for_queries(
     queries: List[str],
     ledger: EvidenceLedger,
     step_num: int,
+    max_doc_pages: int = 10,
+    max_fetch_urls: int = 3,
 ) -> List[Dict[str, Any]]:
     """Agent 2 (Retrieval): Gathers local PDF/file paths, RAG context, and web search results."""
     step_logs: List[Dict[str, Any]] = []
@@ -348,7 +356,7 @@ def _discover_sources_for_queries(
         clean_path = raw_path.strip(".,;:\"'()")
         ext = Path(clean_path).suffix.lower()
         if ext in (".pdf", ".docx", ".pptx", ".png", ".jpg", ".jpeg", ".webp"):
-            res = read_document_file(project_name, clean_path, start_page=1, end_page=10)
+            res = read_document_file(project_name, clean_path, start_page=1, end_page=max_doc_pages)
             if res.get("status") == "success":
                 pages = res.get("pages") or []
                 label = "Slide" if ext == ".pptx" else ("Image" if ext in (".png", ".jpg", ".jpeg", ".webp") else "Page")
@@ -403,12 +411,12 @@ def _discover_sources_for_queries(
         return step_logs
 
     # 3. Web search across planned queries (graceful fallback on failed searches)
-    for q in queries[:4]:
+    for q in queries[:6]:
         try:
             w_res = search_web_docs(q, project_name=project_name)
             results = w_res.get("results") or w_res.get("items") or []
             if isinstance(results, list):
-                for item in results[:3]:
+                for item in results[:4]:
                     if not isinstance(item, dict):
                         continue
                     url = item.get("url") or item.get("link") or item.get("href") or ""
@@ -426,10 +434,10 @@ def _discover_sources_for_queries(
         except Exception as exc:
             step_logs.append({"step": step_num, "action": "search_web_docs", "query": q, "status": "error", "error": str(exc)})
 
-    # 4. Deep-fetch top 3 web URLs so verification checks full article text, not just short snippets
+    # 4. Deep-fetch top web URLs (adaptive limit: 2..6 URLs by tier)
     fetched_count = 0
     for src in list(ledger.sources.values()):
-        if fetched_count >= 3:
+        if fetched_count >= max_fetch_urls:
             break
         if src.source_type == "web" and src.location.startswith(("http://", "https://")) and len(src.raw_text) < 400:
             full_txt = _fetch_url_text(src.location)
@@ -485,20 +493,11 @@ def _extract_claims_from_sources(
     return float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))
 
 
-def _verify_evidence_and_detect_conflicts(
-    model: str,
-    ledger: EvidenceLedger,
-    context_window: int,
-) -> Tuple[List[str], float, int]:
+def _apply_deterministic_claim_checks(ledger: EvidenceLedger) -> None:
     """
-    Agent 3 (EvidenceVerifierAgent):
-    Checks each claim against raw source text + compares across sources.
-    Returns follow-up queries if critical gaps or contradictions are found.
+    Universal Ground-Truth Guardrail (runs across ALL tiers, including Frontier Ultra):
+    Verifies exact quote grounding, numeric consistency, cross-domain corroboration, and freshness.
     """
-    if not ledger.claims:
-        return [f"{ledger.objective[:90]} evidence statistics"], 0.0, 0
-
-    # Deterministic lexical + exact substring + number + domain-independent + freshness scoring
     for c in ledger.claims:
         src = ledger.sources.get(c.source_id)
         if not src:
@@ -550,6 +549,88 @@ def _verify_evidence_and_detect_conflicts(
             c.confidence_score = int(round(src.reliability_score * 30))
             c.verification_note = "No verbatim quote provided."
 
+
+def _apply_contradictions_to_ledger(ledger: EvidenceLedger, contradictions: List[Any]) -> None:
+    """Marks conflicting claims in EvidenceLedger from structured verifier output."""
+    for con in (contradictions or [])[:5]:
+        if isinstance(con, dict) and con.get("summary"):
+            ledger.contradictions.append(con)
+            for cid in (con.get("claim_ids") or []):
+                for cl in ledger.claims:
+                    if cl.claim_id == cid:
+                        cl.status = "CONFLICTING"
+                        cl.confidence_score = max(15, cl.confidence_score - 35)
+                        cl.verification_note = str(con.get("summary"))[:180]
+
+
+def _extract_and_detect_conflicts_combined(
+    model: str,
+    ledger: EvidenceLedger,
+    context_window: int,
+    max_sources: int = 16,
+    excerpt_chars: int = 5500,
+) -> Tuple[List[str], float, int]:
+    """
+    Frontier / Cloud-Metered Combined Pass:
+    Executes Extraction + Cross-Source Conflict Detection in one high-context LLM call,
+    then runs deterministic ground-truth quote/number/corroboration checks locally.
+    """
+    if not ledger.sources:
+        return [f"{ledger.objective[:90]} evidence statistics"], 0.0, 0
+
+    sources_block = "\n\n".join(
+        f"[{s.source_id}] Title: {s.title}\nLocation: {s.location}\nExcerpt:\n{s.raw_text[:excerpt_chars]}"
+        for s in list(ledger.sources.values())[:max_sources]
+    )
+    subq_text = "\n".join(f"- {sq}" for sq in ledger.subquestions)
+    prompt = (
+        "You are Combined Discovery & Evidence Auditor Agent. Analyze the sources below.\n"
+        "1. Extract accurate factual claims with supporting verbatim quotes ONLY from these sources.\n"
+        "2. Flag any direct contradictions across sources and suggest up to 2 follow-up queries if gaps exist.\n"
+        "Return ONLY valid JSON:\n"
+        '{"claims": [{"subquestion": "...", "claim": "...", "quote": "...", "source_id": "S1"}], '
+        '"contradictions": [{"claim_ids": ["C1", "C2"], "summary": "..."}], '
+        '"followup_queries": ["..."]}\n\n'
+        f"Sub-questions:\n{subq_text}\n\nSources:\n{sources_block}"
+    )
+    resp = call_unified_chat(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        context_window=context_window,
+    )
+    parsed = _extract_json_block(resp.get("content", "")) or {}
+    for item in (parsed.get("claims") or [])[:24]:
+        if not isinstance(item, dict):
+            continue
+        sid = str(item.get("source_id") or "").strip()
+        claim_txt = str(item.get("claim") or "").strip()
+        quote_txt = str(item.get("quote") or "").strip()
+        subq = str(item.get("subquestion") or (ledger.subquestions[0] if ledger.subquestions else ledger.objective))
+        if sid in ledger.sources and claim_txt:
+            ledger.add_claim(subquestion=subq, claim=claim_txt, quote=quote_txt, source_id=sid)
+
+    _apply_deterministic_claim_checks(ledger)
+    _apply_contradictions_to_ledger(ledger, parsed.get("contradictions") or [])
+    followups = [str(q).strip() for q in (parsed.get("followup_queries") or []) if str(q).strip()][:2]
+    return followups, float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))
+
+
+def _verify_evidence_and_detect_conflicts(
+    model: str,
+    ledger: EvidenceLedger,
+    context_window: int,
+) -> Tuple[List[str], float, int]:
+    """
+    Agent 3 (EvidenceVerifierAgent):
+    Checks each claim against raw source text + compares across sources.
+    Returns follow-up queries if critical gaps or contradictions are found.
+    """
+    if not ledger.claims:
+        return [f"{ledger.objective[:90]} evidence statistics"], 0.0, 0
+
+    _apply_deterministic_claim_checks(ledger)
+
     claims_json = json.dumps(
         [{"claim_id": c.claim_id, "claim": c.claim, "source_id": c.source_id, "status": c.status} for c in ledger.claims],
         indent=2,
@@ -569,16 +650,7 @@ def _verify_evidence_and_detect_conflicts(
         context_window=context_window,
     )
     parsed = _extract_json_block(resp.get("content", "")) or {}
-    contradictions = parsed.get("contradictions") or []
-    for con in contradictions[:5]:
-        if isinstance(con, dict) and con.get("summary"):
-            ledger.contradictions.append(con)
-            for cid in (con.get("claim_ids") or []):
-                for cl in ledger.claims:
-                    if cl.claim_id == cid:
-                        cl.status = "CONFLICTING"
-                        cl.confidence_score = max(15, cl.confidence_score - 35)
-                        cl.verification_note = str(con.get("summary"))[:180]
+    _apply_contradictions_to_ledger(ledger, parsed.get("contradictions") or [])
 
     followups = [str(q).strip() for q in (parsed.get("followup_queries") or []) if str(q).strip()][:2]
     return followups, float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))
@@ -616,6 +688,7 @@ def _synthesize_verified_report(
         if not verified
         else ""
     )
+    ledger_budget = min(max(12000, context_window), 48000)
     prompt = (
         "You are ReportSynthesizerAgent. Write a clear, structured research report answering the objective.\n"
         "STRICT SAFETY BOUNDARIES:\n"
@@ -623,7 +696,7 @@ def _synthesize_verified_report(
         "- NEVER invent URLs, citations, or facts not present in the evidence.\n"
         "- Explicitly separate Verified Findings, Conflicting/Unverified Claims (if any), and Sources.\n"
         f"{empty_verified_rule}\n"
-        f"Evidence Ledger:\n{json.dumps(evidence_payload, indent=2)[:12000]}"
+        f"Evidence Ledger:\n{json.dumps(evidence_payload, indent=2)[:ledger_budget]}"
     )
     resp = call_unified_chat(
         model=model,
@@ -667,9 +740,18 @@ def run_verified_research_pipeline(
     project_name: Optional[str] = None,
     context_window: int = 8192,
 ) -> Dict[str, Any]:
-    """Executes the full 4-agent Verified Research lifecycle with live SSE progress."""
+    """Executes the Verified Research pipeline, adapting workflow depth & combining steps by Compute Tier."""
     clean_proj = sanitize_project_name(project_name or f"research_{int(time.time())}")
     profile = _get_model_profile(model)
+    tier_key = profile.get("tier", "lite_edge")
+    combine_pass = bool(profile.get("combine_extract_verify", False))
+    pace_sec = float(profile.get("rate_pace_seconds", 0.0) or 0.0)
+
+    if tier_key in ("cpu_safe", "lite_edge", "cloud_metered"):
+        eff_ctx = min(context_window or profile["context_window"], profile["context_window"])
+    else:
+        eff_ctx = max(context_window or profile["context_window"], profile["context_window"])
+
     ledger = EvidenceLedger(objective=user_prompt, project_name=clean_proj)
     steps_trace: List[Dict[str, Any]] = []
     total_dur = 0.0
@@ -687,75 +769,126 @@ def run_verified_research_pipeline(
     )
 
     # 1. ResearchPlannerAgent
-    set_project_progress(clean_proj, phase="planning", headline="ResearchPlannerAgent: Decomposing objective...", detail=user_prompt[:120], step=1, tool="ResearchPlannerAgent")
-    subqs, queries, dur1, tok1 = _run_research_planner(model, user_prompt, context_window)
+    set_project_progress(clean_proj, phase="planning", headline=f"ResearchPlannerAgent ({profile.get('tier_display', tier_key)}): Planning...", detail=user_prompt[:120], step=1, tool="ResearchPlannerAgent")
+    subqs, queries, dur1, tok1 = _run_research_planner(model, user_prompt, eff_ctx)
     queries = queries[: profile["max_queries"]]
     ledger.subquestions = subqs
     total_dur += dur1
     total_tokens += tok1
-    steps_trace.append({"step": 1, "agent": "ResearchPlannerAgent", "subquestions": subqs, "queries": queries, "model_tier": profile["tier"], "status": "success"})
+    steps_trace.append({"step": 1, "agent": "ResearchPlannerAgent", "subquestions": subqs, "queries": queries, "model_tier": tier_key, "combined_mode": combine_pass, "status": "success"})
 
-    # 2. DiscoveryExtractorAgent
+    if pace_sec > 0:
+        time.sleep(pace_sec)
+
+    # 2. DiscoveryExtractorAgent (+ Combined Audit on Frontier Ultra / Cloud Metered)
     set_project_plan(
         clean_proj,
         [
             {"title": "Decompose research objective", "status": "done"},
             {"title": "Discover & extract source evidence", "status": "in_progress"},
-            {"title": "Verify claims & resolve conflicts", "status": "pending"},
+            {"title": "Verify claims & resolve conflicts", "status": "in_progress" if combine_pass else "pending"},
             {"title": "Synthesize cited research report", "status": "pending"},
         ],
     )
     set_project_progress(clean_proj, phase="executing", headline=f"DiscoveryExtractorAgent: Querying {len(queries)} source(s)...", detail=", ".join(queries)[:120], step=2, tool="DiscoveryExtractorAgent")
-    disc_logs = _discover_sources_for_queries(clean_proj, user_prompt, queries, ledger, step_num=2)
-    dur2, tok2 = _extract_claims_from_sources(
-        model,
+    disc_logs = _discover_sources_for_queries(
+        clean_proj,
+        user_prompt,
+        queries,
         ledger,
-        context_window,
-        max_sources=profile["max_sources_extract"],
-        excerpt_chars=profile["excerpt_chars"],
+        step_num=2,
+        max_doc_pages=int(profile.get("max_doc_pages", 10)),
+        max_fetch_urls=int(profile.get("max_fetch_urls", 3)),
     )
-    total_dur += dur2
-    total_tokens += tok2
     steps_trace.extend(disc_logs)
 
-    # 3. EvidenceVerifierAgent (+ 1 iterative follow-up round if gaps/contradictions detected)
-    set_project_plan(
-        clean_proj,
-        [
-            {"title": "Decompose research objective", "status": "done"},
-            {"title": "Discover & extract source evidence", "status": "done"},
-            {"title": "Verify claims & resolve conflicts", "status": "in_progress"},
-            {"title": "Synthesize cited research report", "status": "pending"},
-        ],
-    )
-    set_project_progress(clean_proj, phase="validating", headline=f"EvidenceVerifierAgent: Auditing {len(ledger.claims)} claim(s)...", detail=f"Cross-checking {len(ledger.sources)} retrieved source(s)", step=3, tool="EvidenceVerifierAgent")
-    followups, dur3, tok3 = _verify_evidence_and_detect_conflicts(model, ledger, context_window)
-    total_dur += dur3
-    total_tokens += tok3
+    if combine_pass:
+        set_project_progress(clean_proj, phase="validating", headline=f"Frontier Combined Extractor & Auditor: Analyzing {len(ledger.sources)} source(s)...", detail="Single-pass claim extraction + deterministic ground-truth verification", step=3, tool="EvidenceVerifierAgent")
+        followups, dur_comb, tok_comb = _extract_and_detect_conflicts_combined(
+            model,
+            ledger,
+            eff_ctx,
+            max_sources=profile["max_sources_extract"],
+            excerpt_chars=profile["excerpt_chars"],
+        )
+        total_dur += dur_comb
+        total_tokens += tok_comb
+    else:
+        dur2, tok2 = _extract_claims_from_sources(
+            model,
+            ledger,
+            eff_ctx,
+            max_sources=profile["max_sources_extract"],
+            excerpt_chars=profile["excerpt_chars"],
+        )
+        total_dur += dur2
+        total_tokens += tok2
+
+        if pace_sec > 0:
+            time.sleep(pace_sec)
+
+        # 3. EvidenceVerifierAgent (separate pass on 8B/Mid tiers to prevent cognitive overload)
+        set_project_plan(
+            clean_proj,
+            [
+                {"title": "Decompose research objective", "status": "done"},
+                {"title": "Discover & extract source evidence", "status": "done"},
+                {"title": "Verify claims & resolve conflicts", "status": "in_progress"},
+                {"title": "Synthesize cited research report", "status": "pending"},
+            ],
+        )
+        set_project_progress(clean_proj, phase="validating", headline=f"EvidenceVerifierAgent: Auditing {len(ledger.claims)} claim(s)...", detail=f"Cross-checking {len(ledger.sources)} retrieved source(s)", step=3, tool="EvidenceVerifierAgent")
+        followups, dur3, tok3 = _verify_evidence_and_detect_conflicts(model, ledger, eff_ctx)
+        total_dur += dur3
+        total_tokens += tok3
 
     verified_cnt = sum(1 for c in ledger.claims if c.status == "VERIFIED")
     conflict_cnt = sum(1 for c in ledger.claims if c.status == "CONFLICTING")
     doc_focused = any(s.get("action") == "smart_route" and s.get("mode") == "document_focused" for s in disc_logs)
-    skip_large_retry = (profile["tier"] == "large" and verified_cnt >= 2 and conflict_cnt == 0)
+    skip_large_retry = (tier_key in ("cloud_balanced", "frontier_ultra") and verified_cnt >= 2 and conflict_cnt == 0)
     skip_doc_retry = (doc_focused and verified_cnt >= 1 and conflict_cnt == 0)
 
     needs_retry = bool(followups) and not skip_large_retry and not skip_doc_retry and (
         any(c.status in ("UNVERIFIED", "CONFLICTING") for c in ledger.claims) or not ledger.claims
     )
     if needs_retry:
+        if pace_sec > 0:
+            time.sleep(pace_sec)
         set_project_progress(clean_proj, phase="self_repairing", headline="Iterative Re-Search: Resolving gaps/conflicts...", detail=", ".join(followups)[:120], step=4, tool="DiscoveryExtractorAgent")
-        retry_logs = _discover_sources_for_queries(clean_proj, user_prompt, followups, ledger, step_num=4)
-        dur_r1, tok_r1 = _extract_claims_from_sources(
-            model,
+        retry_logs = _discover_sources_for_queries(
+            clean_proj,
+            user_prompt,
+            followups,
             ledger,
-            context_window,
-            max_sources=profile["max_sources_extract"],
-            excerpt_chars=profile["excerpt_chars"],
+            step_num=4,
+            max_doc_pages=int(profile.get("max_doc_pages", 10)),
+            max_fetch_urls=int(profile.get("max_fetch_urls", 3)),
         )
-        _, dur_r2, tok_r2 = _verify_evidence_and_detect_conflicts(model, ledger, context_window)
-        total_dur += dur_r1 + dur_r2
-        total_tokens += tok_r1 + tok_r2
+        if combine_pass:
+            _, dur_r, tok_r = _extract_and_detect_conflicts_combined(
+                model,
+                ledger,
+                eff_ctx,
+                max_sources=profile["max_sources_extract"],
+                excerpt_chars=profile["excerpt_chars"],
+            )
+            total_dur += dur_r
+            total_tokens += tok_r
+        else:
+            dur_r1, tok_r1 = _extract_claims_from_sources(
+                model,
+                ledger,
+                eff_ctx,
+                max_sources=profile["max_sources_extract"],
+                excerpt_chars=profile["excerpt_chars"],
+            )
+            _, dur_r2, tok_r2 = _verify_evidence_and_detect_conflicts(model, ledger, eff_ctx)
+            total_dur += dur_r1 + dur_r2
+            total_tokens += tok_r1 + tok_r2
         steps_trace.extend(retry_logs)
+
+    if pace_sec > 0:
+        time.sleep(pace_sec)
 
     # 4. ReportSynthesizerAgent
     set_project_plan(
@@ -768,7 +901,7 @@ def run_verified_research_pipeline(
         ],
     )
     set_project_progress(clean_proj, phase="coding", headline="ReportSynthesizerAgent: Generating cited report...", detail="Applying zero-fabrication citation guardrail", step=5, tool="ReportSynthesizerAgent")
-    report_md, dur4, tok4 = _synthesize_verified_report(model, ledger, context_window)
+    report_md, dur4, tok4 = _synthesize_verified_report(model, ledger, eff_ctx)
     total_dur += dur4
     total_tokens += tok4
 
@@ -821,6 +954,8 @@ def run_verified_research_pipeline(
         "reply": report_md,
         "agentic": True,
         "research_mode": True,
+        "compute_tier": tier_key,
+        "tier_display": profile.get("tier_display", tier_key),
         "project_name": clean_proj,
         "created_files": [],
         "steps": steps_trace,

@@ -42,7 +42,17 @@ def get_realtime_gpu_headroom_mb() -> Dict[str, Any]:
                 free_mb = float(parts[2])
                 used_mb = float(parts[3])
 
-                if total_mb <= 6500:
+                if total_mb >= 22000 and free_mb >= 10000:
+                    ctx_rec = 32768
+                    clamped = False
+                    status_label = "High-VRAM (32K Context)"
+                    num_gpu = 1
+                elif total_mb >= 11000 and free_mb >= 5000:
+                    ctx_rec = 16384
+                    clamped = False
+                    status_label = "Mid-VRAM (16K Context)"
+                    num_gpu = 1
+                elif total_mb <= 6500:
                     # 6GB Consumer GPU (e.g. RTX 3050): keep consistent 4096 ctx so KV cache stays in VRAM
                     # and never force num_gpu=0 when Ollama itself holds the resident weights in VRAM.
                     ctx_rec = 4096
@@ -168,6 +178,7 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
     gpu_name = "Local GPU"
     vram_gb = 6.0
     is_cloud_active = False
+    local_hw: Dict[str, Any] = {}
 
     if active_provider == "kaggle" and cloud_info.get("connected"):
         is_cloud_active = True
@@ -188,7 +199,7 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
 
     # Check Model Multimodal / Param Capabilities & Cloud Metering
     m_lower = (model_name or "").lower()
-    
+
     is_cloud = False
     cloud_provider = None
     clean_model = m_lower
@@ -202,9 +213,7 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
     except Exception:
         pass
 
-    # Free / Rate-limited Cloud tier check:
-    # 1. Groq on-demand tier (7,000 ITPM / 1,000 OTPM)
-    # 2. OpenRouter free models ending with ':free' or containing 'free' in model id
+    # Free / Rate-limited Cloud tier check
     is_metered_free_cloud = is_cloud and (
         cloud_provider == "groq" or
         ":free" in clean_model or
@@ -213,31 +222,38 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
         "-free" in clean_model
     )
 
-    is_frontier_cloud = is_cloud and not is_metered_free_cloud and any(
-        k in clean_model for k in [
-            "claude-3", "claude-3.5", "claude-3-5", "gpt-4", "gpt-4o", "o1", "o3", 
-            "gemini-1.5-pro", "gemini-2.0", "deepseek-coder", "llama-3.3-70b"
-        ]
+    frontier_tokens = (
+        "claude-3", "claude-3.5", "claude-3-5", "claude-4", "sonnet", "opus",
+        "gpt-4", "gpt-4o", "gpt-5", "o1", "o3", "o4",
+        "gemini-1.5-pro", "gemini-2.", "gemini-3", "deepseek-chat", "deepseek-reasoner",
+        "deepseek-v3", "deepseek-r1", "llama-3.3-70b", "72b", "405b",
     )
+    is_frontier_model = any(k in clean_model for k in frontier_tokens)
+    is_frontier_cloud = is_cloud and not is_metered_free_cloud and is_frontier_model
 
-    is_multimodal = any(k in m_lower for k in ["vision", "vl", "llava", "multimodal", "gpt-4", "claude", "gemini"])
-    is_large_weight = any(k in m_lower for k in ["14b", "32b", "70b"])
+    is_multimodal = any(k in m_lower for k in ["vision", "vl", "llava", "multimodal", "gpt-4", "gpt-5", "claude", "gemini"])
+    is_large_weight = any(k in m_lower for k in ["14b", "27b", "32b", "34b", "70b", "72b", "mixtral"])
 
     # Determine Tier dynamically
     if override_tier:
         tier = override_tier
     elif is_metered_free_cloud:
         tier = ExecutionTier.CLOUD_METERED
-    elif is_frontier_cloud or is_multimodal or vram_gb >= 40.0:
+    elif is_frontier_cloud or is_frontier_model or is_multimodal or vram_gb >= 32.0:
         tier = ExecutionTier.FRONTIER_ULTRA
-    elif is_cloud_active or vram_gb >= 12.0 or is_large_weight:
+    elif is_cloud_active or is_cloud or vram_gb >= 12.0 or is_large_weight:
         tier = ExecutionTier.CLOUD_BALANCED
-    elif not local_hw.get("has_gpu", False) or vram_gb < 2.0:
+    elif local_hw and (not local_hw.get("has_gpu", False) or vram_gb < 2.0):
         tier = ExecutionTier.CPU_SAFE
     else:
         tier = ExecutionTier.LITE_EDGE
 
-    # Generate Tier-specific Adaptive Profiles
+    ocr_gpu_allowed = bool(
+        (local_hw.get("has_gpu", False) and ((local_hw.get("total_mb", 0) > 7000 and local_hw.get("free_mb", 0) >= 2200) or local_hw.get("free_mb", 0) >= 3500))
+        or (is_cloud_active and vram_gb >= 14.0)
+    )
+
+    # Generate Tier-specific Adaptive Profiles across Chat, Research, Coding, Memory & OCR
     if tier == ExecutionTier.CLOUD_METERED:
         prov_label = cloud_provider.upper() if cloud_provider else "Cloud"
         return {
@@ -259,14 +275,41 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
             "viewports": [
                 {"name": "desktop", "width": 1280, "height": 800}
             ],
-            "description": "Cloud Metered mode: Lean 3-tool set (<400 tokens), 3s rate pacing, 1-turn repair cap, surgical diagnostics."
+            "chat_profile": {
+                "history_limit": 8,
+                "num_predict_chat": 1024,
+                "num_predict_action": 4096,
+                "context_window": 8192,
+            },
+            "research_profile": {
+                "mode": "paced_combined",
+                "combine_extract_verify": True,
+                "max_queries": 3,
+                "max_sources_extract": 8,
+                "excerpt_chars": 2400,
+                "max_fetch_urls": 4,
+                "max_doc_pages": 14,
+                "rate_pace_seconds": 2.5,
+            },
+            "memory_profile": {
+                "top_k": 7,
+                "max_inject_chars": 2200,
+                "max_hops": 3,
+                "llm_triple_extraction": False,
+            },
+            "ocr_profile": {
+                "use_gpu": ocr_gpu_allowed,
+                "dpi": 150,
+            },
+            "description": "Cloud Metered mode: Lean toolset (<400 tokens), 3s rate pacing, combined research pass, surgical diagnostics."
         }
     elif tier == ExecutionTier.FRONTIER_ULTRA:
+        eff_vram = max(vram_gb, 48.0) if (is_cloud or is_frontier_model) else vram_gb
         return {
             "tier": ExecutionTier.FRONTIER_ULTRA,
-            "tier_display": "FRONTIER ULTRA (Enterprise Cloud / Multimodal Vision)",
-            "gpu_name": gpu_name if not is_cloud else "Frontier Cloud Cluster",
-            "vram_gb": vram_gb,
+            "tier_display": "FRONTIER ULTRA (High-Reasoning / Cloud / Large VRAM)",
+            "gpu_name": gpu_name if not is_cloud else f"Frontier API ({clean_model or 'Cloud'})",
+            "vram_gb": eff_vram,
             "is_cloud": is_cloud or is_cloud_active,
             "max_milestones": 8,
             "max_steps": 36,
@@ -283,12 +326,38 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
                 {"name": "tablet", "width": 768, "height": 1024},
                 {"name": "mobile", "width": 390, "height": 844}
             ],
-            "description": "High-VRAM mode: Unlocks 8-step deep planning, full multi-device responsive testing, and visual critique."
+            "chat_profile": {
+                "history_limit": 24,
+                "num_predict_chat": 4096,
+                "num_predict_action": 8192,
+                "context_window": 65536,
+            },
+            "research_profile": {
+                "mode": "frontier_combined",
+                "combine_extract_verify": True,
+                "max_queries": 5,
+                "max_sources_extract": 16,
+                "excerpt_chars": 5500,
+                "max_fetch_urls": 6,
+                "max_doc_pages": 35,
+                "rate_pace_seconds": 0.0,
+            },
+            "memory_profile": {
+                "top_k": 10,
+                "max_inject_chars": 3600,
+                "max_hops": 4,
+                "llm_triple_extraction": True,
+            },
+            "ocr_profile": {
+                "use_gpu": ocr_gpu_allowed,
+                "dpi": 180,
+            },
+            "description": "Frontier Ultra mode: Unlocks 65K context, combined deep research pass, LLM cognitive triple extraction, and multi-device testing."
         }
     elif tier == ExecutionTier.CLOUD_BALANCED:
         return {
             "tier": ExecutionTier.CLOUD_BALANCED,
-            "tier_display": "CLOUD BALANCED (Kaggle/Colab T4 / 14B-32B)",
+            "tier_display": "CLOUD BALANCED (Mid-High GPU / 14B-32B)",
             "gpu_name": gpu_name,
             "vram_gb": vram_gb,
             "is_cloud": is_cloud_active or is_cloud,
@@ -306,12 +375,38 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
                 {"name": "desktop", "width": 1280, "height": 800},
                 {"name": "mobile", "width": 390, "height": 844}
             ],
-            "description": "Balanced mode: Unlocks 6 milestones, mobile+desktop responsive layout checks, and expanded ReAct turns."
+            "chat_profile": {
+                "history_limit": 14,
+                "num_predict_chat": 1536,
+                "num_predict_action": 4096,
+                "context_window": 32768,
+            },
+            "research_profile": {
+                "mode": "deep_4_step",
+                "combine_extract_verify": False,
+                "max_queries": 4,
+                "max_sources_extract": 10,
+                "excerpt_chars": 3200,
+                "max_fetch_urls": 5,
+                "max_doc_pages": 20,
+                "rate_pace_seconds": 0.0,
+            },
+            "memory_profile": {
+                "top_k": 8,
+                "max_inject_chars": 2800,
+                "max_hops": 3,
+                "llm_triple_extraction": True,
+            },
+            "ocr_profile": {
+                "use_gpu": ocr_gpu_allowed,
+                "dpi": 180,
+            },
+            "description": "Balanced mode: Unlocks 32K context, 10-source research, mobile+desktop verification, and LLM triple extraction."
         }
     elif tier == ExecutionTier.CPU_SAFE:
         return {
             "tier": ExecutionTier.CPU_SAFE,
-            "tier_display": "CPU SAFE (Integrated Graphics / Zero-GPU Fallback)",
+            "tier_display": "CPU SAFE (Zero-GPU Fallback)",
             "gpu_name": gpu_name or "CPU Only",
             "vram_gb": vram_gb,
             "is_cloud": False,
@@ -328,13 +423,39 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
             "viewports": [
                 {"name": "desktop", "width": 1280, "height": 800}
             ],
-            "description": "Accessible mode: 3 focused milestones, 4k lightweight context, zero GPU requirements."
+            "chat_profile": {
+                "history_limit": 4,
+                "num_predict_chat": 256,
+                "num_predict_action": 1024,
+                "context_window": 4096,
+            },
+            "research_profile": {
+                "mode": "4_step_lean",
+                "combine_extract_verify": False,
+                "max_queries": 2,
+                "max_sources_extract": 4,
+                "excerpt_chars": 1000,
+                "max_fetch_urls": 2,
+                "max_doc_pages": 6,
+                "rate_pace_seconds": 0.0,
+            },
+            "memory_profile": {
+                "top_k": 4,
+                "max_inject_chars": 1200,
+                "max_hops": 2,
+                "llm_triple_extraction": False,
+            },
+            "ocr_profile": {
+                "use_gpu": False,
+                "dpi": 150,
+            },
+            "description": "Accessible mode: 3 focused milestones, 4K lightweight context, zero GPU requirements."
         }
     else:  # LITE_EDGE
-        dynamic_ctx = local_hw.get("dynamic_context_window", 8192)
+        dynamic_ctx = local_hw.get("dynamic_context_window", 4096)
         return {
             "tier": ExecutionTier.LITE_EDGE,
-            "tier_display": "LITE EDGE (Consumer RTX 3050 / Offline 8B)",
+            "tier_display": "LITE EDGE (Consumer 6GB GPU / Offline 8B)",
             "gpu_name": gpu_name,
             "vram_gb": vram_gb,
             "vram_free_gb": local_hw.get("vram_free_gb", vram_gb),
@@ -356,5 +477,31 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
             "viewports": [
                 {"name": "desktop", "width": 1280, "height": 800}
             ],
-            "description": "Optimized offline mode: High-speed text DOM deltas, 4 focused milestones, zero token bloat."
+            "chat_profile": {
+                "history_limit": 6,
+                "num_predict_chat": 512,
+                "num_predict_action": 2048,
+                "context_window": dynamic_ctx,
+            },
+            "research_profile": {
+                "mode": "4_step_scaffolding",
+                "combine_extract_verify": False,
+                "max_queries": 3,
+                "max_sources_extract": 6,
+                "excerpt_chars": 1400,
+                "max_fetch_urls": 3,
+                "max_doc_pages": 10,
+                "rate_pace_seconds": 0.0,
+            },
+            "memory_profile": {
+                "top_k": 6,
+                "max_inject_chars": 1800,
+                "max_hops": 3,
+                "llm_triple_extraction": False,
+            },
+            "ocr_profile": {
+                "use_gpu": ocr_gpu_allowed,
+                "dpi": 150,
+            },
+            "description": "Optimized offline mode: 4K-stable VRAM cache, structured 4-step 8B scaffolding, zero GPU lock."
         }

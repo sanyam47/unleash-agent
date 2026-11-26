@@ -1278,10 +1278,15 @@ Final Answer: <Your clear, professional, factual answer to the user>
 
 
 
-    # Phase 6: Cognitive Memory & Knowledge Graph Context Injection
+    # Phase 6: Cognitive Memory & Knowledge Graph Context Injection (Adaptive Depth)
+    mem_prof = tier_profile.get("memory_profile", {})
     try:
         from backend.core.memory_pilot import get_injected_context
-        mem_context = get_injected_context(user_prompt)
+        mem_context = get_injected_context(
+            user_prompt,
+            max_chars=int(mem_prof.get("max_inject_chars", 1800)),
+            top_k=int(mem_prof.get("top_k", 6)),
+        )
         if mem_context:
             system_prompt += f"\n\n{mem_context}\n"
     except Exception as e:
@@ -2472,7 +2477,14 @@ Final Answer: <Your clear, professional, factual answer to the user>
                     tools=used_tools,
                     outcome="completed",
                 )
-                extract_memories_from_turn(user_prompt, final_reply, project_name=clean_proj, mode="agent_build")
+                extract_memories_from_turn(
+                    user_prompt,
+                    final_reply,
+                    project_name=clean_proj,
+                    mode="agent_build",
+                    model_name=model,
+                    allow_llm_triples=bool(mem_prof.get("llm_triple_extraction", False)),
+                )
             except Exception:
                 pass
         threading.Thread(target=_sync_agent_brain, daemon=True).start()

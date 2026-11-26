@@ -1504,8 +1504,12 @@
                             <button id="btnStartOllama" onclick="startOllamaService()" class="btn-quiet" style="display: none; padding: 2px 8px; font-size: 0.7rem; color: #d4d4d8; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 4px;">Start Ollama</button>
                         </div>
 
-                        <!-- Right: Compact Voice Menu & Export -->
+                        <!-- Right: Adaptive Compute Tier, Compact Voice Menu & Export -->
                         <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+                            <button type="button" id="computeTierBadgePill" onclick="openChatSettingsModal()" class="btn-quiet" style="font-size: 0.71rem; font-family: var(--font-mono); padding: 4px 9px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); white-space: nowrap;" title="Adaptive Compute Tier (auto-scales context, research &amp; memory for active GPU/Model)">
+                                <span id="computeTierDot" style="width: 6px; height: 6px; border-radius: 50%; background: #34d399; display: inline-block;"></span>
+                                <span id="computeTierLabel">Adaptive Tier</span>
+                            </button>
                             <div style="position: relative;">
                                 <button type="button" id="btnVoiceMenuPill" onclick="toggleVoiceMenuPopover()" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated);" title="Voice, Wake Word & Speech Controls">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
@@ -2451,8 +2455,12 @@
 
             <!-- Group 2: Generation Parameters & Memory -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
-                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px;">
-                    Model Generation Parameters
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <span>Model Generation &amp; Adaptive Compute Profile</span>
+                    <span id="settingsComputeTierBadge" style="font-size: 0.69rem; font-family: var(--font-mono); color: #34d399;">Probing tier...</span>
+                </div>
+                <div id="settingsComputeTierDetails" style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; line-height: 1.45;">
+                    Auto-adapts context, research workflow, memory extraction, and OCR acceleration to active GPU/API.
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                     <!-- Temperature -->

@@ -1077,12 +1077,12 @@ def run_sleep_cycle_consolidation() -> Dict[str, Any]:
 # 7. CONTEXT AUTO-INJECTION (FOR SYSTEM PROMPT)
 # =========================================================================
 
-def get_injected_context(user_prompt: str, max_chars: int = 1800) -> str:
+def get_injected_context(user_prompt: str, max_chars: int = 1800, top_k: int = 6) -> str:
     """
     Fast query to construct the <jarvis_memory> block for prompt injection.
     Includes multi-hop graph deductions and high-confidence semantic vector matches.
     """
-    memories = recall_memory(user_prompt, top_k=6, allow_cold_import=False)
+    memories = recall_memory(user_prompt, top_k=max(1, int(top_k or 6)), allow_cold_import=False)
     if not memories:
         return ""
 
@@ -1210,11 +1210,69 @@ def _is_generic_project_name(name: str) -> bool:
     return not clean or clean in ("default", "default_project", "default_workspace", "project_default", "sandbox")
 
 
+def _extract_llm_semantic_triples(
+    user_msg: str,
+    assistant_msg: str,
+    model_name: str,
+    anchor_entity: str = "User",
+) -> List[Dict[str, Any]]:
+    """
+    Frontier / High-Capacity Tier Only:
+    Uses the active cloud/large LLM to synthesize subtle entity-relation triples
+    beyond fixed regex rules (without locking local 6GB VRAM during 8B inference).
+    """
+    if not model_name or not user_msg:
+        return []
+    extracted: List[Dict[str, Any]] = []
+    try:
+        from backend.core.agent_engine import call_unified_chat
+        prompt = (
+            "Extract up to 3 durable facts or relationships from this exchange for a Knowledge Graph.\n"
+            "Skip trivial greetings. Only extract clear preferences, decisions, architectures, or roles.\n"
+            "Return ONLY valid JSON: "
+            '{"triples": [{"subject": "...", "subject_type": "person|project|tool|concept", '
+            '"relation": "prefers|uses|depends_on|built|works_on|avoid", "object": "...", "object_type": "..."}], '
+            '"insight": "one short factual sentence or empty string"}\n\n'
+            f"User ({anchor_entity}): {user_msg[:600]}\nAssistant: {assistant_msg[:500]}"
+        )
+        resp = call_unified_chat(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            context_window=4096,
+        )
+        raw = str(resp.get("content") or "").strip()
+        s = raw.find("{")
+        e = raw.rfind("}")
+        if s != -1 and e > s:
+            parsed = json.loads(raw[s : e + 1])
+            for tr in (parsed.get("triples") or [])[:3]:
+                if not isinstance(tr, dict):
+                    continue
+                subj = str(tr.get("subject") or "").strip()
+                rel = str(tr.get("relation") or "").strip()
+                obj = str(tr.get("object") or "").strip()
+                if subj and rel and obj and len(subj) <= 48 and len(obj) <= 48:
+                    store_entity(subj, str(tr.get("subject_type") or "concept"), {"source": "llm_triple"}, importance=7)
+                    store_entity(obj, str(tr.get("object_type") or "concept"), {"source": "llm_triple"}, importance=7)
+                    store_relation(subj, rel, obj, confidence=0.9)
+                    extracted.append({"llm_triple": f"{subj} -[{rel}]-> {obj}"})
+            insight = str(parsed.get("insight") or "").strip()
+            if len(insight) >= 18:
+                remember_fact(insight, category="llm_insight", importance=8, dedup=True)
+                extracted.append({"llm_insight": insight[:80]})
+    except Exception:
+        pass
+    return extracted
+
+
 def extract_memories_from_turn(
     user_msg: str,
     assistant_msg: str = "",
     project_name: str = "",
     mode: str = "chat",
+    model_name: str = "",
+    allow_llm_triples: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Autonomous Reflection & Associative Graph Extraction:
@@ -1322,6 +1380,11 @@ def extract_memories_from_turn(
             entity=tech_hits[0][0] if tech_hits else (proj_clean if has_named_project else None),
         )
         extracted.append({"turn_memory": turn_summary[:60]})
+
+    if allow_llm_triples and is_substantive and model_name:
+        llm_items = _extract_llm_semantic_triples(u_text, a_text, model_name=model_name, anchor_entity=anchor_entity)
+        if llm_items:
+            extracted.extend(llm_items)
 
     return extracted
 

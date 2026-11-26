@@ -416,18 +416,35 @@ def read_project_file(
 
 
 _EASYOCR_READER = None
+_EASYOCR_GPU_MODE = None
 
-def _get_ocr_reader():
-    """Lazy-initializes and caches EasyOCR reader for scanned/image documents."""
-    global _EASYOCR_READER
+def _get_ocr_reader(use_gpu: Optional[bool] = None):
+    """Lazy-initializes and caches EasyOCR reader, enabling CUDA acceleration only when VRAM headroom permits."""
+    global _EASYOCR_READER, _EASYOCR_GPU_MODE
+    if use_gpu is None:
+        try:
+            from backend.core.adaptive_tier import probe_active_compute_tier
+            use_gpu = bool(probe_active_compute_tier().get("ocr_profile", {}).get("use_gpu", False))
+        except Exception:
+            use_gpu = False
+
     if _EASYOCR_READER is None:
         try:
             import easyocr
             import logging
             logging.getLogger("easyocr").setLevel(logging.ERROR)
-            _EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
+            _EASYOCR_READER = easyocr.Reader(["en"], gpu=bool(use_gpu), verbose=False)
+            _EASYOCR_GPU_MODE = bool(use_gpu)
         except Exception:
-            _EASYOCR_READER = False
+            if use_gpu:
+                try:
+                    import easyocr
+                    _EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
+                    _EASYOCR_GPU_MODE = False
+                except Exception:
+                    _EASYOCR_READER = False
+            else:
+                _EASYOCR_READER = False
     return _EASYOCR_READER if _EASYOCR_READER is not False else None
 
 
@@ -454,7 +471,7 @@ def read_pdf_file(
             try:
                 total_pages = len(doc)
                 e_page = min(total_pages, int(end_page)) if end_page is not None else min(total_pages, s_page + 14)
-                e_page = max(s_page, min(e_page, s_page + 14))
+                e_page = max(s_page, min(e_page, s_page + 39))
                 for pno in range(s_page, e_page + 1):
                     page_obj = doc[pno - 1]
                     txt = (page_obj.get_text("text") or "").strip()

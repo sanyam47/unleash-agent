@@ -2457,11 +2457,25 @@ Final Answer: <Your clear, professional, factual answer to the user>
     except Exception:
         pass
 
-    # Phase 6: Autonomous Reflection & Extraction
+    # Phase 6: Autonomous Reflection, Task Episode & Graph Extraction
     try:
         import threading
-        from backend.core.memory_pilot import extract_memories_from_turn
-        threading.Thread(target=extract_memories_from_turn, args=(user_prompt, final_reply), daemon=True).start()
+        from backend.core.memory_pilot import extract_memories_from_turn, record_task_episode
+        used_tools = list({str(s.get("tool") or s.get("action") or "").strip() for s in (steps or []) if isinstance(s, dict) and (s.get("tool") or s.get("action"))})
+        def _sync_agent_brain():
+            try:
+                record_task_episode(
+                    objective=user_prompt,
+                    summary=final_reply,
+                    project_name=clean_proj,
+                    files=created_files,
+                    tools=used_tools,
+                    outcome="completed",
+                )
+                extract_memories_from_turn(user_prompt, final_reply, project_name=clean_proj, mode="agent_build")
+            except Exception:
+                pass
+        threading.Thread(target=_sync_agent_brain, daemon=True).start()
     except Exception:
         pass
 

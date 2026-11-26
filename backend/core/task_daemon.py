@@ -448,11 +448,16 @@ def _emit_proactive_alert(
             print(f"[Watchdog Voice Exception]: {e}")
 
 
+_WATCHDOG_TICK_COUNT = 0
+
 def proactive_watchdog_tick() -> Dict[str, Any]:
     """
     Single tick of the proactive system observer:
-    Inspects hardware sensors, battery state, thermal registers, and background tasks.
+    Inspects hardware sensors, battery state, thermal registers, background tasks,
+    procedural habits, and periodic memory sleep-cycle consolidation.
     """
+    global _WATCHDOG_TICK_COUNT
+    _WATCHDOG_TICK_COUNT += 1
     triggered_alerts = []
     try:
         from backend.core.workstation_sensors import get_full_workstation_telemetry
@@ -534,6 +539,14 @@ def proactive_watchdog_tick() -> Dict[str, Any]:
             threading.Thread(target=record_habit_observation, daemon=True).start()
         except Exception:
             pass
+
+        # 6. Periodic Cognitive Memory Sleep-Cycle Consolidation (every ~30 ticks / ~10 mins)
+        if _WATCHDOG_TICK_COUNT % 30 == 0:
+            try:
+                from backend.core.memory_pilot import run_sleep_cycle_consolidation
+                threading.Thread(target=run_sleep_cycle_consolidation, daemon=True, name="MemorySleepConsolidation").start()
+            except Exception:
+                pass
 
     except Exception as e:
         print(f"[Watchdog Tick Exception]: {e}")

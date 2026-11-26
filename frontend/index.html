@@ -2162,7 +2162,7 @@
 <!-- MODAL: CHAT ARENA SETTINGS & RUNTIME -->
 <!-- ============================================== -->
 <div id="chatSettingsModal" class="modal-overlay" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(8px); z-index: 9999; justify-content: center; align-items: center; padding: 20px;" onclick="if(event.target === this) closeChatSettingsModal();">
-    <div class="modal-card" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 14px; max-width: 600px; width: 100%; max-height: 85vh; box-shadow: var(--shadow-xl); padding: 22px; display: flex; flex-direction: column; gap: 16px;">
+    <div class="modal-card" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 14px; max-width: 760px; width: 94%; max-height: 88vh; box-shadow: var(--shadow-xl); padding: 22px; display: flex; flex-direction: column; gap: 16px;">
         <!-- Header -->
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -2325,48 +2325,85 @@
 
             <!-- Group 2: Long-Term Memory & Cognitive Knowledge Graph -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
-                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>Cognitive Memory & Knowledge Graph</span>
-                    <span id="memoryCountBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #3b82f6;">Loading...</span>
+                <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span>Cognitive Memory &amp; Neural Knowledge Graph</span>
+                        <span id="memoryLiveIndicator" style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; font-family: var(--font-mono); text-transform: none; color: #34d399; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.22); padding: 1px 6px; border-radius: 999px;">
+                            <span style="width: 6px; height: 6px; border-radius: 50%; background: #10b981; display: inline-block;"></span>
+                            Live Graph Sync
+                        </span>
+                    </div>
+                    <span id="memoryCountBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: var(--text-secondary);">Loading...</span>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
                     <!-- Metrics Pills -->
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); color: #60a5fa;">
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                        <span class="status-pill" style="font-size: 0.71rem; padding: 3px 8px; background: rgba(96, 165, 250, 0.09); border: 1px solid rgba(96, 165, 250, 0.25); color: #93c5fd;">
                             <strong id="statEntitiesCount">0</strong> Entities
                         </span>
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #34d399;">
-                            <strong id="statRelationsCount">0</strong> Relationships
+                        <span class="status-pill" style="font-size: 0.71rem; padding: 3px 8px; background: rgba(52, 211, 153, 0.09); border: 1px solid rgba(52, 211, 153, 0.25); color: #6ee7b7;">
+                            <strong id="statRelationsCount">0</strong> Synapses
                         </span>
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); color: #fbbf24;">
-                            <strong id="statHabitsCount">0</strong> Habits & Prefs
+                        <span class="status-pill" style="font-size: 0.71rem; padding: 3px 8px; background: rgba(167, 139, 250, 0.09); border: 1px solid rgba(167, 139, 250, 0.25); color: #c4b5fd;">
+                            <strong id="statRawCount">0</strong> RAG Vectors
                         </span>
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); color: #c084fc;">
-                            <strong id="statEpisodesCount">0</strong> Past Events
+                        <span class="status-pill" style="font-size: 0.71rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-subtle); color: var(--text-secondary);">
+                            <strong id="statEpisodesCount">0</strong> Episodes
                         </span>
+                        <span class="status-pill" style="font-size: 0.71rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-subtle); color: var(--text-secondary);">
+                            <strong id="statHabitsCount">0</strong> Habits
+                        </span>
+                    </div>
+
+                    <!-- Live Interactive Neural Knowledge Graph Canvas -->
+                    <div id="memoryNeuralGraphWrap" style="position: relative; width: 100%; height: 270px; background: #090b10; border: 1px solid var(--border-subtle); border-radius: 8px; overflow: hidden;">
+                        <canvas id="memoryNeuralCanvas" style="width: 100%; height: 100%; display: block; cursor: grab;"></canvas>
+                        <!-- Graph Legend & Filter Overlay -->
+                        <div style="position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; gap: 6px; flex-wrap: wrap;">
+                            <div style="display: flex; gap: 4px; pointer-events: auto; background: rgba(9, 11, 16, 0.78); backdrop-filter: blur(4px); padding: 3px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.08);">
+                                <button type="button" onclick="setNeuralGraphFilter('all', this)" class="ng-filter-btn active" style="font-size: 0.66rem; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.12); color: #f4f4f5; cursor: pointer;">All Nodes</button>
+                                <button type="button" onclick="setNeuralGraphFilter('tech', this)" class="ng-filter-btn" style="font-size: 0.66rem; padding: 2px 7px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #a1a1aa; cursor: pointer;">Tech &amp; Projects</button>
+                                <button type="button" onclick="setNeuralGraphFilter('research', this)" class="ng-filter-btn" style="font-size: 0.66rem; padding: 2px 7px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #a1a1aa; cursor: pointer;">Research</button>
+                                <button type="button" onclick="setNeuralGraphFilter('personal', this)" class="ng-filter-btn" style="font-size: 0.66rem; padding: 2px 7px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: #a1a1aa; cursor: pointer;">People &amp; Core</button>
+                            </div>
+                            <button type="button" onclick="resetNeuralGraphLayout()" style="pointer-events: auto; font-size: 0.66rem; padding: 3px 8px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.14); background: rgba(9, 11, 16, 0.8); color: #d4d4d8; cursor: pointer;" title="Re-layout graph physics">Re-center</button>
+                        </div>
+                        <!-- Color Key Footer -->
+                        <div style="position: absolute; bottom: 6px; left: 8px; display: flex; gap: 10px; font-size: 0.63rem; font-family: var(--font-mono); color: #a1a1aa; pointer-events: none; background: rgba(9,11,16,0.72); padding: 2px 7px; border-radius: 4px;">
+                            <span><span style="color:#f4f4f5;">&#9679;</span> User/Person</span>
+                            <span><span style="color:#60a5fa;">&#9679;</span> Project/Task</span>
+                            <span><span style="color:#a78bfa;">&#9679;</span> Tech/Stack</span>
+                            <span><span style="color:#34d399;">&#9679;</span> Research/Source</span>
+                            <span><span style="color:#f59e0b;">&#9679;</span> Hardware/Runtime</span>
+                        </div>
+                    </div>
+
+                    <!-- Selected Node / Synapse Inspector Bar -->
+                    <div id="memoryGraphInspector" style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; min-height: 28px; line-height: 1.4;">
+                        Drag or click any node to trace neural associations and multi-hop memory links.
                     </div>
 
                     <!-- Search & Filter Row -->
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" id="memorySearchInput" placeholder="Search memories, contacts, rules..." 
+                        <input type="text" id="memorySearchInput" placeholder="Filter entities, relations, RAG vectors, episodes..." 
                                oninput="filterMemoriesUI(this.value)"
                                style="flex: 1; font-size: 0.78rem; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary); box-sizing: border-box;">
-                        <button type="button" onclick="triggerConsolidateUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem; color: #c084fc; border-color: rgba(255, 255, 255, 0.3);" title="Autonomous Sleep-Cycle Consolidation (Deduplicate & Synthesize)">Consolidate</button>
-                        <button type="button" onclick="refreshMemoriesUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem;" title="Refresh memory list"></button>
+                        <button type="button" onclick="triggerConsolidateUI()" class="btn-quiet" style="padding: 4px 10px; font-size: 0.74rem; color: #c4b5fd; border-color: rgba(167, 139, 250, 0.3);" title="Autonomous Sleep-Cycle Consolidation (Deduplicate &amp; Align Vectors)">Consolidate</button>
+                        <button type="button" onclick="refreshMemoriesUI()" class="btn-quiet" style="padding: 4px 10px; font-size: 0.74rem;" title="Refresh memory list &amp; graph">Refresh</button>
                     </div>
 
                     <!-- Memory List Cards Container -->
-                    <div id="memoryCardsList" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
+                    <div id="memoryCardsList" style="max-height: 165px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px;">
                         <div style="font-size: 0.73rem; color: var(--text-muted); text-align: center; padding: 12px;">Loading memories...</div>
                     </div>
 
                     <!-- Quick Add Memory -->
                     <div style="display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 10px;">
-                        <input type="text" id="inputNewFact" placeholder="Teach Jarvis (e.g. 'Dad is Suresh Sharma +91...')" 
+                        <input type="text" id="inputNewFact" placeholder="Teach Jarvis (e.g. 'FastAPI auth backend runs on port 8001' or 'Dad is Suresh')" 
                                onkeydown="if(event.key==='Enter') submitQuickFact()"
                                style="flex: 1; font-size: 0.76rem; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary);">
-                        <button type="button" onclick="submitQuickFact()" class="btn-quiet" style="font-size: 0.74rem; padding: 5px 10px; color: #10b981; border-color: rgba(16, 185, 129, 0.3);">
+                        <button type="button" onclick="submitQuickFact()" class="btn-quiet" style="font-size: 0.74rem; padding: 5px 10px; color: #34d399; border-color: rgba(16, 185, 129, 0.3);">
                             + Remember
                         </button>
                     </div>
@@ -4021,29 +4058,533 @@ async function _startMediaRecorderFallback(micBtn, inputArea) {
 // ==========================================
 // Phase 6: Cognitive Memory & Knowledge Graph UI
 // ==========================================
-let allCachedMemories = { entities: [], relations: [], habits: [], raw_memories: [] };
+let allCachedMemories = { entities: [], relations: [], habits: [], episodic: [], raw_memories: [] };
+let _lastMemorySignature = '';
+let _memoryLivePollTimer = null;
 
-async function refreshMemoriesUI() {
+// Force-Directed Neural Network Visualizer State
+const _neuralGraph = {
+    nodes: [],
+    edges: [],
+    nodeMap: {},
+    filter: 'all',
+    selectedNodeId: null,
+    hoveredNodeId: null,
+    draggingNode: null,
+    dragMoved: false,
+    rafId: null,
+    simSteps: 0,
+    pulsePhase: 0,
+    listenersBound: false,
+    centerPull: 0.018
+};
+
+function _getNeuralNodeColor(entityType) {
+    const t = String(entityType || '').toLowerCase();
+    if (t === 'person') return '#f4f4f5';
+    if (t === 'project' || t === 'task') return '#60a5fa';
+    if (t === 'research_topic' || t === 'source') return '#34d399';
+    if (t === 'hardware' || t === 'os' || t === 'runtime' || t === 'endpoint') return '#f59e0b';
+    return '#a78bfa';
+}
+
+function _matchesNeuralFilter(entityType, filterName) {
+    if (!filterName || filterName === 'all') return true;
+    const t = String(entityType || '').toLowerCase();
+    if (filterName === 'tech') {
+        return ['project', 'task', 'framework', 'language', 'database', 'tool', 'platform', 'protocol', 'architecture', 'service', 'endpoint', 'runtime', 'agent_tool'].includes(t);
+    }
+    if (filterName === 'research') {
+        return ['research_topic', 'source', 'framework', 'architecture', 'service'].includes(t);
+    }
+    if (filterName === 'personal') {
+        return ['person', 'hardware', 'os', 'software', 'general', 'project'].includes(t);
+    }
+    return true;
+}
+
+function setNeuralGraphFilter(filterName, btnEl) {
+    _neuralGraph.filter = filterName || 'all';
+    document.querySelectorAll('.ng-filter-btn').forEach(b => {
+        b.style.background = 'transparent';
+        b.style.borderColor = 'transparent';
+        b.style.color = '#a1a1aa';
+        b.classList.remove('active');
+    });
+    if (btnEl) {
+        btnEl.classList.add('active');
+        btnEl.style.background = 'rgba(255,255,255,0.12)';
+        btnEl.style.borderColor = 'rgba(255,255,255,0.18)';
+        btnEl.style.color = '#f4f4f5';
+    }
+    _neuralGraph.selectedNodeId = null;
+    updateNeuralMemoryGraph(allCachedMemories, true);
+}
+
+function resetNeuralGraphLayout() {
+    _neuralGraph.nodeMap = {};
+    _neuralGraph.selectedNodeId = null;
+    const insp = document.getElementById('memoryGraphInspector');
+    if (insp) insp.textContent = 'Graph layout reset. Click or drag any node to inspect neural links.';
+    updateNeuralMemoryGraph(allCachedMemories, true);
+}
+
+function _ensureNeuralCanvasSize(canvas) {
+    const rect = canvas.parentElement ? canvas.parentElement.getBoundingClientRect() : { width: 680, height: 270 };
+    const w = Math.max(320, Math.floor(rect.width || 680));
+    const h = Math.max(240, Math.floor(rect.height || 270));
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+    }
+    return { w, h, dpr };
+}
+
+function updateNeuralMemoryGraph(data, forceRecompute = false) {
+    const canvas = document.getElementById('memoryNeuralCanvas');
+    if (!canvas) return;
+    _bindNeuralCanvasEvents(canvas);
+
+    const { w, h } = _ensureNeuralCanvasSize(canvas);
+    const rawEntities = data.entities || [];
+    const rawRelations = data.relations || [];
+
+    // Filter visible entities cleanly while keeping User anchor if edges exist
+    const filteredEntities = rawEntities.filter(e => e.name === 'User' || _matchesNeuralFilter(e.entity_type, _neuralGraph.filter));
+    const visibleNames = new Set(filteredEntities.map(e => e.name.toLowerCase()));
+
+    // Compute degree per entity for proportional node size
+    const degreeMap = {};
+    const validEdges = [];
+    rawRelations.forEach(rel => {
+        const sLow = (rel.source_name || '').toLowerCase();
+        const tLow = (rel.target_name || '').toLowerCase();
+        if (visibleNames.has(sLow) && visibleNames.has(tLow)) {
+            degreeMap[sLow] = (degreeMap[sLow] || 0) + 1;
+            degreeMap[tLow] = (degreeMap[tLow] || 0) + 1;
+            validEdges.push({
+                id: rel.id,
+                sourceKey: sLow,
+                targetKey: tLow,
+                relation: rel.relation || 'connected',
+                confidence: rel.confidence || 1.0
+            });
+        }
+    });
+
+    const newNodeMap = {};
+    const nowMs = Date.now();
+    const nodes = filteredEntities.slice(0, 65).map((ent, idx) => {
+        const key = (ent.name || '').toLowerCase();
+        const existing = !forceRecompute ? _neuralGraph.nodeMap[key] : null;
+        const deg = degreeMap[key] || 0;
+        const radius = Math.min(18, 7 + Math.sqrt(deg) * 3.1 + (ent.name === 'User' ? 3 : 0));
+
+        let x, y, vx = 0, vy = 0, bornAt = nowMs;
+        if (existing) {
+            x = existing.x;
+            y = existing.y;
+            vx = existing.vx;
+            vy = existing.vy;
+            bornAt = existing.bornAt || (nowMs - 5000);
+        } else if (ent.name === 'User') {
+            x = w * 0.5;
+            y = h * 0.5;
+        } else {
+            const angle = (idx * 2.39996) % (Math.PI * 2);
+            const ring = 55 + (idx % 4) * 36;
+            x = w * 0.5 + Math.cos(angle) * ring;
+            y = h * 0.5 + Math.sin(angle) * ring;
+        }
+
+        let attrs = {};
+        try { attrs = JSON.parse(ent.attributes || '{}'); } catch(e) {}
+
+        const nodeObj = {
+            id: ent.id,
+            key,
+            name: ent.name,
+            type: ent.entity_type,
+            importance: ent.importance || 5,
+            attrs,
+            degree: deg,
+            radius,
+            color: _getNeuralNodeColor(ent.entity_type),
+            x, y, vx, vy,
+            bornAt
+        };
+        newNodeMap[key] = nodeObj;
+        return nodeObj;
+    });
+
+    _neuralGraph.nodes = nodes;
+    _neuralGraph.nodeMap = newNodeMap;
+    _neuralGraph.edges = validEdges
+        .filter(e => newNodeMap[e.sourceKey] && newNodeMap[e.targetKey])
+        .map(e => ({ ...e, source: newNodeMap[e.sourceKey], target: newNodeMap[e.targetKey] }));
+
+    _neuralGraph.simSteps = 120;
+    _startNeuralAnimationLoop();
+}
+
+function _stepNeuralPhysics(w, h) {
+    const nodes = _neuralGraph.nodes;
+    const edges = _neuralGraph.edges;
+    const n = nodes.length;
+    if (n === 0) return;
+
+    // Elliptical repulsion + pairwise spacing using wide canvas cleanly
+    for (let i = 0; i < n; i++) {
+        const a = nodes[i];
+        for (let j = i + 1; j < n; j++) {
+            const b = nodes[j];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let distSq = dx * dx + dy * dy + 0.1;
+            if (distSq < 26000) {
+                const force = 2100 / distSq;
+                const dist = Math.sqrt(distSq);
+                const fx = (dx / dist) * force;
+                const fy = (dy / dist) * force;
+                if (_neuralGraph.draggingNode !== a) { a.vx -= fx; a.vy -= fy; }
+                if (_neuralGraph.draggingNode !== b) { b.vx += fx; b.vy += fy; }
+            }
+        }
+    }
+
+    // Spring attraction along synaptic relations
+    edges.forEach(e => {
+        const a = e.source;
+        const b = e.target;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ideal = 112;
+        const pull = (dist - ideal) * 0.025;
+        const fx = (dx / dist) * pull;
+        const fy = (dy / dist) * pull;
+        if (_neuralGraph.draggingNode !== a) { a.vx += fx; a.vy += fy; }
+        if (_neuralGraph.draggingNode !== b) { b.vx -= fx; b.vy -= fy; }
+    });
+
+    // Gentle elliptical center gravity so nodes fan out across wide canvas without overlapping
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    nodes.forEach(nd => {
+        if (_neuralGraph.draggingNode === nd) return;
+        nd.vx += (cx - nd.x) * 0.008;
+        nd.vy += (cy - nd.y) * 0.015;
+        nd.vx *= 0.80;
+        nd.vy *= 0.80;
+        nd.x = Math.max(nd.radius + 34, Math.min(w - nd.radius - 34, nd.x + nd.vx));
+        nd.y = Math.max(nd.radius + 36, Math.min(h - nd.radius - 32, nd.y + nd.vy));
+    });
+}
+
+function _renderNeuralFrame() {
+    const modal = document.getElementById('chatSettingsModal');
+    const canvas = document.getElementById('memoryNeuralCanvas');
+    if (!modal || modal.style.display === 'none' || !canvas) {
+        _neuralGraph.rafId = null;
+        return;
+    }
+
+    const { w, h, dpr } = _ensureNeuralCanvasSize(canvas);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (_neuralGraph.simSteps > 0 || _neuralGraph.draggingNode) {
+        _stepNeuralPhysics(w, h);
+        if (_neuralGraph.simSteps > 0) _neuralGraph.simSteps--;
+    }
+
+    _neuralGraph.pulsePhase = (_neuralGraph.pulsePhase + 0.014) % 1.0;
+    const nowMs = Date.now();
+    const activeKey = _neuralGraph.hoveredNodeId || _neuralGraph.selectedNodeId;
+
+    // Collect 1-hop neighbors of active node for focus spotlight
+    const focusNeighbors = new Set();
+    if (activeKey) {
+        focusNeighbors.add(activeKey);
+        _neuralGraph.edges.forEach(e => {
+            if (e.sourceKey === activeKey) focusNeighbors.add(e.targetKey);
+            if (e.targetKey === activeKey) focusNeighbors.add(e.sourceKey);
+        });
+    }
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, w, h);
+
+    // Subtle neural grid backdrop
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    ctx.lineWidth = 1;
+    for (let gx = 40; gx < w; gx += 40) {
+        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
+    }
+    for (let gy = 40; gy < h; gy += 40) {
+        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
+    }
+
+    if (_neuralGraph.nodes.length === 0) {
+        ctx.fillStyle = '#71717a';
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No entities in this filter yet. Chat or teach Jarvis to grow nodes.', w * 0.5, h * 0.5);
+        ctx.restore();
+        _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
+        return;
+    }
+
+    // Draw edges (synaptic connections + traveling signal pulse)
+    _neuralGraph.edges.forEach((edge, idx) => {
+        const s = edge.source;
+        const t = edge.target;
+        const isHighlighted = !activeKey || (edge.sourceKey === activeKey || edge.targetKey === activeKey);
+
+        ctx.save();
+        ctx.globalAlpha = isHighlighted ? (activeKey ? 0.85 : 0.42) : 0.09;
+        ctx.strokeStyle = isHighlighted && activeKey ? '#60a5fa' : '#94a3b8';
+        ctx.lineWidth = isHighlighted && activeKey ? 1.5 : 1;
+
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(t.x, t.y);
+        ctx.stroke();
+
+        // Traveling synaptic pulse packet along active edges
+        if (isHighlighted) {
+            const p = (_neuralGraph.pulsePhase + idx * 0.19) % 1.0;
+            const px = s.x + (t.x - s.x) * p;
+            const py = s.y + (t.y - s.y) * p;
+            ctx.fillStyle = activeKey ? '#93c5fd' : '#34d399';
+            ctx.beginPath();
+            ctx.arc(px, py, activeKey ? 2.2 : 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Show edge relation label if connected to focused node
+            if (activeKey) {
+                const mx = (s.x + t.x) * 0.5;
+                const my = (s.y + t.y) * 0.5;
+                ctx.fillStyle = 'rgba(9, 11, 16, 0.85)';
+                const lbl = edge.relation;
+                ctx.font = '9px monospace';
+                const tw = ctx.measureText(lbl).width + 6;
+                ctx.fillRect(mx - tw * 0.5, my - 7, tw, 12);
+                ctx.fillStyle = '#93c5fd';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(lbl, mx, my);
+            }
+        }
+        ctx.restore();
+    });
+
+    // Draw entity nodes
+    _neuralGraph.nodes.forEach(nd => {
+        const isFocused = !activeKey || focusNeighbors.has(nd.key);
+        const isPrimary = nd.key === activeKey;
+        const isNew = (nowMs - (nd.bornAt || 0)) < 3500;
+
+        ctx.save();
+        ctx.globalAlpha = isFocused ? 1.0 : 0.22;
+
+        // Newborn node pulse ring or selected halo
+        if (isNew || isPrimary) {
+            const haloR = nd.radius + 4 + Math.sin(nowMs * 0.008) * 2;
+            ctx.strokeStyle = isNew ? '#34d399' : '#f4f4f5';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.arc(nd.x, nd.y, haloR, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Subtle neural glow
+        ctx.fillStyle = nd.color;
+        ctx.shadowColor = nd.color;
+        ctx.shadowBlur = isPrimary ? 14 : (isFocused ? 6 : 0);
+        ctx.beginPath();
+        ctx.arc(nd.x, nd.y, nd.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Crisp dark inner border
+        ctx.strokeStyle = '#090b10';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Entity label cleanly below node with subtle dark backdrop pill for legibility
+        const shortLabel = nd.name.length > 18 ? nd.name.slice(0, 16) + '..' : nd.name;
+        ctx.font = (nd.degree >= 2 || isPrimary) ? '600 10px Inter, sans-serif' : '500 9.5px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const lw = ctx.measureText(shortLabel).width + 6;
+        const ly = nd.y + nd.radius + 3;
+        ctx.fillStyle = 'rgba(9, 11, 16, 0.72)';
+        ctx.fillRect(nd.x - lw * 0.5, ly - 1, lw, 12);
+        ctx.fillStyle = isPrimary ? '#ffffff' : '#e4e4e7';
+        ctx.fillText(shortLabel, nd.x, ly);
+        ctx.restore();
+    });
+
+    ctx.restore();
+    _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
+}
+
+function _startNeuralAnimationLoop() {
+    if (_neuralGraph.rafId === null) {
+        _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
+    }
+}
+
+function _stopNeuralAnimationLoop() {
+    if (_neuralGraph.rafId !== null) {
+        cancelAnimationFrame(_neuralGraph.rafId);
+        _neuralGraph.rafId = null;
+    }
+}
+
+function _hitTestNeuralNode(canvas, clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    for (let i = _neuralGraph.nodes.length - 1; i >= 0; i--) {
+        const nd = _neuralGraph.nodes[i];
+        const dx = x - nd.x;
+        const dy = y - nd.y;
+        if (dx * dx + dy * dy <= (nd.radius + 6) * (nd.radius + 6)) {
+            return nd;
+        }
+    }
+    return null;
+}
+
+async function _inspectSelectedNeuralNode(nd) {
+    const insp = document.getElementById('memoryGraphInspector');
+    if (!insp || !nd) return;
+    const connected = _neuralGraph.edges
+        .filter(e => e.sourceKey === nd.key || e.targetKey === nd.key)
+        .map(e => e.sourceKey === nd.key ? `-> ${e.relation} -> ${e.target.name}` : `<- ${e.relation} <- ${e.source.name}`);
+    insp.innerHTML = `<strong style="color:${nd.color};">[${nd.type}] ${nd.name}</strong> &bull; ${nd.degree} links` +
+        (connected.length ? ` | <span style="color:var(--text-muted);">${connected.slice(0, 4).join(' ; ')}</span>` : '');
+
     try {
-        const res = await fetch('/api/memory/list?limit=60');
+        const res = await fetch('/api/memory/multi-hop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start_entity: nd.name, max_hops: 3 })
+        });
+        if (res.ok) {
+            const mh = await res.json();
+            if (mh.chains && mh.chains.length > 0 && _neuralGraph.selectedNodeId === nd.key) {
+                insp.innerHTML += `<div style="margin-top:3px; color:#34d399;">Multi-hop path: ${mh.chains[0].chain}</div>`;
+            }
+        }
+    } catch(e) {}
+}
+
+function _bindNeuralCanvasEvents(canvas) {
+    if (_neuralGraph.listenersBound) return;
+    _neuralGraph.listenersBound = true;
+
+    canvas.addEventListener('mousedown', e => {
+        const hit = _hitTestNeuralNode(canvas, e.clientX, e.clientY);
+        _neuralGraph.dragMoved = false;
+        if (hit) {
+            _neuralGraph.draggingNode = hit;
+            canvas.style.cursor = 'grabbing';
+        }
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (_neuralGraph.draggingNode) {
+            const rect = canvas.getBoundingClientRect();
+            _neuralGraph.draggingNode.x = Math.max(20, Math.min(rect.width - 20, e.clientX - rect.left));
+            _neuralGraph.draggingNode.y = Math.max(28, Math.min(rect.height - 20, e.clientY - rect.top));
+            _neuralGraph.draggingNode.vx = 0;
+            _neuralGraph.draggingNode.vy = 0;
+            _neuralGraph.dragMoved = true;
+            _neuralGraph.simSteps = Math.max(_neuralGraph.simSteps, 18);
+            return;
+        }
+        const modal = document.getElementById('chatSettingsModal');
+        if (!modal || modal.style.display === 'none') return;
+        const hit = _hitTestNeuralNode(canvas, e.clientX, e.clientY);
+        _neuralGraph.hoveredNodeId = hit ? hit.key : null;
+        canvas.style.cursor = hit ? 'pointer' : 'grab';
+    });
+
+    window.addEventListener('mouseup', e => {
+        const wasDragging = _neuralGraph.draggingNode;
+        _neuralGraph.draggingNode = null;
+        canvas.style.cursor = _neuralGraph.hoveredNodeId ? 'pointer' : 'grab';
+        if (e.target === canvas && !_neuralGraph.dragMoved) {
+            if (wasDragging) {
+                _neuralGraph.selectedNodeId = wasDragging.key;
+                _inspectSelectedNeuralNode(wasDragging);
+            } else {
+                _neuralGraph.selectedNodeId = null;
+                const insp = document.getElementById('memoryGraphInspector');
+                if (insp) insp.textContent = 'Drag or click any node to trace neural associations and multi-hop memory links.';
+            }
+        }
+    });
+}
+
+function startMemoryLivePoll() {
+    stopMemoryLivePoll();
+    _startNeuralAnimationLoop();
+    _memoryLivePollTimer = setInterval(() => {
+        const modal = document.getElementById('chatSettingsModal');
+        if (modal && modal.style.display !== 'none') {
+            refreshMemoriesUI(true);
+        }
+    }, 4000);
+}
+
+function stopMemoryLivePoll() {
+    if (_memoryLivePollTimer) {
+        clearInterval(_memoryLivePollTimer);
+        _memoryLivePollTimer = null;
+    }
+    _stopNeuralAnimationLoop();
+}
+
+async function refreshMemoriesUI(isAutoPoll = false) {
+    try {
+        const res = await fetch('/api/memory/list?limit=120');
         if (!res.ok) return;
         const data = await res.json();
-        allCachedMemories = data;
 
         const counts = data.counts || {};
+        const latestEnt = (data.entities && data.entities[0]) ? data.entities[0].updated_at : '';
+        const latestRel = (data.relations && data.relations[0]) ? data.relations[0].id : 0;
+        const latestRaw = (data.raw_memories && data.raw_memories[0]) ? data.raw_memories[0].id : 0;
+        const sig = `${counts.entities}|${counts.relations}|${counts.habits}|${counts.episodes}|${counts.raw}|${latestEnt}|${latestRel}|${latestRaw}`;
+
+        allCachedMemories = data;
+
         const badge = document.getElementById('memoryCountBadge');
-        if (badge) badge.textContent = `${counts.entities || 0} Entities, ${counts.relations || 0} Rels`;
+        if (badge) badge.textContent = `${counts.entities || 0} Nodes / ${counts.relations || 0} Synapses`;
 
         const elEnt = document.getElementById('statEntitiesCount');
         const elRel = document.getElementById('statRelationsCount');
+        const elRaw = document.getElementById('statRawCount');
         const elHab = document.getElementById('statHabitsCount');
         const elEpi = document.getElementById('statEpisodesCount');
         if (elEnt) elEnt.textContent = counts.entities || 0;
         if (elRel) elRel.textContent = counts.relations || 0;
+        if (elRaw) elRaw.textContent = counts.raw || 0;
         if (elHab) elHab.textContent = counts.habits || 0;
         if (elEpi) elEpi.textContent = counts.episodes || 0;
 
-        renderMemoryCards(allCachedMemories);
+        if (!isAutoPoll || sig !== _lastMemorySignature) {
+            _lastMemorySignature = sig;
+            const searchEl = document.getElementById('memorySearchInput');
+            renderMemoryCards(allCachedMemories, searchEl ? searchEl.value : '');
+            updateNeuralMemoryGraph(allCachedMemories, false);
+        }
     } catch(e) {
         console.warn('Failed to load memories:', e);
     }
@@ -4066,7 +4607,7 @@ function renderMemoryCards(data, filterText = '') {
             cards.push(`
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.75rem; min-width:0; overflow:hidden; text-overflow:ellipsis;">
-                        <span style="color:#60a5fa; font-weight:600;">[${ent.entity_type}]</span>
+                        <span style="color:${_getNeuralNodeColor(ent.entity_type)}; font-weight:600;">[${ent.entity_type}]</span>
                         <strong style="color:var(--text-primary); margin-left:4px;">${ent.name}</strong>
                         ${attrParts ? `<div style="font-size:0.7rem; color:var(--text-secondary); margin-top:2px;">${attrParts}</div>` : ''}
                     </div>
@@ -4084,10 +4625,43 @@ function renderMemoryCards(data, filterText = '') {
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.74rem;">
                         <span style="color:#34d399; font-weight:600;">${rel.source_name}</span>
-                        <span style="color:var(--text-muted); font-style:italic; margin:0 4px;">--${rel.relation}--></span>
+                        <span style="color:var(--text-muted); font-style:italic; margin:0 4px;">--${rel.relation}--&gt;</span>
                         <span style="color:#60a5fa; font-weight:600;">${rel.target_name}</span>
                     </div>
                     <button type="button" onclick="deleteMemoryItem('relation', ${rel.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Relationship">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    // Render Raw Neural Vector Memories
+    (data.raw_memories || []).forEach(raw => {
+        const text = `${raw.category} ${raw.content}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.74rem; line-height:1.35;">
+                        <span style="color:#c4b5fd; font-weight:600;">[${raw.category}]</span>
+                        <span style="color:var(--text-primary); margin-left:4px;">${raw.content}</span>
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('raw', ${raw.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Fact">&times;</button>
+                </div>
+            `);
+        }
+    });
+
+    // Render Episodic Task & Research Events
+    (data.episodic || []).forEach(ep => {
+        const text = `${ep.event_summary} ${ep.details || ''} ${ep.tags || ''}`.toLowerCase();
+        if (!query || text.includes(query)) {
+            cards.push(`
+                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-size:0.74rem; line-height:1.35;">
+                        <span style="color:#60a5fa; font-weight:600;">[episode]</span>
+                        <strong style="color:var(--text-primary); margin-left:4px;">${ep.event_summary}</strong>
+                        ${ep.details ? `<div style="font-size:0.69rem; color:var(--text-muted); margin-top:2px;">${ep.details.slice(0, 140)}</div>` : ''}
+                    </div>
+                    <button type="button" onclick="deleteMemoryItem('episode', ${ep.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Episode">&times;</button>
                 </div>
             `);
         }
@@ -4100,26 +4674,10 @@ function renderMemoryCards(data, filterText = '') {
             cards.push(`
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.74rem;">
-                        <span style="color:#fbbf24; font-weight:600;">[${h.category}]</span>
+                        <span style="color:#f59e0b; font-weight:600;">[${h.category}]</span>
                         <span style="color:var(--text-primary); margin-left:4px;">${h.rule_text}</span>
                     </div>
                     <button type="button" onclick="deleteMemoryItem('habit', ${h.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Habit">&times;</button>
-                </div>
-            `);
-        }
-    });
-
-    // Render Raw Memories
-    (data.raw_memories || []).forEach(raw => {
-        const text = `${raw.category} ${raw.content}`.toLowerCase();
-        if (!query || text.includes(query)) {
-            cards.push(`
-                <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                    <div style="font-size:0.74rem;">
-                        <span style="color:#d4d4d8; font-weight:600;">Fact:</span>
-                        <span style="color:var(--text-primary); margin-left:4px;">${raw.content}</span>
-                    </div>
-                    <button type="button" onclick="deleteMemoryItem('raw', ${raw.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Fact">&times;</button>
                 </div>
             `);
         }
@@ -4154,7 +4712,7 @@ async function triggerConsolidateUI() {
         if (data.status === 'success') {
             const summary = `Consolidated: ${data.deduplicated_count} deduped, ${data.superseded_count} superseded, ${data.habits_synthesized} habits`;
             if (badge) badge.textContent = summary;
-            setTimeout(refreshMemoriesUI, 2200);
+            setTimeout(() => refreshMemoriesUI(), 1800);
         }
     } catch(e) {
         console.warn('Consolidation failed:', e);

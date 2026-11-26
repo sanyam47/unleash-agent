@@ -92,7 +92,7 @@ def recall_memory_endpoint(req: RecallRequest) -> Dict[str, Any]:
 
 @router.post("/remember")
 def add_fact(req: RememberFactRequest) -> Dict[str, Any]:
-    """Adds a fact or relationship with dense vector embeddings to Jarvis's memory."""
+    """Adds a fact or relationship with dense vector embeddings and auto-links graph entities."""
     res = remember_fact(
         content=req.content,
         category=req.category,
@@ -101,6 +101,13 @@ def add_fact(req: RememberFactRequest) -> Dict[str, Any]:
         relation=req.relation,
         target=req.target
     )
+    if not req.entity:
+        try:
+            from backend.core.memory_pilot import extract_memories_from_turn
+            extracted = extract_memories_from_turn(req.content, "")
+            res["extracted"] = extracted
+        except Exception:
+            pass
     return res
 
 

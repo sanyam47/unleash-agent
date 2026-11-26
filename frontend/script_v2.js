@@ -8598,11 +8598,13 @@ window.openChatSettingsModal = function() {
         if (typeof refreshDockerStatus === 'function') refreshDockerStatus();
         if (typeof refreshChatStatus === 'function') refreshChatStatus();
         if (typeof refreshMemoriesUI === 'function') refreshMemoriesUI();
+        if (typeof startMemoryLivePoll === 'function') startMemoryLivePoll();
         if (typeof initJarvisVoiceUI === 'function') initJarvisVoiceUI();
     }
 };
 
 window.closeChatSettingsModal = function() {
+    if (typeof stopMemoryLivePoll === 'function') stopMemoryLivePoll();
     const modal = document.getElementById('chatSettingsModal');
     if (modal) modal.style.display = 'none';
 

@@ -798,6 +798,25 @@ def run_verified_research_pipeline(
         tool="ReportSynthesizerAgent",
     )
 
+    # Record Verified Research into Cognitive Knowledge Graph & Neural Vector RAG
+    ledger_dict = ledger.to_dict()
+    try:
+        import threading
+        from backend.core.memory_pilot import record_research_memory
+        threading.Thread(
+            target=record_research_memory,
+            kwargs={
+                "objective": user_prompt,
+                "verified_claims": ledger_dict.get("claims", []),
+                "sources": ledger_dict.get("sources", []),
+                "summary": report_md[:400],
+                "project_name": clean_proj,
+            },
+            daemon=True,
+        ).start()
+    except Exception:
+        pass
+
     return {
         "reply": report_md,
         "agentic": True,
@@ -805,7 +824,7 @@ def run_verified_research_pipeline(
         "project_name": clean_proj,
         "created_files": [],
         "steps": steps_trace,
-        "research_ledger": ledger.to_dict(),
+        "research_ledger": ledger_dict,
         "telemetry": {
             "eval_tokens": total_tokens,
             "eval_duration_sec": round(total_dur, 2),

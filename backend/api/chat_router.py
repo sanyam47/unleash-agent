@@ -896,7 +896,12 @@ def send_chat_message(req: ChatRequest):
             try:
                 import threading
                 from backend.core.memory_pilot import extract_memories_from_turn
-                threading.Thread(target=extract_memories_from_turn, args=(latest_prompt, agent_reply), daemon=True).start()
+                threading.Thread(
+                    target=extract_memories_from_turn,
+                    args=(latest_prompt, agent_reply),
+                    kwargs={"project_name": req.project_name or "", "mode": "agentic"},
+                    daemon=True,
+                ).start()
             except Exception:
                 pass
 
@@ -1066,6 +1071,19 @@ def send_chat_message(req: ChatRequest):
 
         if knowledge_proposal and "[KNOWLEDGE_ACQUIRE_PROPOSAL:" not in reply_content:
             reply_content += f"\n\n[KNOWLEDGE_ACQUIRE_PROPOSAL:{knowledge_proposal['domain_key']}:{knowledge_proposal['database_name']}:{knowledge_proposal['description']}:{knowledge_proposal['source_url']}]"
+
+        # Phase 6: Autonomous Reflection on Conversational Chat Turn
+        try:
+            import threading
+            from backend.core.memory_pilot import extract_memories_from_turn
+            threading.Thread(
+                target=extract_memories_from_turn,
+                args=(latest_prompt, reply_content),
+                kwargs={"project_name": req.project_name or "", "mode": "chat"},
+                daemon=True,
+            ).start()
+        except Exception:
+            pass
 
         return {
             "status": "success",

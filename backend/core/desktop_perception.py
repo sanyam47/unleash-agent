@@ -20,7 +20,8 @@ def get_interactive_session_processes(top_n: int = 10) -> List[Dict[str, Any]]:
     Retrieves active user applications running inside the interactive desktop session.
     """
     ps_script = f"""
-    Get-Process | Where-Object {{ $_.SessionId -eq 1 }} | 
+    $sid = (Get-Process -Id $PID).SessionId
+    Get-Process | Where-Object {{ $_.SessionId -eq $sid }} | 
     Select-Object -Property Id, ProcessName, CPU, WorkingSet64 | 
     Sort-Object -Property WorkingSet64 -Descending | 
     Select-Object -First {top_n} | 

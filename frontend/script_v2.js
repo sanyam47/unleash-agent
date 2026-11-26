@@ -8575,28 +8575,76 @@ window.refreshComputeTierBadge = async function(explicitModel = null) {
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
-        const tier = String(data.tier || 'lite_edge').toUpperCase().replace('_', ' ');
-        const ctxK = Math.round((data.context_window || 4096) / 1024);
-        const pillText = document.getElementById('computeTierLabel');
-        const pillDot = document.getElementById('computeTierDot');
-        const modalBadge = document.getElementById('settingsComputeTierBadge');
-        const modalDetails = document.getElementById('settingsComputeTierDetails');
-
-        if (pillText) pillText.textContent = `${tier} • ${ctxK}K`;
-        const color = data.tier === 'frontier_ultra' ? '#60a5fa' : (data.tier === 'cloud_balanced' ? '#a78bfa' : (data.tier === 'cloud_metered' ? '#f59e0b' : '#34d399'));
-        if (pillDot) pillDot.style.background = color;
-        if (modalBadge) {
-            modalBadge.textContent = data.tier_display || tier;
-            modalBadge.style.color = color;
-        }
-        if (modalDetails) {
-            const rp = data.research_profile || {};
-            const mp = data.memory_profile || {};
-            const op = data.ocr_profile || {};
-            const cp = data.chat_profile || {};
-            modalDetails.textContent = `Hardware: ${data.gpu_name || 'Local'} | Chat: ${ctxK}K ctx, ${cp.history_limit || 6} msgs | Research: ${rp.combine_extract_verify ? 'Combined Frontier' : '4-Step Split'}, ${rp.max_sources_extract || 6} srcs | Memory: top-${mp.top_k || 6}${mp.llm_triple_extraction ? ' + LLM Triples' : ''} | OCR: ${op.use_gpu ? 'CUDA GPU' : 'CPU Safe'}`;
-        }
+        _applyComputeTierUI(data);
     } catch(e) {}
+};
+
+function _applyComputeTierUI(data) {
+    if (!data) return;
+    const tier = String(data.tier || 'lite_edge').toUpperCase().replace('_', ' ');
+    const privShort = String(data.privacy_short || 'HYBRID').toUpperCase();
+    const privMode = String(data.privacy_mode || 'hybrid').toLowerCase();
+    const ctxK = Math.round((data.context_window || 4096) / 1024);
+
+    const pillText = document.getElementById('computeTierLabel');
+    const pillDot = document.getElementById('computeTierDot');
+    const modalBadge = document.getElementById('settingsComputeTierBadge');
+    const modalDetails = document.getElementById('settingsComputeTierDetails');
+    const privDesc = document.getElementById('privacyModeDescription');
+
+    if (pillText) pillText.textContent = `${privShort} • ${tier} • ${ctxK}K`;
+    const color = privMode === 'air_gapped'
+        ? '#10b981'
+        : (data.tier === 'frontier_ultra' ? '#60a5fa' : (data.tier === 'cloud_balanced' ? '#a78bfa' : '#34d399'));
+    if (pillDot) pillDot.style.background = color;
+    if (modalBadge) {
+        modalBadge.textContent = `${privShort} | ${data.tier_display || tier}`;
+        modalBadge.style.color = color;
+    }
+    if (modalDetails) {
+        const rp = data.research_profile || {};
+        const mp = data.memory_profile || {};
+        const op = data.ocr_profile || {};
+        const cp = data.chat_profile || {};
+        modalDetails.textContent = `Hardware: ${data.gpu_name || 'Local'} | Chat: ${ctxK}K ctx, ${cp.history_limit || 6} msgs | Research: ${rp.combine_extract_verify ? 'Combined Frontier' : '4-Step Split'}, ${rp.max_sources_extract || 6} srcs | Memory: top-${mp.top_k || 6}${mp.llm_triple_extraction ? ' + LLM Triples' : ''} | OCR: ${op.use_gpu ? 'CUDA GPU' : 'CPU Safe'}`;
+    }
+
+    const modeDescriptions = {
+        air_gapped: 'Zero outbound internet calls. Blocks Cloud LLMs, SerpAPI, DDG, and external HTTP/Playwright fetches.',
+        hybrid: 'Local-first privacy for files and memory, with external web search and optional Cloud APIs enabled.',
+        frontier: 'Full Frontier Cloud access: enables Cloud LLM APIs, deep multi-source research, and LLM semantic triple memory extraction.'
+    };
+    if (privDesc && modeDescriptions[privMode]) {
+        privDesc.textContent = modeDescriptions[privMode];
+    }
+
+    document.querySelectorAll('.priv-mode-btn').forEach(btn => {
+        const active = btn.getAttribute('data-privacy-mode') === privMode;
+        btn.classList.toggle('active', active);
+        btn.style.background = active ? 'rgba(255,255,255,0.1)' : 'transparent';
+        btn.style.borderColor = active ? 'rgba(255,255,255,0.18)' : 'transparent';
+        btn.style.color = active ? 'var(--text-primary)' : 'var(--text-muted)';
+    });
+}
+
+window.setExecutionPrivacyMode = async function(mode) {
+    const modelName = window.activeChatModel || document.getElementById('chatModelSelect')?.value || '';
+    try {
+        const res = await fetch('/api/chat/privacy-mode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode, model: modelName || null })
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.compute_tier) {
+            _applyComputeTierUI(data.compute_tier);
+        } else {
+            refreshComputeTierBadge();
+        }
+    } catch(e) {
+        console.warn('Failed to switch privacy mode:', e);
+    }
 };
 
 // Close popover when clicking outside

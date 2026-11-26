@@ -2459,6 +2459,22 @@
                     <span>Model Generation &amp; Adaptive Compute Profile</span>
                     <span id="settingsComputeTierBadge" style="font-size: 0.69rem; font-family: var(--font-mono); color: #34d399;">Probing tier...</span>
                 </div>
+
+                <!-- 3-Way Privacy vs Frontier Mode Switch -->
+                <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+                        <span style="font-size: 0.74rem; font-weight: 600; color: var(--text-primary);">Execution Privacy &amp; Cloud Access</span>
+                        <div id="privacyModeSwitchGroup" style="display: inline-flex; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px; gap: 2px;">
+                            <button type="button" data-privacy-mode="air_gapped" onclick="setExecutionPrivacyMode('air_gapped')" class="priv-mode-btn" style="font-size: 0.69rem; padding: 3px 9px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: var(--text-muted); cursor: pointer;">Air-Gapped Local</button>
+                            <button type="button" data-privacy-mode="hybrid" onclick="setExecutionPrivacyMode('hybrid')" class="priv-mode-btn active" style="font-size: 0.69rem; padding: 3px 9px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.16); background: rgba(255,255,255,0.1); color: var(--text-primary); cursor: pointer;">Hybrid</button>
+                            <button type="button" data-privacy-mode="frontier" onclick="setExecutionPrivacyMode('frontier')" class="priv-mode-btn" style="font-size: 0.69rem; padding: 3px 9px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: var(--text-muted); cursor: pointer;">Full Frontier</button>
+                        </div>
+                    </div>
+                    <div id="privacyModeDescription" style="font-size: 0.69rem; color: var(--text-muted); line-height: 1.35;">
+                        Local-first privacy for files and memory, with external web search and optional Cloud APIs enabled.
+                    </div>
+                </div>
+
                 <div id="settingsComputeTierDetails" style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-secondary); background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; line-height: 1.45;">
                     Auto-adapts context, research workflow, memory extraction, and OCR acceleration to active GPU/API.
                 </div>

@@ -869,6 +869,19 @@ def search_web_docs(query: str, project_name: Optional[str] = None) -> Dict[str,
     if not clean_q:
         return {"status": "error", "error": "Query cannot be empty"}
 
+    # 0. Global Air-Gapped Privacy Mode Gate
+    try:
+        from backend.core.privacy_mode import is_air_gapped
+        if is_air_gapped():
+            return {
+                "status": "privacy_blocked",
+                "query": clean_q,
+                "offline": True,
+                "message": "External web search blocked in Air-Gapped Local Privacy Mode. Using local files & offline RAG only."
+            }
+    except Exception:
+        pass
+
     # 1. Project-level Privacy Check
     if project_name:
         try:

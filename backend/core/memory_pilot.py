@@ -266,8 +266,15 @@ def generate_dense_embedding(text: str, allow_cold_import: bool = True) -> Optio
         except Exception:
             result_vec = None
 
-    # 2. Gemini API Fallback (when SentenceTransformer is absent, e.g. minimal headless install)
-    if result_vec is None and (_LOCAL_ST_UNAVAILABLE or allow_cold_import):
+    # 2. Gemini API Fallback (when SentenceTransformer is absent and not Air-Gapped)
+    _air_gapped = False
+    try:
+        from backend.core.privacy_mode import is_air_gapped
+        _air_gapped = is_air_gapped()
+    except Exception:
+        pass
+
+    if result_vec is None and not _air_gapped and (_LOCAL_ST_UNAVAILABLE or allow_cold_import):
         try:
             from backend.core.gemini_client import get_gemini_client
             client = get_gemini_client()

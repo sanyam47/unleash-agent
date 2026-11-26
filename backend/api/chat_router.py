@@ -202,6 +202,31 @@ def get_compute_tier(model: Optional[str] = None):
     return probe_active_compute_tier(model_name=model)
 
 
+class PrivacyModeRequest(BaseModel):
+    mode: str = Field(..., description="'air_gapped' | 'hybrid' | 'frontier'")
+    model: Optional[str] = Field(default=None)
+
+
+@router.get("/privacy-mode")
+def get_privacy_mode_endpoint():
+    """Returns current execution privacy mode ('air_gapped', 'hybrid', 'frontier')."""
+    from backend.core.privacy_mode import get_privacy_status
+    return get_privacy_status()
+
+
+@router.post("/privacy-mode")
+def set_privacy_mode_endpoint(req: PrivacyModeRequest):
+    """Updates execution privacy mode and returns updated compute tier profile."""
+    from backend.core.privacy_mode import set_privacy_mode
+    from backend.core.adaptive_tier import probe_active_compute_tier
+    try:
+        p_status = set_privacy_mode(req.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    tier_info = probe_active_compute_tier(model_name=req.model)
+    return {**p_status, "compute_tier": tier_info}
+
+
 @router.get("/system/telemetry")
 def get_live_system_telemetry_endpoint():
     """
@@ -514,6 +539,12 @@ def send_chat_message(req: ChatRequest):
     history_dicts = [{"role": m.role, "content": m.content} for m in req.messages[:-1]]
 
     from backend.core.cloud_llm_client import is_cloud_model
+    from backend.core.privacy_mode import is_air_gapped
+    if is_cloud_model(req.model) and is_air_gapped():
+        raise HTTPException(
+            status_code=403,
+            detail="Cloud LLM API calls are blocked in Air-Gapped Local Privacy Mode. Switch to Hybrid or Full Frontier mode in Settings, or choose a local Ollama model.",
+        )
     if not is_cloud_model(req.model):
         if not check_ollama_alive():
             ensure_ollama_daemon()

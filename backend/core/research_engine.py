@@ -301,6 +301,12 @@ def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
     """Fetches clean readable text via HTTP, falling back to Playwright browser_extract for JS-rendered pages."""
     if not url or not url.lower().startswith(("http://", "https://")):
         return ""
+    try:
+        from backend.core.privacy_mode import is_air_gapped
+        if is_air_gapped():
+            return ""
+    except Exception:
+        pass
     cleaned = ""
     try:
         req = urllib.request.Request(

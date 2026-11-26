@@ -146,6 +146,22 @@ def probe_local_gpu_hardware() -> Dict[str, Any]:
 
 
 def probe_active_compute_tier(model_name: Optional[str] = None, user_override: Optional[str] = None) -> Dict[str, Any]:
+    """Probes hardware, model capabilities, and active Privacy/Frontier mode."""
+    profile = _probe_active_compute_tier_impl(model_name=model_name, user_override=user_override)
+    try:
+        from backend.core.privacy_mode import get_privacy_status
+        ps = get_privacy_status()
+        profile["privacy_mode"] = ps.get("mode", "hybrid")
+        profile["privacy_short"] = ps.get("short", "HYBRID")
+        profile["privacy_label"] = ps.get("label", "Hybrid (Local + Web)")
+    except Exception:
+        profile["privacy_mode"] = "hybrid"
+        profile["privacy_short"] = "HYBRID"
+        profile["privacy_label"] = "Hybrid (Local + Web)"
+    return profile
+
+
+def _probe_active_compute_tier_impl(model_name: Optional[str] = None, user_override: Optional[str] = None) -> Dict[str, Any]:
     """
     Dynamically determines the optimal compute tier:
       Tier 1: LITE_EDGE       (<12GB VRAM / Local RTX 3050 / 8B models)
@@ -235,6 +251,18 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
     is_large_weight = any(k in m_lower for k in ["14b", "27b", "32b", "34b", "70b", "72b", "mixtral"])
 
     # Determine Tier dynamically
+    privacy_status = {"mode": "hybrid", "short": "HYBRID", "cloud_llm_allowed": True}
+    try:
+        from backend.core.privacy_mode import get_privacy_status
+        privacy_status = get_privacy_status()
+    except Exception:
+        pass
+
+    if privacy_status.get("mode") == "air_gapped":
+        is_cloud = False
+        is_frontier_cloud = False
+        is_metered_free_cloud = False
+
     if override_tier:
         tier = override_tier
     elif is_metered_free_cloud:

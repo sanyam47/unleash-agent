@@ -537,6 +537,15 @@ def call_cloud_llm_chat(
     Normalizes response to match Unleash-Agent ReAct output schema:
       {"content": ..., "eval_count": ..., "duration_sec": ...}
     """
+    try:
+        from backend.core.privacy_mode import is_air_gapped
+        if is_air_gapped():
+            raise PermissionError("Cloud LLM API calls are disabled while Air-Gapped Local Privacy Mode is active.")
+    except PermissionError:
+        raise
+    except Exception:
+        pass
+
     provider_id, actual_model = parse_cloud_model_string(model)
 
     cfg = CloudLlmManager.load_config()

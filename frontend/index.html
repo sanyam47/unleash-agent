@@ -1556,11 +1556,11 @@
                         </div>
 
                         <!-- Antigravity-Style Input Bar with Floating Controls -->
-                        <div style="position: relative; background: #131317; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 20px; padding: 6px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 24px rgba(0,0,0,0.4);">
+                        <div id="chatComposerBox" style="position: relative; background: #131317; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 20px; padding: 6px 14px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 4px 24px rgba(0,0,0,0.4); transition: border-color 0.15s ease;">
                             <!-- Top Row: Prompt Textarea & Action Buttons -->
                             <div style="display: flex; gap: 10px; align-items: flex-end;">
-                                <input type="file" id="chatImagePicker" accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp" style="display: none;" onclick="this.value=null;" onchange="onChatImagePicked(event)">
-                                <button type="button" id="btnAttachPin" onclick="triggerChatImagePicker()" title="Attach Screenshot / Image (or Ctrl+V paste directly into box)" class="btn-quiet" style="padding: 7px 9px; display: flex; align-items: center; justify-content: center; border-radius: 6px;">
+                                <input type="file" id="chatImagePicker" accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp,.pdf,.docx,.pptx,.txt,.md,.csv,.json" style="display: none;" onclick="this.value=null;" onchange="onChatImagePicked(event)">
+                                <button type="button" id="btnAttachPin" onclick="triggerChatImagePicker()" title="Attach Image, PDF, Word (.docx), PowerPoint (.pptx), or Text (drag &amp; drop supported)" class="btn-quiet" style="padding: 7px 9px; display: flex; align-items: center; justify-content: center; border-radius: 6px;">
                                     <svg class="nav-icon-svg" style="width:15px;height:15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l7.88-7.88"/></svg>
                                 </button>
                                 <textarea id="chatInputMessage" placeholder="Ask your local models anything or paste a screenshot (Shift+Enter for newline, Enter to send)..." rows="2" style="border: none; background: transparent; padding: 4px; resize: none; font-size: 0.92rem; flex: 1; min-height: 28px; height: 28px;"></textarea>
@@ -1852,24 +1852,8 @@
                             }
                             function onChatImagePicked(event) {
                                 var file = (event.target && event.target.files && event.target.files[0]);
-                                if (!file) return;
-                                var reader = new FileReader();
-                                reader.onload = function(evt) {
-                                    var dataUrl = evt.target.result;
-                                    var base64 = dataUrl.split(',')[1];
-                                    if (window.attachChatImage) {
-                                        window.attachChatImage(dataUrl, base64, file.name);
-                                    } else {
-                                        window.attachedChatImages = [{ dataUrl: dataUrl, base64: base64, filename: file.name }];
-                                        var tray = document.getElementById('chatImagePreviewTray');
-                                        var img = document.getElementById('chatAttachedPreviewImg');
-                                        var name = document.getElementById('chatAttachedFileName');
-                                        if (tray && img) {
-                                            img.src = dataUrl;
-                                            if (name) name.textContent = file.name;
-                                            tray.style.display = 'flex';
-                                        }
-                                    }
+                                if (file && window.handleChatFileUpload) {
+                                    window.handleChatFileUpload(file);
                                 }
                             }
                         </script>
@@ -2685,7 +2669,7 @@
     </div>
 </footer>
 
-<script src="/static/script_v2.js?v=1795684000"></script>
+<script src="/static/script_v2.js?v=1795685000"></script>
 
 
 <!-- ============================================== -->

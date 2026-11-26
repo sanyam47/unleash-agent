@@ -2597,12 +2597,15 @@ function compressImageForChat(blob, callback) {
     reader.readAsDataURL(blob);
 }
 
+window.attachedChatDocuments = [];
+
 window.attachChatImage = function(dataUrl, base64, filename) {
     window.attachedChatImages = [{ dataUrl, base64, filename }];
     const tray = document.getElementById('chatImagePreviewTray');
     const imgEl = document.getElementById('chatAttachedPreviewImg');
     const nameEl = document.getElementById('chatAttachedFileName');
     if (tray && imgEl) {
+        imgEl.style.display = 'block';
         imgEl.src = dataUrl;
         if (nameEl) nameEl.textContent = filename || 'screenshot.png';
         tray.style.display = 'flex';
@@ -2613,19 +2616,68 @@ window.attachChatImage = function(dataUrl, base64, filename) {
 
 window.clearAttachedChatImage = function() {
     window.attachedChatImages = [];
+    window.attachedChatDocuments = [];
     const tray = document.getElementById('chatImagePreviewTray');
     if (tray) tray.style.display = 'none';
+    const imgEl = document.getElementById('chatAttachedPreviewImg');
+    if (imgEl) imgEl.style.display = 'block';
     const picker = document.getElementById('chatImagePicker');
     if (picker) picker.value = '';
 };
 
+window.handleChatFileUpload = async function(file) {
+    if (!file) return;
+    const isImg = (file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name);
+    if (isImg) {
+        compressImageForChat(file, function(dataUrl, base64) {
+            window.attachChatImage(dataUrl, base64, file.name);
+        });
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/chat/upload_document', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+        window.attachedChatDocuments = [{ filename: data.filename, file_path: data.file_path }];
+        const tray = document.getElementById('chatImagePreviewTray');
+        const imgEl = document.getElementById('chatAttachedPreviewImg');
+        const nameEl = document.getElementById('chatAttachedFileName');
+        if (imgEl) imgEl.style.display = 'none';
+        if (nameEl) nameEl.textContent = `${data.filename} (${Math.max(1, Math.round((data.size_bytes || 0) / 1024))} KB)`;
+        if (tray) tray.style.display = 'flex';
+        const input = document.getElementById('chatInputMessage');
+        if (input) input.focus();
+    } catch (err) {
+        alert('Document upload error: ' + err.message);
+    }
+};
+
 window.onChatImagePicked = function(event) {
     const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    compressImageForChat(file, function(dataUrl, base64) {
-        window.attachChatImage(dataUrl, base64, file.name);
-    });
+    if (file) window.handleChatFileUpload(file);
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+    const box = document.getElementById('chatComposerBox');
+    if (!box) return;
+    box.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        box.style.borderColor = '#10b981';
+    });
+    box.addEventListener('dragleave', () => {
+        box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+    });
+    box.addEventListener('drop', (e) => {
+        e.preventDefault();
+        box.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) window.handleChatFileUpload(file);
+    });
+});
 
 window.autoExecuteSandbox = localStorage.getItem('auto_execute_sandbox') === 'true';
 
@@ -4379,10 +4431,18 @@ window.sendChatArenaMessage = async function() {
     let message = input ? input.value.trim() : '';
     
     const hasImages = window.attachedChatImages && window.attachedChatImages.length > 0;
-    if (!message && !hasImages) return;
+    const hasDocs = window.attachedChatDocuments && window.attachedChatDocuments.length > 0;
+    if (!message && !hasImages && !hasDocs) return;
 
     if (!message && hasImages) {
         message = "Please analyze this image/screenshot and diagnose what you see.";
+    } else if (!message && hasDocs) {
+        message = "Please analyze the attached document and summarize key findings with citations.";
+    }
+
+    if (hasDocs) {
+        const docList = window.attachedChatDocuments.map(d => d.file_path).join('\n');
+        message = `${message}\n\n[Attached Document(s)]\n${docList}`;
     }
 
     const currentImages = hasImages ? [...window.attachedChatImages] : [];

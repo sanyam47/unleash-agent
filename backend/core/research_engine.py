@@ -22,7 +22,7 @@ from backend.core.agent_engine import call_unified_chat, sanitize_project_name
 from backend.core.agent_progress import set_project_plan, set_project_progress
 from backend.core.agent_tools import (
     get_project_dir,
-    read_pdf_file,
+    read_document_file,
     read_project_file,
     search_web_docs,
 )
@@ -203,23 +203,29 @@ def _discover_sources_for_queries(
     """Agent 2 (Retrieval): Gathers local PDF/file paths, RAG context, and web search results."""
     step_logs: List[Dict[str, Any]] = []
 
-    # 1. Inspect any local PDF or document paths mentioned in the objective
-    path_matches = re.findall(r'(?:[A-Za-z]:[\\/][^\s"\'<>]+?\.(?:pdf|md|txt)|[^\s"\'<>]+?\.pdf)', objective, re.IGNORECASE)
-    for raw_path in path_matches[:3]:
+    # 1. Inspect any local PDF, DOCX, PPTX, or text document paths mentioned in the objective
+    path_matches = re.findall(
+        r'(?:[A-Za-z]:[\\/][^\s"\'<>]+?\.(?:pdf|docx|pptx|md|txt|csv|json)|[^\s"\'<>]+?\.(?:pdf|docx|pptx))',
+        objective,
+        re.IGNORECASE,
+    )
+    for raw_path in path_matches[:4]:
         clean_path = raw_path.strip(".,;:\"'()")
-        if clean_path.lower().endswith(".pdf"):
-            res = read_pdf_file(project_name, clean_path, start_page=1, end_page=8)
+        ext = Path(clean_path).suffix.lower()
+        if ext in (".pdf", ".docx", ".pptx"):
+            res = read_document_file(project_name, clean_path, start_page=1, end_page=10)
             if res.get("status") == "success":
                 pages = res.get("pages") or []
-                joined = "\n\n".join(f"[Page {p['page']}] {p['text']}" for p in pages if p.get("text"))
+                label = "Slide" if ext == ".pptx" else "Page"
+                joined = "\n\n".join(f"[{label} {p['page']}] {p['text']}" for p in pages if p.get("text"))
                 ledger.add_source(
                     title=Path(clean_path).name,
                     location=clean_path,
-                    source_type="pdf",
+                    source_type=ext.lstrip("."),
                     snippet=joined[:1000],
                     raw_text=joined,
                 )
-            step_logs.append({"step": step_num, "action": "read_pdf", "target": clean_path, "status": res.get("status", "error")})
+            step_logs.append({"step": step_num, "action": "read_document", "target": clean_path, "status": res.get("status", "error")})
         else:
             res = read_project_file(project_name, clean_path, start_line=1, end_line=200)
             if res.get("status") == "success":

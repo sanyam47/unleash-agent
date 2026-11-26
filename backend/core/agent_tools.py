@@ -466,6 +466,77 @@ def read_pdf_file(
         return {"status": "error", "error": f"Failed to read PDF '{file_path}': {str(e)}"}
 
 
+def read_document_file(
+    project_name: str,
+    file_path: str,
+    start_page: int = 1,
+    end_page: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Reads PDF, DOCX, PPTX, or plain-text documents with page/slide/section metadata."""
+    ext = Path(str(file_path)).suffix.lower()
+    if ext == ".pdf":
+        return read_pdf_file(project_name, file_path, start_page=start_page, end_page=end_page)
+
+    try:
+        target = resolve_safe_project_path(project_name, file_path)
+        if not target.exists() or not target.is_file():
+            return {"status": "error", "error": f"Document '{file_path}' does not exist."}
+
+        if ext == ".docx":
+            import zipfile
+            import xml.etree.ElementTree as ET
+            with zipfile.ZipFile(target, "r") as zf:
+                xml_bytes = zf.read("word/document.xml")
+            root = ET.fromstring(xml_bytes)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            paras = []
+            for p in root.findall(".//w:p", ns):
+                runs = [t.text for t in p.findall(".//w:t", ns) if t.text]
+                if runs:
+                    paras.append("".join(runs))
+            text = "\n".join(paras)
+            return {
+                "status": "success",
+                "file": str(target),
+                "format": "docx",
+                "total_pages": 1,
+                "pages": [{"page": 1, "text": text[:16000]}],
+            }
+
+        if ext == ".pptx":
+            import zipfile
+            import xml.etree.ElementTree as ET
+            slides_out: List[Dict[str, Any]] = []
+            with zipfile.ZipFile(target, "r") as zf:
+                slide_names = sorted(
+                    [n for n in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", n)],
+                    key=lambda n: int(re.search(r"(\d+)", Path(n).stem).group(1)),
+                )
+                ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
+                for idx, sname in enumerate(slide_names[:30], start=1):
+                    root = ET.fromstring(zf.read(sname))
+                    texts = [t.text for t in root.findall(".//a:t", ns) if t.text]
+                    slides_out.append({"page": idx, "text": "\n".join(texts)[:4000]})
+            return {
+                "status": "success",
+                "file": str(target),
+                "format": "pptx",
+                "total_pages": len(slides_out),
+                "pages": slides_out,
+            }
+
+        txt = target.read_text(encoding="utf-8", errors="replace")
+        return {
+            "status": "success",
+            "file": str(target),
+            "format": ext.lstrip(".") or "text",
+            "total_pages": 1,
+            "pages": [{"page": 1, "text": txt[:16000]}],
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to read document '{file_path}': {str(e)}"}
+
+
 def list_dir(project_name: str, dir_path: str = ".") -> Dict[str, Any]:
     """Lists files and folders inside the project workspace or any safe host OS directory."""
     try:
@@ -1470,10 +1541,10 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         target_proj = args.get("project_name") or args.get("project") or project_name
         path = args.get("file_path") or args.get("path") or args.get("filename")
         if not path:
-            return {"status": "error", "error": "Missing 'file_path' argument for read_pdf"}
+            return {"status": "error", "error": "Missing 'file_path' argument for read_document"}
         s_page = args.get("start_page")
         e_page = args.get("end_page")
-        return read_pdf_file(
+        return read_document_file(
             str(target_proj),
             str(path),
             start_page=int(s_page) if s_page is not None else 1,

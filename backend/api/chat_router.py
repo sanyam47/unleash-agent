@@ -331,6 +331,34 @@ def _format_sse(event: str, payload: Dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
 
 
+@router.post("/upload_document")
+async def upload_chat_document(file: UploadFile = File(...)):
+    """Saves an uploaded PDF, Word (.docx), PowerPoint (.pptx), or text document for agent/research analysis."""
+    from pathlib import Path
+    allowed_exts = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json"}
+    orig_name = Path(file.filename or "document.txt").name
+    ext = Path(orig_name).suffix.lower()
+    if ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail=f"Unsupported document type '{ext}'. Allowed: {', '.join(sorted(allowed_exts))}")
+
+    safe_stem = re.sub(r"[^a-zA-Z0-9._-]", "_", Path(orig_name).stem)[:64] or "doc"
+    upload_dir = Path("backend/data/uploads").resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    dest = upload_dir / f"{int(time.time())}_{safe_stem}{ext}"
+
+    content = await file.read()
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Document exceeds 25 MB limit.")
+    dest.write_bytes(content)
+
+    return {
+        "status": "success",
+        "filename": orig_name,
+        "file_path": str(dest),
+        "size_bytes": len(content),
+    }
+
+
 @router.post("/send/stream")
 async def send_chat_message_stream(req: ChatRequest):
     """

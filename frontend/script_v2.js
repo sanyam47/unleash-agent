@@ -4428,18 +4428,24 @@ window.sendChatArenaMessage = async function() {
         const chatAbortController = new AbortController();
         window._currentChatAbortController = chatAbortController;
         const timeoutMs = isAgentic ? 300000 : 120000;
-        const chatWatchdogTimer = setTimeout(() => {
-            window._chatTimedOut = true;
-            chatAbortController.abort();
-        }, timeoutMs);
+        let chatWatchdogTimer = null;
+        const resetChatWatchdog = () => {
+            if (chatWatchdogTimer) clearTimeout(chatWatchdogTimer);
+            chatWatchdogTimer = setTimeout(() => {
+                window._chatTimedOut = true;
+                chatAbortController.abort();
+            }, timeoutMs);
+        };
+        resetChatWatchdog();
 
         const wasVoicePrompt = Boolean(window.jarvisLastPromptWasVoice);
         window.jarvisLastPromptWasVoice = false;
         const isChatSpeech = Boolean(window.jarvisChatSpeechEnabled);
 
         let res;
+        let data = null;
         try {
-            res = await fetch('/api/chat/send', {
+            res = await fetch('/api/chat/send/stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal: chatAbortController.signal,
@@ -4459,6 +4465,52 @@ window.sendChatArenaMessage = async function() {
                     is_voice: wasVoicePrompt
                 })
             });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || `Server returned ${res.status}`);
+            }
+
+            const contentType = (res.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('text/event-stream') && res.body) {
+                const typingEl = document.getElementById(typingId);
+                if (typingEl) typingEl._sseActive = true;
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let sseBuffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    resetChatWatchdog();
+                    sseBuffer += decoder.decode(value, { stream: true });
+
+                    const frames = sseBuffer.split('\n\n');
+                    sseBuffer = frames.pop() || '';
+
+                    for (const frame of frames) {
+                        if (!frame.trim()) continue;
+                        let evName = 'message';
+                        const dataLines = [];
+                        for (const line of frame.split('\n')) {
+                            if (line.startsWith('event:')) evName = line.slice(6).trim();
+                            else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+                        }
+                        if (dataLines.length === 0) continue;
+                        const payload = JSON.parse(dataLines.join('\n'));
+                        if (evName === 'progress' && typeof window.applyLiveProgressUpdate === 'function') {
+                            window.applyLiveProgressUpdate(typingId, payload, model);
+                        } else if (evName === 'result') {
+                            data = payload;
+                        } else if (evName === 'error') {
+                            throw new Error(payload.detail || 'Streaming execution error');
+                        }
+                    }
+                }
+            } else {
+                data = await res.json();
+            }
         } finally {
             clearTimeout(chatWatchdogTimer);
             if (window._currentChatAbortController === chatAbortController) {
@@ -4466,12 +4518,9 @@ window.sendChatArenaMessage = async function() {
             }
         }
 
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.detail || `Server returned ${res.status}`);
+        if (!data) {
+            throw new Error('Stream ended without a final response.');
         }
-
-        const data = await res.json();
         removeTypingIndicator(typingId);
 
         // Add assistant reply to session
@@ -5373,8 +5422,94 @@ function appendTypingIndicator(modelName, projectName) {
                     </div>
                 </div>
                 <div id="${id}_plan" style="display: none; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);"></div>
+                <div id="${id}_log" style="display: none; flex-direction: column; gap: 3px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); max-height: 115px; overflow-y: auto;"></div>
             </div>
         `;
+
+        window.applyLiveProgressUpdate = function(targetId, pData, targetModelName) {
+            if (!pData || pData.phase === 'idle') return;
+            const dotEl = document.getElementById(`${targetId}_dot`);
+            const phaseEl = document.getElementById(`${targetId}_phase`);
+            const headEl = document.getElementById(`${targetId}_headline`);
+            const detailEl = document.getElementById(`${targetId}_detail`);
+            const planEl = document.getElementById(`${targetId}_plan`);
+            const logEl = document.getElementById(`${targetId}_log`);
+
+            if (headEl && pData.headline) {
+                headEl.textContent = pData.headline;
+            }
+            if (detailEl && (pData.detail || pData.file)) {
+                detailEl.textContent = pData.file ? `Target: ${pData.file} — ${pData.detail || ''}` : pData.detail;
+            }
+
+            if (planEl && Array.isArray(pData.plan_steps) && pData.plan_steps.length > 0) {
+                planEl.style.display = 'flex';
+                planEl.innerHTML = pData.plan_steps.map(st => {
+                    const status = (st.status || 'pending').toLowerCase();
+                    let icon = '○';
+                    let color = 'var(--text-muted)';
+                    let weight = '400';
+                    if (status === 'done') { icon = '✓'; color = '#10b981'; }
+                    else if (status === 'in_progress') { icon = '●'; color = '#60a5fa'; weight = '600'; }
+                    else if (status === 'failed') { icon = '✕'; color = '#ef4444'; }
+                    return `<div style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:${color}; font-weight:${weight};"><span>${icon}</span><span>${escapeHtml(st.title || '')}</span></div>`;
+                }).join('');
+            }
+
+            if (logEl && Array.isArray(pData.events) && pData.events.length > 0) {
+                logEl.style.display = 'flex';
+                logEl.innerHTML = pData.events.slice(-12).map(ev => {
+                    const ph = (ev.phase || '').toLowerCase();
+                    let icon = '•';
+                    let color = 'var(--text-secondary)';
+                    if (ph === 'completed') { icon = '✓'; color = '#10b981'; }
+                    else if (ph === 'self_repairing' || ph === 'error') { icon = '!'; color = '#f97316'; }
+                    else if (ph === 'executing') { icon = '▶'; color = '#60a5fa'; }
+                    else if (ph === 'coding' || ph === 'validating') { icon = '✓'; color = '#a855f7'; }
+                    const tsText = typeof ev.ts === 'number' ? `${ev.ts.toFixed(1)}s` : '';
+                    return `<div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:0.70rem; color:${color};">
+                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${escapeHtml(ev.headline || '')}</span>
+                        <span style="flex-shrink:0; font-family:var(--font-mono); color:var(--text-muted); font-size:0.65rem;">${tsText}</span>
+                    </div>`;
+                }).join('');
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+
+            if (phaseEl && pData.phase) {
+                const phase = pData.phase.toLowerCase();
+                phaseEl.textContent = phase.toUpperCase();
+
+                let color = '#3b82f6';
+                let bg = 'rgba(59, 130, 246, 0.15)';
+                let border = 'rgba(59, 130, 246, 0.3)';
+
+                if (phase === 'coding' || phase === 'styling' || phase === 'scripting' || phase === 'executing') {
+                    color = '#a855f7';
+                    bg = 'rgba(168, 85, 247, 0.15)';
+                    border = 'rgba(168, 85, 247, 0.3)';
+                } else if (phase === 'validating') {
+                    color = '#eab308';
+                    bg = 'rgba(234, 179, 8, 0.15)';
+                    border = 'rgba(234, 179, 8, 0.3)';
+                } else if (phase === 'self_repairing' || phase === 'error') {
+                    color = '#f97316';
+                    bg = 'rgba(249, 115, 22, 0.15)';
+                    border = 'rgba(249, 115, 22, 0.3)';
+                } else if (phase === 'completed') {
+                    color = '#10b981';
+                    bg = 'rgba(16, 185, 129, 0.15)';
+                    border = 'rgba(16, 185, 129, 0.3)';
+                }
+
+                phaseEl.style.color = color;
+                phaseEl.style.background = bg;
+                phaseEl.style.borderColor = border;
+                if (dotEl) {
+                    dotEl.style.background = color;
+                    dotEl.style.boxShadow = `0 0 8px ${color}`;
+                }
+            }
+        };
 
         const pollUrl = `/api/chat/agent/projects/${encodeURIComponent(projectName)}/progress`;
         const startTime = Date.now();
@@ -5385,8 +5520,9 @@ function appendTypingIndicator(modelName, projectName) {
                 const timerEl = document.getElementById(`${id}_timer`);
                 if (timerEl) timerEl.textContent = `${elapsed}s`;
 
-                const dotEl = document.getElementById(`${id}_dot`);
-                const phaseEl = document.getElementById(`${id}_phase`);
+                const hostEl = document.getElementById(id);
+                if (hostEl && hostEl._sseActive) return;
+
                 const headEl = document.getElementById(`${id}_headline`);
                 const detailEl = document.getElementById(`${id}_detail`);
 
@@ -5400,63 +5536,7 @@ function appendTypingIndicator(modelName, projectName) {
                     }
                     return;
                 }
-
-                if (headEl && pData.headline) {
-                    headEl.textContent = pData.headline;
-                }
-                if (detailEl && (pData.detail || pData.file)) {
-                    detailEl.textContent = pData.file ? `Target: ${pData.file} — ${pData.detail || ''}` : pData.detail;
-                }
-
-                const planEl = document.getElementById(`${id}_plan`);
-                if (planEl && Array.isArray(pData.plan_steps) && pData.plan_steps.length > 0) {
-                    planEl.style.display = 'flex';
-                    planEl.innerHTML = pData.plan_steps.map(st => {
-                        const status = (st.status || 'pending').toLowerCase();
-                        let icon = '○';
-                        let color = 'var(--text-muted)';
-                        let weight = '400';
-                        if (status === 'done') { icon = '✓'; color = '#10b981'; }
-                        else if (status === 'in_progress') { icon = '●'; color = '#60a5fa'; weight = '600'; }
-                        else if (status === 'failed') { icon = '✕'; color = '#ef4444'; }
-                        return `<div style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:${color}; font-weight:${weight};"><span>${icon}</span><span>${escapeHtml(st.title || '')}</span></div>`;
-                    }).join('');
-                }
-
-                if (phaseEl && pData.phase) {
-                    const phase = pData.phase.toLowerCase();
-                    phaseEl.textContent = phase.toUpperCase();
-
-                    let color = '#3b82f6';
-                    let bg = 'rgba(59, 130, 246, 0.15)';
-                    let border = 'rgba(59, 130, 246, 0.3)';
-
-                    if (phase === 'coding' || phase === 'styling' || phase === 'scripting') {
-                        color = '#a855f7';
-                        bg = 'rgba(168, 85, 247, 0.15)';
-                        border = 'rgba(168, 85, 247, 0.3)';
-                    } else if (phase === 'validating') {
-                        color = '#eab308';
-                        bg = 'rgba(234, 179, 8, 0.15)';
-                        border = 'rgba(234, 179, 8, 0.3)';
-                    } else if (phase === 'self_repairing') {
-                        color = '#f97316';
-                        bg = 'rgba(249, 115, 22, 0.15)';
-                        border = 'rgba(249, 115, 22, 0.3)';
-                    } else if (phase === 'completed') {
-                        color = '#10b981';
-                        bg = 'rgba(16, 185, 129, 0.15)';
-                        border = 'rgba(16, 185, 129, 0.3)';
-                    }
-
-                    phaseEl.style.color = color;
-                    phaseEl.style.background = bg;
-                    phaseEl.style.borderColor = border;
-                    if (dotEl) {
-                        dotEl.style.background = color;
-                        dotEl.style.boxShadow = `0 0 8px ${color}`;
-                    }
-                }
+                window.applyLiveProgressUpdate(id, pData, modelName);
             } catch (e) {
                 // Ignore transient network hiccups during polling
             }

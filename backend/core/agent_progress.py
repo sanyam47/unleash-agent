@@ -9,6 +9,41 @@ from typing import Dict, Any, Optional, List
 _PROJECT_PROGRESS: Dict[str, Dict[str, Any]] = {}
 
 
+def _append_event(
+    existing: Dict[str, Any],
+    phase: str,
+    headline: str,
+    detail: str = "",
+    step: int = 1,
+    file_path: Optional[str] = None,
+    tool: Optional[str] = None,
+) -> tuple[int, List[Dict[str, Any]]]:
+    """Appends a live progress event to the project's bounded ring buffer."""
+    seq = int(existing.get("seq", 0)) + 1
+    events: List[Dict[str, Any]] = list(existing.get("events", []))
+    start_time = existing.get("start_time", time.time())
+    entry = {
+        "seq": seq,
+        "ts": round(time.time() - start_time, 1),
+        "step": step,
+        "phase": phase,
+        "headline": str(headline)[:140],
+        "detail": str(detail or "")[:180],
+        "file": file_path,
+        "tool": tool,
+    }
+    events.append(entry)
+    if len(events) > 40:
+        events = events[-40:]
+    return seq, events
+
+
+def reset_project_progress(project_name: str) -> None:
+    """Clears stale progress & event history before a new agent turn starts."""
+    clean = str(project_name).strip()
+    _PROJECT_PROGRESS.pop(clean, None)
+
+
 def set_project_plan(project_name: str, steps: List[Dict[str, Any]]) -> List[Dict[str, str]]:
     """Stores the agent's live dynamic checklist steps for UI streaming."""
     clean = str(project_name).strip()
@@ -33,6 +68,16 @@ def set_project_plan(project_name: str, steps: List[Dict[str, Any]]) -> List[Dic
     if active_titles:
         headline = f"[{done_cnt}/{len(normalized)}] {active_titles[0]}"
 
+    seq, events = _append_event(
+        existing,
+        phase=existing.get("phase", "planning"),
+        headline=headline,
+        detail=f"Plan updated ({done_cnt}/{len(normalized)} done)",
+        step=existing.get("step", 1),
+        file_path=existing.get("file"),
+        tool="update_plan",
+    )
+
     existing.update({
         "project_name": clean,
         "phase": existing.get("phase", "planning"),
@@ -41,6 +86,8 @@ def set_project_plan(project_name: str, steps: List[Dict[str, Any]]) -> List[Dic
         "step": existing.get("step", 1),
         "file": existing.get("file"),
         "plan_steps": normalized,
+        "seq": seq,
+        "events": events,
         "start_time": start_time,
         "elapsed_sec": round(time.time() - start_time, 1),
         "updated_at": time.time(),
@@ -55,12 +102,25 @@ def set_project_progress(
     headline: str,
     detail: str = "",
     step: int = 1,
-    file_path: Optional[str] = None
+    file_path: Optional[str] = None,
+    tool: Optional[str] = None,
 ) -> None:
     """Updates the live progress state of an active project workspace."""
     clean = str(project_name).strip()
     existing = _PROJECT_PROGRESS.get(clean, {})
     start_time = existing.get("start_time", time.time())
+    if "start_time" not in existing:
+        existing["start_time"] = start_time
+
+    seq, events = _append_event(
+        existing,
+        phase=phase,
+        headline=headline,
+        detail=detail,
+        step=step,
+        file_path=file_path,
+        tool=tool,
+    )
 
     _PROJECT_PROGRESS[clean] = {
         "project_name": clean,
@@ -69,7 +129,10 @@ def set_project_progress(
         "detail": detail,
         "step": step,
         "file": file_path,
+        "tool": tool,
         "plan_steps": existing.get("plan_steps", []),
+        "seq": seq,
+        "events": events,
         "start_time": start_time,
         "elapsed_sec": round(time.time() - start_time, 1),
         "updated_at": time.time()
@@ -89,6 +152,8 @@ def get_project_progress(project_name: str) -> Dict[str, Any]:
             "step": 0,
             "file": None,
             "plan_steps": [],
+            "seq": 0,
+            "events": [],
             "elapsed_sec": 0.0
         }
 

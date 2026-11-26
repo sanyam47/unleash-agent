@@ -1855,11 +1855,43 @@ Final Answer: <Your clear, professional, factual answer to the user>
                         except Exception:
                             pass
 
+                    try:
+                        from backend.core.agent_progress import set_project_progress as _set_live_prog
+                        _arg_preview = ", ".join(f"{k}={repr(v)[:40]}" for k, v in (args or {}).items())[:120]
+                        _target_file = (args or {}).get("file_path") or (args or {}).get("path") or None
+                        _set_live_prog(
+                            clean_proj,
+                            phase="executing",
+                            headline=f"Running {action}...",
+                            detail=_arg_preview or f"Step {step_num}",
+                            step=step_num,
+                            file_path=str(_target_file) if _target_file else None,
+                            tool=action,
+                        )
+                    except Exception:
+                        pass
+
                     tool_result = dispatch_tool(action, args or {}, context)
 
                     step_record["observation"] = tool_result
 
                     step_record["status"] = "success" if tool_result.get("status") != "error" else "error"
+
+                    try:
+                        from backend.core.agent_progress import set_project_progress as _set_live_prog
+                        _is_err = tool_result.get("status") == "error"
+                        _detail_msg = tool_result.get("error") or tool_result.get("message") or tool_result.get("url") or f"Step {step_num} {'failed' if _is_err else 'done'}"
+                        _set_live_prog(
+                            clean_proj,
+                            phase="self_repairing" if _is_err else "coding",
+                            headline=f"{'Failed' if _is_err else 'Done'}: {action}",
+                            detail=str(_detail_msg)[:140],
+                            step=step_num,
+                            file_path=str(tool_result.get("file")) if tool_result.get("file") else None,
+                            tool=action,
+                        )
+                    except Exception:
+                        pass
 
 
 

@@ -8,8 +8,10 @@ import urllib.request
 import urllib.error
 import threading
 import re
+import asyncio
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["Local Chat Arena"])
@@ -321,6 +323,67 @@ def execute_jarvis_executive(req: ExecutiveRequest):
     reply = "Monitoring workstation and active operations. Standing by."
     _speak_bg(reply)
     return {"status": "success", "reply": reply, "action": "advisory"}
+
+
+def _format_sse(event: str, payload: Dict[str, Any]) -> str:
+    """Formats a Server-Sent Event frame with safe JSON serialization."""
+    return f"event: {event}\ndata: {json.dumps(payload, default=str)}\n\n"
+
+
+@router.post("/send/stream")
+async def send_chat_message_stream(req: ChatRequest):
+    """
+    Streams live execution progress (tool calls, phases, plan checklist) via Server-Sent Events
+    while running send_chat_message in a worker thread, then emits the final `result` event.
+    """
+    from backend.core.agent_progress import get_project_progress, reset_project_progress
+    try:
+        from backend.core.agent_engine import sanitize_project_name
+        clean_proj = sanitize_project_name(req.project_name or "default_workspace")
+    except Exception:
+        clean_proj = re.sub(r"[^a-zA-Z0-9_-]", "_", (req.project_name or "default_workspace").strip()) or "default_workspace"
+
+    reset_project_progress(clean_proj)
+
+    async def event_generator():
+        task = asyncio.create_task(asyncio.to_thread(send_chat_message, req))
+        last_seq = -1
+        last_heartbeat = time.monotonic()
+
+        try:
+            while not task.done():
+                prog = get_project_progress(clean_proj)
+                seq = int(prog.get("seq", 0))
+                if seq != last_seq:
+                    last_seq = seq
+                    last_heartbeat = time.monotonic()
+                    yield _format_sse("progress", prog)
+                elif time.monotonic() - last_heartbeat >= 2.0:
+                    last_heartbeat = time.monotonic()
+                    yield _format_sse("heartbeat", {"elapsed_sec": prog.get("elapsed_sec", 0.0), "phase": prog.get("phase", "idle")})
+                await asyncio.sleep(0.2)
+
+            # Flush any final progress frame recorded right before completion
+            final_prog = get_project_progress(clean_proj)
+            if int(final_prog.get("seq", 0)) != last_seq:
+                yield _format_sse("progress", final_prog)
+
+            result = await task
+            yield _format_sse("result", result)
+        except HTTPException as http_err:
+            yield _format_sse("error", {"detail": str(http_err.detail), "status_code": http_err.status_code})
+        except Exception as exc:
+            yield _format_sse("error", {"detail": str(exc)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/send")

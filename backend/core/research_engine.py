@@ -338,20 +338,20 @@ def _discover_sources_for_queries(
     """Agent 2 (Retrieval): Gathers local PDF/file paths, RAG context, and web search results."""
     step_logs: List[Dict[str, Any]] = []
 
-    # 1. Inspect any local PDF, DOCX, PPTX, or text document paths mentioned in the objective
+    # 1. Inspect any local PDF, DOCX, PPTX, image, or text document paths mentioned in the objective
     path_matches = re.findall(
-        r'(?:[A-Za-z]:[\\/][^\s"\'<>]+?\.(?:pdf|docx|pptx|md|txt|csv|json)|[^\s"\'<>]+?\.(?:pdf|docx|pptx))',
+        r'(?:[A-Za-z]:[\\/][^\s"\'<>]+?\.(?:pdf|docx|pptx|png|jpg|jpeg|webp|md|txt|csv|json)|[^\s"\'<>]+?\.(?:pdf|docx|pptx|png|jpg|jpeg|webp))',
         objective,
         re.IGNORECASE,
     )
     for raw_path in path_matches[:4]:
         clean_path = raw_path.strip(".,;:\"'()")
         ext = Path(clean_path).suffix.lower()
-        if ext in (".pdf", ".docx", ".pptx"):
+        if ext in (".pdf", ".docx", ".pptx", ".png", ".jpg", ".jpeg", ".webp"):
             res = read_document_file(project_name, clean_path, start_page=1, end_page=10)
             if res.get("status") == "success":
                 pages = res.get("pages") or []
-                label = "Slide" if ext == ".pptx" else "Page"
+                label = "Slide" if ext == ".pptx" else ("Image" if ext in (".png", ".jpg", ".jpeg", ".webp") else "Page")
                 joined = "\n\n".join(f"[{label} {p['page']}] {p['text']}" for p in pages if p.get("text"))
                 ledger.add_source(
                     title=Path(clean_path).name,

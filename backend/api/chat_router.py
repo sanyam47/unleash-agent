@@ -335,7 +335,7 @@ def _format_sse(event: str, payload: Dict[str, Any]) -> str:
 async def upload_chat_document(file: UploadFile = File(...)):
     """Saves an uploaded PDF, Word (.docx), PowerPoint (.pptx), or text document for agent/research analysis."""
     from pathlib import Path
-    allowed_exts = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json"}
+    allowed_exts = {".pdf", ".docx", ".pptx", ".txt", ".md", ".csv", ".json", ".png", ".jpg", ".jpeg", ".webp"}
     orig_name = Path(file.filename or "document.txt").name
     ext = Path(orig_name).suffix.lower()
     if ext not in allowed_exts:

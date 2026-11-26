@@ -415,13 +415,30 @@ def read_project_file(
         return {"status": "error", "error": f"Failed to read file '{file_path}': {str(e)}"}
 
 
+_EASYOCR_READER = None
+
+def _get_ocr_reader():
+    """Lazy-initializes and caches EasyOCR reader for scanned/image documents."""
+    global _EASYOCR_READER
+    if _EASYOCR_READER is None:
+        try:
+            import easyocr
+            import logging
+            logging.getLogger("easyocr").setLevel(logging.ERROR)
+            _EASYOCR_READER = easyocr.Reader(["en"], gpu=False, verbose=False)
+        except Exception:
+            _EASYOCR_READER = False
+    return _EASYOCR_READER if _EASYOCR_READER is not False else None
+
+
 def read_pdf_file(
     project_name: str,
     file_path: str,
     start_page: int = 1,
     end_page: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Extracts text page-by-page from a PDF document with 1-indexed page numbers for citations."""
+    """Extracts text page-by-page from a PDF document with 1-indexed page numbers for citations.
+    Includes automatic EasyOCR fallback for scanned/image pages with empty native text layers."""
     try:
         target = resolve_safe_project_path(project_name, file_path)
         if not target.exists() or not target.is_file():
@@ -439,7 +456,22 @@ def read_pdf_file(
                 e_page = min(total_pages, int(end_page)) if end_page is not None else min(total_pages, s_page + 14)
                 e_page = max(s_page, min(e_page, s_page + 14))
                 for pno in range(s_page, e_page + 1):
-                    txt = (doc[pno - 1].get_text("text") or "").strip()
+                    page_obj = doc[pno - 1]
+                    txt = (page_obj.get_text("text") or "").strip()
+
+                    # Scanned PDF Fallback: if native text layer is empty (< 25 chars), run EasyOCR on page pixmap
+                    if len(txt) < 25:
+                        reader = _get_ocr_reader()
+                        if reader:
+                            try:
+                                pix = page_obj.get_pixmap(dpi=150)
+                                ocr_lines = reader.readtext(pix.tobytes("png"), detail=0)
+                                ocr_joined = " ".join([l.strip() for l in ocr_lines if l.strip()])
+                                if ocr_joined:
+                                    txt = f"[OCR Extracted]: {ocr_joined}"
+                            except Exception:
+                                pass
+
                     pages_out.append({"page": pno, "text": txt[:8000]})
             finally:
                 doc.close()
@@ -472,7 +504,7 @@ def read_document_file(
     start_page: int = 1,
     end_page: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Reads PDF, DOCX, PPTX, or plain-text documents with page/slide/section metadata."""
+    """Reads PDF, DOCX, PPTX, image (OCR), or plain-text documents with page/slide/section metadata."""
     ext = Path(str(file_path)).suffix.lower()
     if ext == ".pdf":
         return read_pdf_file(project_name, file_path, start_page=start_page, end_page=end_page)
@@ -481,6 +513,25 @@ def read_document_file(
         target = resolve_safe_project_path(project_name, file_path)
         if not target.exists() or not target.is_file():
             return {"status": "error", "error": f"Document '{file_path}' does not exist."}
+
+        # Standalone Image OCR (PNG, JPG, JPEG, WEBP, BMP)
+        if ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+            reader = _get_ocr_reader()
+            if reader:
+                try:
+                    ocr_lines = reader.readtext(str(target), detail=0)
+                    ocr_joined = " ".join([l.strip() for l in ocr_lines if l.strip()])
+                    return {
+                        "status": "success",
+                        "file": str(target),
+                        "total_pages": 1,
+                        "start_page": 1,
+                        "end_page": 1,
+                        "pages": [{"page": 1, "text": f"[OCR Extracted]: {ocr_joined}"}],
+                    }
+                except Exception as e:
+                    return {"status": "error", "error": f"OCR failed for image '{file_path}': {str(e)}"}
+            return {"status": "error", "error": "OCR engine not available for image reading"}
 
         if ext == ".docx":
             import zipfile
@@ -827,74 +878,134 @@ def search_web_docs(query: str, project_name: Optional[str] = None) -> Dict[str,
     sanitized_q = re.sub(r'\b(?:sk|ghp|gho|rpa|AKIA)[a-zA-Z0-9_\-]{16,}\b', '[SECRET_REDACTED]', sanitized_q)
     sanitized_q = re.sub(r'(?:api_key|password|secret)[=:\s]+[^\s,;&]+', '[CREDENTIAL_REDACTED]', sanitized_q, flags=re.IGNORECASE)
 
-    # 3. Privacy-preserving DuckDuckGo HTML Query
+    # 3. Dual-Engine Web Search: SerpAPI Google Search (Priority 1) -> DuckDuckGo HTML (Fallback)
+    import json
+    import os
+    results = []
+    engine_used = "duckduckgo"
+
+    serp_key = None
     try:
-        url = "https://html.duckduckgo.com/html/"
-        data = urllib.parse.urlencode({"q": sanitized_q}).encode("utf-8")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5"
-        }
-        req = urllib.request.Request(url, data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            raw_html = resp.read().decode("utf-8", errors="ignore")
+        from backend.core.config import settings
+        serp_key = getattr(settings, "SERP_API_KEY", None)
+    except Exception:
+        pass
+    if not serp_key or serp_key == "FILL_ME_IN":
+        serp_key = os.getenv("SERP_API_KEY")
 
-        # Parse snippets and URLs
-        snippets = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', raw_html, re.DOTALL)
-        links = re.findall(r'<a class="result__url"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', raw_html, re.DOTALL)
-
-        results = []
-        for i in range(min(4, len(snippets))):
-            clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
-            clean_snippet = html_lib.unescape(clean_snippet)
-            link_url = links[i][0].strip() if i < len(links) else ""
-            if link_url.startswith("//"):
-                link_url = "https:" + link_url
-
-            # Prompt Injection Shield: Wrap external scraped data in untrusted boundary tags
-            try:
-                from backend.core.prompt_injection_guard import wrap_untrusted_content
-                guarded_snippet = wrap_untrusted_content(clean_snippet, source=link_url)
-            except Exception:
-                guarded_snippet = clean_snippet
-
-            results.append({
-                "title": f"Documentation Result {i+1}",
-                "snippet": guarded_snippet,
-                "url": link_url
+    if serp_key and serp_key != "FILL_ME_IN":
+        try:
+            params = urllib.parse.urlencode({
+                "q": sanitized_q,
+                "api_key": serp_key,
+                "engine": "google",
+                "num": 5
             })
+            serp_url = f"https://serpapi.com/search.json?{params}"
+            req = urllib.request.Request(
+                serp_url,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; UnleashAgent/1.0)"}
+            )
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                serp_data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+                organic = serp_data.get("organic_results", [])
+                for item in organic[:5]:
+                    title = item.get("title") or "Search Result"
+                    link_url = item.get("link") or ""
+                    clean_snippet = item.get("snippet") or ""
+                    if not clean_snippet and item.get("snippet_highlighted_words"):
+                        clean_snippet = " ".join(item.get("snippet_highlighted_words"))
+                    if not clean_snippet:
+                        clean_snippet = title
 
+                    try:
+                        from backend.core.prompt_injection_guard import wrap_untrusted_content
+                        guarded_snippet = wrap_untrusted_content(clean_snippet, source=link_url)
+                    except Exception:
+                        guarded_snippet = clean_snippet
+
+                    results.append({
+                        "title": title,
+                        "snippet": guarded_snippet,
+                        "url": link_url
+                    })
+            if results:
+                engine_used = "google_serpapi"
+        except Exception:
+            # SerpAPI quota reached or network error -> proceed to DuckDuckGo fallback
+            results = []
+
+    # Fallback to DuckDuckGo HTML Query if SerpAPI is not configured or returned no results
+    if not results:
+        try:
+            url = "https://html.duckduckgo.com/html/"
+            data = urllib.parse.urlencode({"q": sanitized_q}).encode("utf-8")
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5"
+            }
+            req = urllib.request.Request(url, data=data, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                raw_html = resp.read().decode("utf-8", errors="ignore")
+
+            # Parse snippets and URLs
+            snippets = re.findall(r'<a class="result__snippet[^>]*>(.*?)</a>', raw_html, re.DOTALL)
+            links = re.findall(r'<a class="result__url"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', raw_html, re.DOTALL)
+
+            for i in range(min(4, len(snippets))):
+                clean_snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
+                clean_snippet = html_lib.unescape(clean_snippet)
+                link_url = links[i][0].strip() if i < len(links) else ""
+                if link_url.startswith("//"):
+                    link_url = "https:" + link_url
+
+                try:
+                    from backend.core.prompt_injection_guard import wrap_untrusted_content
+                    guarded_snippet = wrap_untrusted_content(clean_snippet, source=link_url)
+                except Exception:
+                    guarded_snippet = clean_snippet
+
+                results.append({
+                    "title": f"Documentation Result {i+1}",
+                    "snippet": guarded_snippet,
+                    "url": link_url
+                })
+        except Exception:
+            pass
+
+    if results:
         return {
             "status": "success",
             "query": sanitized_q,
+            "engine": engine_used,
             "privacy_protected": True,
             "results_count": len(results),
             "results": results
         }
-    except Exception as e:
-        # Fallback to local RAG if offline or connection timeout
-        try:
-            from backend.core.cyber_rag import search_knowledge
-            local_res = search_knowledge(sanitized_q, top_k=2)
-            if local_res:
-                return {
-                    "status": "fallback_local",
-                    "query": sanitized_q,
-                    "offline": True,
-                    "results": [
-                        {"title": r.get("title", "Local Knowledge"), "snippet": r.get("content", "")[:250], "url": "local://vault"}
-                        for r in local_res
-                    ]
-                }
-        except Exception:
-            pass
 
-        return {
-            "status": "offline",
-            "query": sanitized_q,
-            "message": f"Web search offline or timed out ({str(e)}). Proceeding with local model knowledge."
-        }
+    # 4. Fallback to local RAG if external web is unreachable
+    try:
+        from backend.core.cyber_rag import search_knowledge
+        local_res = search_knowledge(sanitized_q, top_k=2)
+        if local_res:
+            return {
+                "status": "fallback_local",
+                "query": sanitized_q,
+                "offline": True,
+                "results": [
+                    {"title": r.get("title", "Local Knowledge"), "snippet": r.get("content", "")[:250], "url": "local://vault"}
+                    for r in local_res
+                ]
+            }
+    except Exception:
+        pass
+
+    return {
+        "status": "offline",
+        "query": sanitized_q,
+        "message": "Web search offline or timed out. Proceeding with local model knowledge."
+    }
 
 
 def run_terminal_command(project_name: str, command: str) -> Dict[str, Any]:

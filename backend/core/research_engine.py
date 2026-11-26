@@ -144,6 +144,7 @@ class EvidenceLedger:
         self.claims: List[ResearchClaim] = []
         self.contradictions: List[Dict[str, Any]] = []
         self._seen_locations: Set[str] = set()
+        self._seen_claims: Set[Tuple[str, str]] = set()
 
     def add_source(
         self,
@@ -189,6 +190,11 @@ class EvidenceLedger:
     ) -> Optional[ResearchClaim]:
         if source_id not in self.sources:
             return None
+        norm_claim = re.sub(r"\s+", " ", (claim or "").lower()).strip()
+        dedup_key = (source_id, norm_claim)
+        if not norm_claim or dedup_key in self._seen_claims:
+            return None
+        self._seen_claims.add(dedup_key)
         cid = f"C{len(self.claims) + 1}"
         rec = ResearchClaim(
             claim_id=cid,
@@ -210,6 +216,33 @@ class EvidenceLedger:
             "claims": [asdict(c) for c in self.claims],
             "contradictions": self.contradictions,
         }
+
+
+def _get_model_profile(model: str) -> Dict[str, Any]:
+    """Adapts research batch sizes & retry scaffolding between small local 7-14B models and large/cloud LLMs."""
+    m = (model or "").lower()
+    is_large = any(
+        tok in m
+        for tok in (
+            "gpt-", "o1", "o3", "o4", "gemini", "claude", "deepseek",
+            "32b", "34b", "70b", "72b", "405b", "mixtral", "sonnet", "opus", "pro",
+        )
+    )
+    if is_large:
+        return {
+            "tier": "large",
+            "max_queries": 4,
+            "max_sources_extract": 12,
+            "excerpt_chars": 2500,
+            "max_fetch_urls": 4,
+        }
+    return {
+        "tier": "small_local",
+        "max_queries": 3,
+        "max_sources_extract": 6,
+        "excerpt_chars": 1300,
+        "max_fetch_urls": 3,
+    }
 
 
 def _extract_json_block(text: str) -> Any:
@@ -359,6 +392,16 @@ def _discover_sources_for_queries(
     except Exception:
         pass
 
+    # Smart Doc-vs-Web Routing: if local document(s) were attached/loaded and the prompt doesn't ask for external web comparison, focus locally
+    has_local_docs = any(s.source_type in ("pdf", "docx", "pptx", "file") for s in ledger.sources.values())
+    wants_web = any(
+        kw in objective.lower()
+        for kw in ("web", "internet", "online", "search", "compare with", "official page", "official site", "news", "latest")
+    )
+    if has_local_docs and not wants_web:
+        step_logs.append({"step": step_num, "action": "smart_route", "mode": "document_focused", "status": "success"})
+        return step_logs
+
     # 3. Web search across planned queries (graceful fallback on failed searches)
     for q in queries[:4]:
         try:
@@ -403,14 +446,16 @@ def _extract_claims_from_sources(
     model: str,
     ledger: EvidenceLedger,
     context_window: int,
+    max_sources: int = 8,
+    excerpt_chars: int = 1500,
 ) -> Tuple[float, int]:
     """Agent 2 (Extraction): Extracts claim + verbatim quote + source_id records into the EvidenceLedger."""
     if not ledger.sources:
         return 0.0, 0
 
     sources_block = "\n\n".join(
-        f"[{s.source_id}] Title: {s.title}\nLocation: {s.location}\nExcerpt:\n{s.raw_text[:1500]}"
-        for s in list(ledger.sources.values())[:8]
+        f"[{s.source_id}] Title: {s.title}\nLocation: {s.location}\nExcerpt:\n{s.raw_text[:excerpt_chars]}"
+        for s in list(ledger.sources.values())[:max_sources]
     )
     subq_text = "\n".join(f"- {sq}" for sq in ledger.subquestions)
     prompt = (
@@ -624,6 +669,7 @@ def run_verified_research_pipeline(
 ) -> Dict[str, Any]:
     """Executes the full 4-agent Verified Research lifecycle with live SSE progress."""
     clean_proj = sanitize_project_name(project_name or f"research_{int(time.time())}")
+    profile = _get_model_profile(model)
     ledger = EvidenceLedger(objective=user_prompt, project_name=clean_proj)
     steps_trace: List[Dict[str, Any]] = []
     total_dur = 0.0
@@ -643,10 +689,11 @@ def run_verified_research_pipeline(
     # 1. ResearchPlannerAgent
     set_project_progress(clean_proj, phase="planning", headline="ResearchPlannerAgent: Decomposing objective...", detail=user_prompt[:120], step=1, tool="ResearchPlannerAgent")
     subqs, queries, dur1, tok1 = _run_research_planner(model, user_prompt, context_window)
+    queries = queries[: profile["max_queries"]]
     ledger.subquestions = subqs
     total_dur += dur1
     total_tokens += tok1
-    steps_trace.append({"step": 1, "agent": "ResearchPlannerAgent", "subquestions": subqs, "queries": queries, "status": "success"})
+    steps_trace.append({"step": 1, "agent": "ResearchPlannerAgent", "subquestions": subqs, "queries": queries, "model_tier": profile["tier"], "status": "success"})
 
     # 2. DiscoveryExtractorAgent
     set_project_plan(
@@ -660,7 +707,13 @@ def run_verified_research_pipeline(
     )
     set_project_progress(clean_proj, phase="executing", headline=f"DiscoveryExtractorAgent: Querying {len(queries)} source(s)...", detail=", ".join(queries)[:120], step=2, tool="DiscoveryExtractorAgent")
     disc_logs = _discover_sources_for_queries(clean_proj, user_prompt, queries, ledger, step_num=2)
-    dur2, tok2 = _extract_claims_from_sources(model, ledger, context_window)
+    dur2, tok2 = _extract_claims_from_sources(
+        model,
+        ledger,
+        context_window,
+        max_sources=profile["max_sources_extract"],
+        excerpt_chars=profile["excerpt_chars"],
+    )
     total_dur += dur2
     total_tokens += tok2
     steps_trace.extend(disc_logs)
@@ -680,13 +733,25 @@ def run_verified_research_pipeline(
     total_dur += dur3
     total_tokens += tok3
 
-    needs_retry = bool(followups) and (
+    verified_cnt = sum(1 for c in ledger.claims if c.status == "VERIFIED")
+    conflict_cnt = sum(1 for c in ledger.claims if c.status == "CONFLICTING")
+    doc_focused = any(s.get("action") == "smart_route" and s.get("mode") == "document_focused" for s in disc_logs)
+    skip_large_retry = (profile["tier"] == "large" and verified_cnt >= 2 and conflict_cnt == 0)
+    skip_doc_retry = (doc_focused and verified_cnt >= 1 and conflict_cnt == 0)
+
+    needs_retry = bool(followups) and not skip_large_retry and not skip_doc_retry and (
         any(c.status in ("UNVERIFIED", "CONFLICTING") for c in ledger.claims) or not ledger.claims
     )
     if needs_retry:
         set_project_progress(clean_proj, phase="self_repairing", headline="Iterative Re-Search: Resolving gaps/conflicts...", detail=", ".join(followups)[:120], step=4, tool="DiscoveryExtractorAgent")
         retry_logs = _discover_sources_for_queries(clean_proj, user_prompt, followups, ledger, step_num=4)
-        dur_r1, tok_r1 = _extract_claims_from_sources(model, ledger, context_window)
+        dur_r1, tok_r1 = _extract_claims_from_sources(
+            model,
+            ledger,
+            context_window,
+            max_sources=profile["max_sources_extract"],
+            excerpt_chars=profile["excerpt_chars"],
+        )
         _, dur_r2, tok_r2 = _verify_evidence_and_detect_conflicts(model, ledger, context_window)
         total_dur += dur_r1 + dur_r2
         total_tokens += tok_r1 + tok_r2

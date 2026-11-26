@@ -4628,7 +4628,8 @@ window.sendChatArenaMessage = async function() {
             gateway_grounding: data.gateway_grounding,
             swarm_mode: data.swarm_mode,
             mode_label: data.mode_label,
-            health: data.health
+            health: data.health,
+            research_ledger: data.research_ledger || null
         } : null;
 
         const assistantMsg = {
@@ -5168,6 +5169,51 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             `;
             bubble.appendChild(projCard);
         }
+    }
+
+    // 2b. Collapsible Evidence Ledger & Confidence Card (Verified Research Mode)
+    if (!isUser && agenticData && agenticData.research_ledger) {
+        const rl = agenticData.research_ledger;
+        const claims = Array.isArray(rl.claims) ? rl.claims : [];
+        const sources = Array.isArray(rl.sources) ? rl.sources : [];
+        const srcMap = {};
+        sources.forEach(s => { srcMap[s.source_id] = s; });
+
+        const verifiedCount = claims.filter(c => c.status === 'VERIFIED').length;
+        const detailsEl = document.createElement('details');
+        detailsEl.className = 'studio-workspace-card';
+        detailsEl.style.marginTop = '8px';
+
+        const claimsHtml = claims.length === 0
+            ? `<div style="font-size:0.75rem;color:var(--text-muted);padding:4px 0;">No structured claims recorded (${sources.length} source(s) inspected).</div>`
+            : claims.map(c => {
+                const st = (c.status || 'UNVERIFIED').toUpperCase();
+                const badgeColor = st === 'VERIFIED' ? '#10b981' : (st === 'CONFLICTING' ? '#ef4444' : 'var(--text-secondary)');
+                const src = srcMap[c.source_id] || {};
+                const loc = src.location || c.source_id;
+                const metaParts = [c.source_id, src.reliability_tier || '', src.source_date ? `${src.source_date} (${src.freshness_status || ''})` : ''].filter(Boolean).join(' · ');
+                return `
+                    <div style="padding:7px 9px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);display:flex;flex-direction:column;gap:4px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                            <span style="font-size:0.74rem;font-weight:600;color:var(--text-primary);">${escapeHtml(c.claim || '')}</span>
+                            <span style="flex-shrink:0;font-size:0.67rem;font-family:var(--font-mono);color:${badgeColor};border:1px solid var(--border-subtle);padding:1px 6px;border-radius:4px;">${st} · ${Number(c.confidence_score || 0)}%</span>
+                        </div>
+                        ${c.quote ? `<div style="font-size:0.7rem;color:var(--text-muted);font-style:italic;">"${escapeHtml(c.quote)}"</div>` : ''}
+                        <div style="font-size:0.67rem;font-family:var(--font-mono);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(loc)}">${escapeHtml(metaParts)} — ${escapeHtml(loc)}</div>
+                    </div>
+                `;
+            }).join('');
+
+        detailsEl.innerHTML = `
+            <summary style="cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;font-weight:600;color:var(--text-primary);">
+                <span>Evidence Ledger · ${verifiedCount}/${claims.length} verified · ${sources.length} source(s)</span>
+                <span style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);">Inspect ▾</span>
+            </summary>
+            <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-subtle);">
+                ${claimsHtml}
+            </div>
+        `;
+        bubble.appendChild(detailsEl);
     }
 
     // 3. Render Antigravity ReAct Steps Trace as sleek, collapsed developer accordion at bottom
@@ -8189,7 +8235,8 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
             gateway_grounding: data.gateway_grounding,
             swarm_mode: data.swarm_mode,
             mode_label: data.mode_label,
-            health: data.health
+            health: data.health,
+            research_ledger: data.research_ledger || null
         } : null;
 
         const assistantMsg = {

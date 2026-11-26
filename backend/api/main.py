@@ -74,7 +74,7 @@ def startup_event():
     threading.Thread(target=ensure_ollama_daemon, daemon=True).start()
 
     from backend.core.task_daemon import start_proactive_watchdog_loop
-    start_proactive_watchdog_loop(interval_sec=20)
+    start_proactive_watchdog_loop(interval_sec=120)
 
     try:
         from backend.core.memory_pilot import prewarm_local_embedder
@@ -85,7 +85,7 @@ def startup_event():
     try:
         from backend.core.voice_pilot import load_voice_config
         v_cfg = load_voice_config()
-        if v_cfg.get("wake_word_enabled", True):
+        if v_cfg.get("wake_word_enabled", False):
             from backend.core.wake_word_listener import start_native_wake_word_daemon
             start_native_wake_word_daemon(in_background=True)
     except Exception as e:

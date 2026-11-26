@@ -4097,6 +4097,7 @@ const _neuralGraph = {
     draggingNode: null,
     dragMoved: false,
     rafId: null,
+    sleepTimerId: null,
     simSteps: 0,
     pulsePhase: 0,
     listenersBound: false,
@@ -4453,16 +4454,34 @@ function _renderNeuralFrame() {
     });
 
     ctx.restore();
-    _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
+    if (_neuralGraph.simSteps > 0 || _neuralGraph.draggingNode || _neuralGraph.hoveredNodeId) {
+        _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
+    } else {
+        _neuralGraph.rafId = null;
+        if (_neuralGraph.sleepTimerId === null) {
+            _neuralGraph.sleepTimerId = setTimeout(() => {
+                _neuralGraph.sleepTimerId = null;
+                _startNeuralAnimationLoop();
+            }, 140);
+        }
+    }
 }
 
 function _startNeuralAnimationLoop() {
+    if (_neuralGraph.sleepTimerId !== null) {
+        clearTimeout(_neuralGraph.sleepTimerId);
+        _neuralGraph.sleepTimerId = null;
+    }
     if (_neuralGraph.rafId === null) {
         _neuralGraph.rafId = requestAnimationFrame(_renderNeuralFrame);
     }
 }
 
 function _stopNeuralAnimationLoop() {
+    if (_neuralGraph.sleepTimerId !== null) {
+        clearTimeout(_neuralGraph.sleepTimerId);
+        _neuralGraph.sleepTimerId = null;
+    }
     if (_neuralGraph.rafId !== null) {
         cancelAnimationFrame(_neuralGraph.rafId);
         _neuralGraph.rafId = null;

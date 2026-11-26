@@ -17,43 +17,52 @@ from typing import Dict, Any, List, Optional
 
 def get_interactive_session_processes(top_n: int = 10) -> List[Dict[str, Any]]:
     """
-    Retrieves active user applications running inside the interactive desktop session.
-    """
-    ps_script = f"""
-    $sid = (Get-Process -Id $PID).SessionId
-    Get-Process | Where-Object {{ $_.SessionId -eq $sid }} | 
-    Select-Object -Property Id, ProcessName, CPU, WorkingSet64 | 
-    Sort-Object -Property WorkingSet64 -Descending | 
-    Select-Object -First {top_n} | 
-    ConvertTo-Json -Compress
+    Retrieves top active user applications using workstation_sensors' zero-bloat native Win32/cached reader (<5ms).
     """
     try:
-        res = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", ps_script],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-        )
-        if res.returncode == 0 and res.stdout.strip():
-            raw = json.loads(res.stdout)
-            if isinstance(raw, dict):
-                raw = [raw]
-            
-            results = []
-            for item in raw:
-                ram_mb = round(item.get("WorkingSet64", 0) / (1024 * 1024), 1)
-                cpu_sec = round(item.get("CPU", 0) or 0.0, 1)
-                results.append({
-                    "pid": item.get("Id"),
-                    "name": item.get("ProcessName"),
-                    "ram_mb": ram_mb,
-                    "cpu_sec": cpu_sec
-                })
+        from backend.core.workstation_sensors import get_live_top_processes
+        raw = get_live_top_processes(top_n=top_n) or []
+        results: List[Dict[str, Any]] = []
+        for item in raw:
+            pname = str(item.get("name") or "")
+            if not pname:
+                continue
+            results.append({
+                "pid": item.get("pid"),
+                "name": pname[:-4] if pname.lower().endswith(".exe") else pname,
+                "ram_mb": item.get("memory_mb", 0.0),
+                "cpu_sec": 0.0,
+            })
+        if results:
             return results
     except Exception:
         pass
-    return []
+
+    try:
+        import psutil
+        procs: List[Dict[str, Any]] = []
+        for proc in psutil.process_iter(["pid", "name", "memory_info"]):
+            try:
+                info = proc.info
+                pname = info.get("name") or ""
+                if not pname:
+                    continue
+                mem_info = info.get("memory_info")
+                rss = getattr(mem_info, "rss", 0) if mem_info else 0
+                if rss <= 0:
+                    continue
+                procs.append({
+                    "pid": info.get("pid"),
+                    "name": pname[:-4] if pname.lower().endswith(".exe") else pname,
+                    "ram_mb": round(rss / (1024 * 1024), 1),
+                    "cpu_sec": 0.0,
+                })
+            except Exception:
+                continue
+        procs.sort(key=lambda x: x["ram_mb"], reverse=True)
+        return procs[:top_n]
+    except Exception:
+        return []
 
 
 def get_ambient_desktop_context() -> Dict[str, Any]:

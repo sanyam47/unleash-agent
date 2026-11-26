@@ -298,7 +298,7 @@ _WATCHDOG_STARTED = False
 _WATCHDOG_LOCK = threading.RLock()
 _WATCHDOG_CONFIG = {
     "enabled": True,
-    "interval_sec": 20,
+    "interval_sec": 120,
     "ram_threshold_pct": 90,
     "gpu_temp_threshold_c": 82,
     "battery_threshold_pct": 15,
@@ -540,8 +540,8 @@ def proactive_watchdog_tick() -> Dict[str, Any]:
         except Exception:
             pass
 
-        # 6. Periodic Cognitive Memory Sleep-Cycle Consolidation (every ~30 ticks / ~10 mins)
-        if _WATCHDOG_TICK_COUNT % 30 == 0:
+        # 6. Periodic Cognitive Memory Sleep-Cycle Consolidation (every ~10 ticks / ~20 mins)
+        if _WATCHDOG_TICK_COUNT % 10 == 0:
             try:
                 from backend.core.memory_pilot import run_sleep_cycle_consolidation
                 threading.Thread(target=run_sleep_cycle_consolidation, daemon=True, name="MemorySleepConsolidation").start()
@@ -575,7 +575,7 @@ def _seed_completed_tasks_on_startup():
 _seed_completed_tasks_on_startup()
 
 
-def start_proactive_watchdog_loop(interval_sec: int = 20):
+def start_proactive_watchdog_loop(interval_sec: int = 120):
     """Spawns the continuous background observer loop."""
     global _WATCHDOG_STARTED
     with _WATCHDOG_LOCK:

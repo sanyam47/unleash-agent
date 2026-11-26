@@ -116,7 +116,7 @@ DEFAULT_CONFIG = {
     "default_internet_voice": "en-US-GuyNeural",
     "default_fallback_voice": "default",
     "auto_speak_replies": True,
-    "wake_word_enabled": True,
+    "wake_word_enabled": False,
     "wake_words": ["assistant", "hey assistant"],
     "wake_sound": True,
     "auto_submit_speech": True

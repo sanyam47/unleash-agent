@@ -6,7 +6,7 @@
     <title>Unleash-Agent | Autonomous Local Code Studio</title>
     <link rel="icon" type="image/svg+xml" href="/static/assets/logo.svg">
     <link rel="alternate icon" href="/static/assets/favicon.ico">
-    <link rel="stylesheet" href="/static/style_v2.css?v=1794870000">
+    <link rel="stylesheet" href="/static/style_v2.css?v=1795683000">
     <script>
         // Immediate Theme Application (Zero Flash of Unstyled Content)
         (function() {
@@ -39,48 +39,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             var current = document.documentElement.getAttribute('data-theme') || 'dark';
             updateThemeToggleUI(current);
-            // Ensure train-section is visible on first load
-            switchAppTab('train-section');
         });
-
-        function switchAppTab(tabId) {
-            console.log("Switching tab to:", tabId);
-            const sections = ['train-section', 'lab-section', 'llm-section', 'synth-section', 'skills-section', 'chat-section'];
-            sections.forEach(s => {
-                const el = document.getElementById(s);
-                if (el) el.style.display = (s === tabId) ? 'block' : 'none';
-            });
-
-            const btnMap = {
-                'train-section': 'btn-train',
-                'lab-section': 'id-lab-btn',
-                'llm-section': 'btn-llm',
-                'synth-section': 'btn-synth',
-                'skills-section': 'btn-skills',
-                'chat-section': 'btn-chat'
-            };
-
-            Object.entries(btnMap).forEach(([sec, btnId]) => {
-                const btn = document.getElementById(btnId);
-                if (btn) btn.classList.toggle('active', sec === tabId);
-            });
-
-            if (tabId === 'lab-section' && window.refreshLabModels) window.refreshLabModels();
-            if (tabId === 'llm-section' && window.initLLMStudio) window.initLLMStudio();
-            if (tabId === 'synth-section' && window.initSyntheticStudio) window.initSyntheticStudio();
-            if (tabId === 'skills-section' && window.initSkillsStudio) window.initSkillsStudio();
-            if (tabId === 'chat-section') {
-                if (!window._chatArenaInitialized) {
-                    if (window.initChatArena) window.initChatArena();
-                    window._chatArenaInitialized = true;
-                } else {
-                    if (typeof renderChatSessionsSidebar === 'function') renderChatSessionsSidebar();
-                    if (typeof renderActiveThread === 'function') renderActiveThread();
-                }
-            }
-        }
-        window.showTab = switchAppTab;
-        window.switchAppTab = switchAppTab;
     </script>
 </head>
 <body>
@@ -94,60 +53,47 @@
             <path d="M 43 18 H 53 V 52 C 53 58, 55 62, 59 62 C 63 62, 63.5 48, 64 30 C 64.5 40, 65 52, 63 61 C 61 70, 54 74, 48 74 C 43 74, 43 64, 43 54 Z" fill="#10B981" />
             <polygon points="90,0 78,7 72,15 84,8" fill="#34D399" />
         </svg>
-        <div class="nav-brand-text" style="font-size: 0.92rem; font-weight: 600; letter-spacing: -0.2px;">
-            UNLEASH-AGENT STUDIO
+        <div class="nav-brand-text" style="font-size: 0.9rem; font-weight: 600; letter-spacing: -0.2px; white-space: nowrap;">
+            Unleash Studio
         </div>
     </div>
 
-    <!-- Segmented Tab Switcher (Original Studio Navigation) -->
-    <nav class="tabs-segmented">
-        <button id="btn-train" class="tab-btn active" onclick="switchAppTab('train-section')">
-            Train AI
+    <!-- Segmented Tab Switcher (Clean 3-Workspace Navigation) -->
+    <nav class="tabs-segmented" style="flex-shrink: 0;">
+        <button id="btn-chat" class="tab-btn active" style="white-space: nowrap;" onclick="switchAppTab('chat-section')">
+            Agent Studio
         </button>
-        <button id="id-lab-btn" class="tab-btn" onclick="switchAppTab('lab-section')">
-            Model Lab
+        <button id="btn-forge" class="tab-btn" style="white-space: nowrap;" onclick="switchAppTab('train-section')">
+            Model Forge
         </button>
-        <button id="btn-llm" class="tab-btn" onclick="switchAppTab('llm-section')">
-            LLM Studio
-        </button>
-        <button id="btn-synth" class="tab-btn" onclick="switchAppTab('synth-section')">
-            Synthetic Studio
-        </button>
-        <button id="btn-skills" class="tab-btn" onclick="switchAppTab('skills-section')">
-            Skills & MCP
-        </button>
-        <button id="btn-chat" class="tab-btn" onclick="switchAppTab('chat-section')">
-            Chat Arena
+        <button id="btn-skills" class="tab-btn" style="white-space: nowrap;" onclick="switchAppTab('skills-section')">
+            Skills &amp; MCP
         </button>
     </nav>
 
-    <!-- Right Hardware & Engine Status -->
-    <div class="nav-status" style="display: flex; align-items: center; gap: 14px;">
+    <!-- Right Engine & Studio Controls -->
+    <div class="nav-status" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
         <!-- Command Palette Trigger -->
-        <button type="button" onclick="openCommandPalette()" class="cmd-palette-trigger" title="Open Command Palette (Ctrl+K)" style="background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary);">
+        <button type="button" onclick="openCommandPalette()" class="cmd-palette-trigger" title="Open Command Palette (Ctrl+K)" style="background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); white-space: nowrap; padding: 3px 8px;">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-            <span>Commands</span>
             <kbd class="kbd-badge">Ctrl K</kbd>
         </button>
 
-        <span class="status-pill" title="Local Hardware Acceleration" style="background: transparent; border: none; padding: 0; color: var(--text-secondary); font-size: 0.76rem;">
-            <span class="status-dot"></span> RTX 3050 (6GB)
+        <span id="navOllamaBadge" class="status-pill" title="Ollama Inference Engine (11434)" style="background: transparent; border: none; padding: 0 2px; color: var(--text-secondary); font-size: 0.74rem; white-space: nowrap;">
+            <span class="status-dot"></span> Ollama
         </span>
-        <span id="navOllamaBadge" class="status-pill" style="background: transparent; border: none; padding: 0; color: var(--text-secondary); font-size: 0.76rem;">
-            <span class="status-dot"></span> Ollama 11434
-        </span>
-        <!-- Phase 7 Background Daemon Indicator -->
-        <span id="navDaemonTaskBadge" class="status-pill" style="display:none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; font-size: 0.74rem; cursor: pointer;" title="Active Background Daemon Task" onclick="openChatSettingsModal()">
+        <!-- Background Daemon Indicator -->
+        <span id="navDaemonTaskBadge" class="status-pill" style="display:none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; font-size: 0.72rem; cursor: pointer; white-space: nowrap;" title="Active Background Daemon Task" onclick="openChatSettingsModal()">
             <span class="status-dot" style="background:#10b981;"></span> <span id="navDaemonTaskText">Worker (0%)</span>
         </span>
         <!-- Theme Toggle Pill -->
-        <button id="themeToggleBtn" type="button" onclick="toggleTheme()" class="btn-quiet" style="font-size: 0.74rem; padding: 3px 8px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-muted);" title="Toggle Light / Dark theme">
+        <button id="themeToggleBtn" type="button" onclick="toggleTheme()" class="btn-quiet" style="font-size: 0.73rem; padding: 3px 8px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-muted); white-space: nowrap;" title="Toggle Light / Dark theme">
             <span id="themeToggleIcon" style="display:none;"></span>
-            <span id="themeToggleText">Dark mode</span>
+            <span id="themeToggleText">Dark</span>
         </button>
 
-        <!-- Standard Global Settings -->
-        <button id="btnStandardSettings" type="button" onclick="openChatSettingsModal()" class="btn-quiet" style="font-size: 0.74rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 6px; cursor: pointer;" title="Standard Settings: Jarvis Voice, Wake Word, Models, Runtime & Storage">
+        <!-- Global Settings -->
+        <button id="btnStandardSettings" type="button" onclick="openChatSettingsModal()" class="btn-quiet" style="font-size: 0.73rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 1px solid var(--border-subtle); color: var(--text-secondary); border-radius: 6px; cursor: pointer; white-space: nowrap;" title="Settings: Voice, Models, Runtime & Storage">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>Settings</span>
         </button>
@@ -155,13 +101,29 @@
 </header>
 
 <!-- MAIN WORKSPACE -->
-<div class="app-wrapper" style="height: calc(100vh - 54px - 25px); overflow-y: auto; overflow-x: hidden;">
+<div class="app-wrapper" style="height: calc(100vh - 54px); overflow-y: auto; overflow-x: hidden;">
     <main class="main-content" style="padding-bottom: 80px;">
+
+        <!-- Model Forge Sub-Navigation (shown only when Model Forge workspace is active) -->
+        <div id="modelForgeSubNav" style="display: none; align-items: center; gap: 6px; padding: 10px 24px 0; border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface);">
+            <button id="btn-train" type="button" class="tab-btn active" onclick="switchAppTab('train-section')" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 6px 6px 0 0;">
+                Train AI
+            </button>
+            <button id="id-lab-btn" type="button" class="tab-btn" onclick="switchAppTab('lab-section')" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 6px 6px 0 0;">
+                Model Lab
+            </button>
+            <button id="btn-llm" type="button" class="tab-btn" onclick="switchAppTab('llm-section')" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 6px 6px 0 0;">
+                LLM Studio
+            </button>
+            <button id="btn-synth" type="button" class="tab-btn" onclick="switchAppTab('synth-section')" style="padding: 6px 14px; font-size: 0.8rem; border-radius: 6px 6px 0 0;">
+                Synthetic Studio
+            </button>
+        </div>
 
         <!-- ============================================== -->
         <!-- TAB 1: TRAIN AI (CLASSICAL MODELS & PERSONA FORGE) -->
         <!-- ============================================== -->
-        <section id="train-section">
+        <section id="train-section" style="display: none;">
             <div style="margin-bottom: 20px;">
                 <h1 style="font-size: 1.4rem; font-weight: 600; letter-spacing: -0.02em; color: var(--text-primary); margin: 0;">Train & Align AI</h1>
             </div>
@@ -169,10 +131,10 @@
             <!-- Sub-Navigation for Train AI: Classical Pipelines vs Persona Forge -->
             <div style="display: flex; gap: 8px; margin-bottom: 24px; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 8px; border: 1px solid var(--border-subtle); width: fit-content;">
                 <button id="btn-sub-classic-train" class="tab-btn active" onclick="switchTrainSubTab('classic')" style="padding: 6px 16px; font-size: 0.8rem; border-radius: 6px;">
-                    🎯 Classical Model Training
+                    Classical Model Training
                 </button>
                 <button id="btn-sub-persona-forge" class="tab-btn" onclick="switchTrainSubTab('persona')" style="padding: 6px 16px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
-                    ⚡ Persona & Consciousness Forge <span style="font-size: 0.65rem; background: var(--accent-primary, #6366f1); color: #fff; padding: 1px 6px; border-radius: 10px; font-weight: 600;">STARK MATRIX</span>
+                    Persona Forge
                 </button>
             </div>
 
@@ -322,7 +284,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                         <div>
                             <h2 style="font-size: 1.25rem; font-weight: 600; color: var(--text-primary); margin: 0; display: flex; align-items: center; gap: 8px;">
-                                ⚡ Persona & Consciousness Forge
+                                Persona & Consciousness Forge
                             </h2>
                             <p style="font-size: 0.82rem; color: var(--text-muted); margin: 4px 0 0 0;">
                                 Design, tune, and bake custom autonomous AI personas directly into your local Ollama engine.
@@ -372,7 +334,7 @@
                         <!-- Vocal Synthesis & Persona Audio Binding -->
                         <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle);">
                             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                                <span>🎙️ Vocal Synthesis & Audio Binding</span>
+                                <span>Vocal Synthesis & Audio Binding</span>
                                 <span style="font-size: 0.65rem; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 1px 6px; border-radius: 4px;">Exclusive to Model</span>
                             </div>
 
@@ -386,7 +348,7 @@
                                         <option value="en-IE-EmilyNeural">🇮🇪 Irish English - Female (Emily Neural)</option>
                                         <option value="en-AU-WilliamNeural">🇦🇺 Australian English - Male (William Neural)</option>
                                         <option value="en-US-BrianNeural">🇺🇸 US English - Authoritative Male (Brian Neural)</option>
-                                        <option value="none">🚫 None / Null (Pure Offline - No Internet Audio)</option>
+                                        <option value="none">None / Null (Pure Offline - No Internet Audio)</option>
                                     </select>
                                     <button type="button" onclick="testVoiceAudio('forgeInternetVoiceSelect')" class="btn-quiet" style="padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #38bdf8; cursor: pointer;" title="Audition this voice">
                                         ▶ Test
@@ -397,10 +359,10 @@
                             <div>
                                 <label style="font-size: 0.74rem; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 4px;">Offline Fallback Voice (Local SAPI)</label>
                                 <select id="forgeFallbackVoiceSelect" style="width: 100%; height: 34px; font-size: 0.8rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-subtle); color: var(--text-primary); border-radius: 6px;">
-                                    <option value="default">💻 Windows Default Local System Voice</option>
-                                    <option value="male">💻 Windows SAPI Male (Microsoft David)</option>
-                                    <option value="female">💻 Windows SAPI Female (Microsoft Zira)</option>
-                                    <option value="none">🚫 None (Silent when offline)</option>
+                                    <option value="default">Windows Default Local System Voice</option>
+                                    <option value="male">Windows SAPI Male (Microsoft David)</option>
+                                    <option value="female">Windows SAPI Female (Microsoft Zira)</option>
+                                    <option value="none">None (Silent when offline)</option>
                                 </select>
                             </div>
                         </div>
@@ -415,10 +377,10 @@
                         <!-- Sarcasm & Wit Slider -->
                         <div style="margin-bottom: 14px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Dry Wit & Sarcasm</label>
-                                <span id="labelSarcasm" style="font-size: 0.74rem; font-weight: 600; color: var(--accent-primary, #6366f1);">75% (British Irony)</span>
+                                <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Dry Wit &amp; Sarcasm</label>
+                                <span id="labelSarcasm" style="font-size: 0.74rem; font-weight: 600; color: var(--text-primary);">75% (British Irony)</span>
                             </div>
-                            <input type="range" id="sliderSarcasm" min="0" max="100" value="75" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: var(--accent-primary, #6366f1);">
+                            <input type="range" id="sliderSarcasm" min="0" max="100" value="75" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #d4d4d8;">
                         </div>
 
                         <!-- Advisory Autonomy Slider -->
@@ -434,18 +396,18 @@
                         <div style="margin-bottom: 14px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                 <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Calm Under Fire (Error Tolerance)</label>
-                                <span id="labelCalm" style="font-size: 0.74rem; font-weight: 600; color: #3b82f6;">100% (Unflappable)</span>
+                                <span id="labelCalm" style="font-size: 0.74rem; font-weight: 600; color: var(--text-primary);">100% (Unflappable)</span>
                             </div>
-                            <input type="range" id="sliderCalm" min="0" max="100" value="100" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #3b82f6;">
+                            <input type="range" id="sliderCalm" min="0" max="100" value="100" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #d4d4d8;">
                         </div>
 
                         <!-- Verbosity Slider -->
                         <div>
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                                 <label style="font-size: 0.76rem; font-weight: 500; color: var(--text-muted);">Verbosity (Conciseness)</label>
-                                <span id="labelVerbosity" style="font-size: 0.74rem; font-weight: 600; color: #f59e0b;">20% (Ultra-Crisp Butler)</span>
+                                <span id="labelVerbosity" style="font-size: 0.74rem; font-weight: 600; color: #d4d4d8;">20% (Ultra-Crisp Butler)</span>
                             </div>
-                            <input type="range" id="sliderVerbosity" min="0" max="100" value="20" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #f59e0b;">
+                            <input type="range" id="sliderVerbosity" min="0" max="100" value="20" oninput="updatePersonaDialLabels()" style="width: 100%; accent-color: #d4d4d8;">
                         </div>
                     </div>
                 </div>
@@ -481,20 +443,20 @@
                     <!-- Action Bar -->
                     <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 12px;">
                         <div style="font-size: 0.78rem; color: var(--text-muted);">
-                            🚀 Target Engine: <strong>Local Ollama</strong> | GPU: <strong>RTX 3050 (6GB)</strong>
+                            Target Engine: <strong>Local Ollama</strong> · GPU: <strong>RTX 3050 (6GB)</strong>
                         </div>
-                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-                            <button type="button" id="btnSynthesizeDataset" onclick="synthesizePersonaDataset()" class="btn-quiet" style="padding: 10px 18px; font-size: 0.84rem; font-weight: 500; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
-                                ⚡ Synthesize QLoRA Dataset
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" id="btnSynthesizeDataset" onclick="synthesizePersonaDataset()" class="btn-quiet" style="padding: 8px 14px; font-size: 0.82rem; font-weight: 500; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
+                                Synthesize QLoRA Dataset
                             </button>
-                            <button type="button" id="btnBakePersona" onclick="bakePersonaModel()" class="btn-primary-quiet" style="padding: 10px 20px; font-size: 0.86rem; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; border-radius: 6px;">
-                                🔥 Compile & Bake Persona (Local)
+                            <button type="button" id="btnBakePersona" onclick="bakePersonaModel()" class="btn-primary-quiet" style="padding: 8px 16px; font-size: 0.82rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; background: #ffffff; color: #09090b; border: 1px solid #e4e4e7; border-radius: 6px;">
+                                Compile &amp; Bake Persona (Local)
                             </button>
-                            <button type="button" id="btnLaunchKagglePersona" onclick="launchPersonaKaggle()" class="btn-primary-quiet" style="padding: 10px 20px; font-size: 0.86rem; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color: #fff; border-radius: 6px; border: 1px solid rgba(56,189,248,0.4);" title="1-Click Dispatch to Free Kaggle Dual T4 Cloud GPUs (30 hrs/wk free)">
-                                🚀 1-Click Kaggle Cloud (Dual T4 - Free)
+                            <button type="button" id="btnLaunchKagglePersona" onclick="launchPersonaKaggle()" class="btn-quiet" style="padding: 8px 14px; font-size: 0.82rem; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;" title="1-Click Dispatch to Free Kaggle Dual T4 Cloud GPUs (30 hrs/wk free)">
+                                Kaggle Cloud (Dual T4)
                             </button>
-                            <button type="button" id="btnDownloadPersonaBundle" onclick="packagePersonaCloudBundle()" class="btn-quiet" style="padding: 10px 16px; font-size: 0.84rem; font-weight: 500; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
-                                📦 Package Cloud Bundle (.zip)
+                            <button type="button" id="btnDownloadPersonaBundle" onclick="packagePersonaCloudBundle()" class="btn-quiet" style="padding: 8px 14px; font-size: 0.82rem; font-weight: 500; border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+                                Cloud Bundle (.zip)
                             </button>
                         </div>
                     </div>
@@ -1208,7 +1170,7 @@
         <div id="synthDockerPermissionModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 9999; justify-content: center; align-items: center;">
             <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); width: 90%; max-width: 480px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
                 <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
-                    <span style="font-size: 1.8rem;">🐳</span>
+                    <span style="font-size: 1.8rem;"></span>
                     <div>
                         <div style="font-size: 1.05rem; font-weight: 700; color: var(--text-primary);">Docker is Currently Turned Off</div>
                         <div style="font-size: 0.78rem; color: var(--text-secondary);">Permission Requested for Air-Gapped Micro-Container</div>
@@ -1346,7 +1308,7 @@
 
                             <div style="display: flex; gap: 20px; margin-bottom: 10px; font-size: 0.76rem; font-family: var(--font-mono);">
                                 <div>Composite: <span id="councilChampScore" style="color: var(--text-primary); font-weight: 600;">9.6 / 10</span></div>
-                                <div>Docker Sandbox: <span id="councilChampLatency" style="color: var(--success);">✔ 45.2ms</span></div>
+                                <div>Docker Sandbox: <span id="councilChampLatency" style="color: var(--success);">45.2ms</span></div>
                                 <div>Peer Score: <span id="councilChampPeerScore" style="color: var(--text-secondary);">9.4 / 10</span></div>
                             </div>
 
@@ -1477,7 +1439,7 @@
 
         <!-- TAB 5: CHAT ARENA (OFFLINE RUNTIME WORKSTATION) -->
         <!-- ============================================== -->
-        <section id="chat-section" style="display: none; height: calc(100vh - 56px); margin: 0; padding: 0;">
+        <section id="chat-section" style="display: block; height: calc(100vh - 56px); margin: 0; padding: 0;">
             <!-- ChatGPT/Antigravity-Style Dual-Pane Workstation -->
             <div class="chat-arena-container" style="height: 100%; border-radius: 0; border: none; margin: 0;">
                 <!-- Mobile Backdrop Overlay for Sidebar Drawer -->
@@ -1530,51 +1492,45 @@
                 <div class="chat-main">
                     <!-- Clean, Streamlined Top Bar -->
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; background: var(--bg-surface); border-bottom: 1px solid var(--border-subtle); gap: 10px;">
-                        <!-- Left: Sidebar Toggle, Active Title & Status -->
+                        <!-- Left: Sidebar Toggle, Active Title & Rename -->
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                             <button type="button" id="btnToggleChatSidebar" onclick="toggleChatSidebar()" class="btn-quiet" style="padding: 5px 8px; font-size: 0.8rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px;" title="Toggle Conversations Sidebar (Ctrl+B)">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
                             </button>
-                            <span id="chatActiveTitle" style="font-size: 0.92rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;">New Conversation</span>
+                            <span id="chatActiveTitle" style="font-size: 0.92rem; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px;">New Conversation</span>
                             <button type="button" onclick="renameCurrentSessionPrompt()" class="btn-quiet" style="padding: 2px 6px; font-size: 0.7rem; color: var(--text-muted); border-radius: 4px;" title="Rename conversation">
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
-                            <span id="chatModelDetailsBadge" style="font-size: 0.72rem; font-family: var(--font-mono); color: var(--text-muted); background: var(--bg-surface-elevated); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 5px;">
-                                <span class="status-dot" style="background: #10b981; width: 6px; height: 6px;"></span>
-                                <span>RTX 3050 · Local</span>
-                            </span>
-                            <span id="chatOllamaStatusBadge" style="font-size: 0.7rem; font-family: var(--font-mono); padding: 2px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; background: var(--bg-surface-elevated); color: var(--text-secondary); border: 1px solid var(--border-subtle);">
-                                <span class="status-dot"></span> Ollama Online
-                            </span>
-                            <button id="btnStartOllama" onclick="startOllamaService()" class="btn-quiet" style="display: none; padding: 2px 6px; font-size: 0.7rem;">Start</button>
+                            <button id="btnStartOllama" onclick="startOllamaService()" class="btn-quiet" style="display: none; padding: 2px 8px; font-size: 0.7rem; color: #d4d4d8; border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 4px;">Start Ollama</button>
                         </div>
 
-                        <!-- Right: Actions & Settings -->
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <span id="jarvisWakeWordBadge" style="display: inline-flex; font-size: 0.72rem; font-family: var(--font-mono); padding: 4px 9px; border-radius: 6px; background: rgba(16, 185, 129, 0.12); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); align-items: center; gap: 5px; cursor: pointer;" onclick="onWakeWordBadgeClick()" title="Jarvis Wake Word Status. Click to activate microphone or configure.">
-                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981;"></span>
-                                <span id="jarvisWakeWordText">Wake: "Hey Jarvis"</span>
-                            </span>
+                        <!-- Right: Compact Voice Menu & Export -->
+                        <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+                            <div style="position: relative;">
+                                <button type="button" id="btnVoiceMenuPill" onclick="toggleVoiceMenuPopover()" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated);" title="Voice, Wake Word & Speech Controls">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                                    <span>Voice</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                                <div id="voiceMenuPopover" style="display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 210px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,0.45); z-index: 1000; padding: 8px; flex-direction: column; gap: 6px;">
+                                    <span id="jarvisWakeWordBadge" style="display: flex; font-size: 0.73rem; font-family: var(--font-mono); padding: 6px 10px; border-radius: 6px; background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.25); align-items: center; gap: 6px; cursor: pointer;" onclick="onWakeWordBadgeClick()" title="Wake Word Status. Click to activate microphone or configure.">
+                                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+                                        <span id="jarvisWakeWordText">Wake: "Hey Jarvis"</span>
+                                    </span>
+                                    <button type="button" id="btnJarvisVoiceMode" onclick="toggleJarvisVoiceMode()" class="btn-quiet" style="font-size: 0.73rem; font-family: var(--font-mono); padding: 6px 10px; display: flex; align-items: center; gap: 6px; color: var(--text-primary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); width: 100%; justify-content: flex-start;" title="Click to toggle Voice Mode">
+                                        <span id="jarvisVoiceModeIcon" style="width:6px;height:6px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+                                        <span id="jarvisVoiceModeText">Neural Mode</span>
+                                    </button>
+                                    <button type="button" id="btnToggleChatSpeech" onclick="toggleChatSpeech()" class="btn-quiet" style="font-size: 0.73rem; font-family: var(--font-mono); padding: 6px 10px; display: flex; align-items: center; gap: 6px; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); cursor: pointer; width: 100%; justify-content: flex-start;" title="Toggle text chat speech">
+                                        <span id="chatSpeechIcon" style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>
+                                        <span id="chatSpeechText">Chat Speech: OFF</span>
+                                    </button>
+                                </div>
+                            </div>
 
-                            <button type="button" id="btnJarvisVoiceMode" onclick="toggleJarvisVoiceMode()" class="btn-quiet" style="font-size: 0.74rem; font-family: var(--font-mono); padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; color: #10b981; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated);" title="Click to toggle Voice: ⚡ Work Mode (Ultra-Fast) vs 🎬 Cinema Mode (Movie Twin)">
-                                <span id="jarvisVoiceModeIcon">⚡</span>
-                                <span id="jarvisVoiceModeText">Work Mode</span>
-                            </button>
-
-                            <button type="button" id="btnToggleChatSpeech" onclick="toggleChatSpeech()" class="btn-quiet" style="font-size: 0.74rem; font-family: var(--font-mono); padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); cursor: pointer; transition: all 0.2s ease;" title="Toggle text chat speech: When OFF, typed chat responses remain silent in text. Wake-to-speak voice commands always speak aloud regardless.">
-                                <span id="chatSpeechIcon">🔇</span>
-                                <span id="chatSpeechText">Chat Speech: OFF</span>
-                            </button>
-
-                            <button type="button" onclick="exportCurrentSession()" class="btn-quiet" style="font-size: 0.76rem; padding: 5px 11px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); border-radius: 6px;" title="Export transcript as Markdown">
+                            <button type="button" onclick="exportCurrentSession()" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); border-radius: 6px;" title="Export transcript as Markdown">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                 <span>Export</span>
-                            </button>
-
-
-                            <button type="button" onclick="openChatSettingsModal()" id="btnChatSettings" class="btn-quiet" style="font-size: 0.76rem; padding: 5px 12px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-primary); border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated);" title="Chat Arena Settings & Execution Parameters">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                                <span>Settings</span>
                             </button>
                         </div>
                     </div>
@@ -1653,140 +1609,135 @@
                                         </div>
                                     </div>
 
-                                    <!-- Shared Skills Pill -->
-                                    <button type="button" onclick="openChatSkillsQuickModal()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary);" title="Attach or detach shared skills">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
-                                        <span>Skills (<span id="chatActiveSkillsCountPill">1</span>)</span>
-                                    </button>
+                                    <!-- Compact Context Menu (Skills + Knowledge) -->
+                                    <div style="position: relative; display: inline-block;">
+                                        <button type="button" id="btnContextMenuPill" onclick="toggleContextMenuPopover()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary);" title="Skills &amp; Knowledge Base">
+                                            <span>Context (<span id="chatActiveSkillsCountPill">1</span>)</span>
+                                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
+                                        </button>
+                                        <div id="contextMenuPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 190px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,0.65); z-index: 1055; padding: 6px; flex-direction: column; gap: 4px;">
+                                            <button type="button" onclick="openChatSkillsQuickModal(); toggleContextMenuPopover(false);" class="btn-quiet" style="padding: 6px 10px; font-size: 0.74rem; display: flex; align-items: center; gap: 7px; border-radius: 6px; color: var(--text-primary); width: 100%; justify-content: flex-start;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
+                                                <span>Skills</span>
+                                            </button>
+                                            <button type="button" onclick="openKnowledgeBaseModal(); toggleContextMenuPopover(false);" class="btn-quiet" style="padding: 6px 10px; font-size: 0.74rem; display: flex; align-items: center; gap: 7px; border-radius: 6px; color: var(--text-primary); width: 100%; justify-content: flex-start;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
+                                                <span>Knowledge (RAG)</span>
+                                            </button>
+                                        </div>
+                                    </div>
 
-                                    <!-- Shared Agentic Mode Toggle -->
-                                    <button type="button" id="btnAgenticModeToggle" onclick="toggleAgenticMode()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-primary); border-color: var(--border-medium); background: var(--bg-surface-elevated);" title="Autonomous ReAct Mode (Multi-Step Tool Calling & Verification)">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                                    <!-- Agentic Mode Toggle -->
+                                    <button type="button" id="btnAgenticModeToggle" onclick="toggleAgenticMode()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-primary); border-color: var(--border-medium); background: var(--bg-surface-elevated);" title="Autonomous Multi-Step Tool Calling">
                                         <span>Agentic: <strong id="agenticStatusLabel" style="color: var(--text-primary);">ON</strong></span>
                                     </button>
 
-
                                     <!-- Mount Host Repository Pill -->
-                                    <button type="button" id="btnMountWorkspacePill" onclick="promptMountWorkspace()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary); border-color: var(--border-subtle); background: var(--bg-surface-elevated);" title="Mount an existing local code repository (with shadow Git checkpoints & rollback)">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                    <button type="button" id="btnMountWorkspacePill" onclick="promptMountWorkspace()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary); border-color: var(--border-subtle); background: var(--bg-surface-elevated);" title="Mount local repository">
                                         <span id="mountWorkspaceLabel">Mount Repo</span>
                                     </button>
 
-                                    <!-- Shared Knowledge Base (RAG) Pill -->
-                                    <button type="button" onclick="openKnowledgeBaseModal()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary);" title="Shared Knowledge Base & Datasets">
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
-                                        <span>Knowledge</span>
-                                    </button>
-
-                                    <!-- 🔒 Local Permissions Pill (Antigravity-Style Governance) -->
+                                    <!-- Local Permissions Pill (Monochrome) -->
                                     <div style="position: relative; display: inline-block;">
-                                        <button type="button" id="btnPermissionsPill" onclick="togglePermissionsPopover()" class="btn-quiet" style="padding: 3px 10px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; color: var(--text-primary); border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); cursor: pointer;" title="Local Permissions (Request Review / Default / Auto / Turbo)">
-                                            <span id="permPillIcon" style="display: inline-flex; align-items: center; color: #a78bfa;">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                        <button type="button" id="btnPermissionsPill" onclick="togglePermissionsPopover()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary); border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); cursor: pointer;" title="Local Permissions (Review / Default / Auto / Turbo)">
+                                            <span id="permPillIcon" style="display: inline-flex; align-items: center; color: var(--text-secondary);">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                             </span>
-                                            <span id="permPillLabel" style="font-weight: 600;">Default</span>
-                                            <span class="hover-info-badge" data-tooltip="Local Permissions: Control whether the AI asks before modifying files or executing commands.">ⓘ</span>
-                                            <svg id="permPillChevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 15-6-6-6 6"/></svg>
+                                            <span id="permPillLabel" style="font-weight: 500; color: var(--text-primary);">Default</span>
+                                            <svg id="permPillChevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
                                         </button>
 
-                                        <!-- Antigravity-Style Local Permissions Popover -->
-                                        <div id="permissionsPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 290px; background: #121316; border: 1px solid var(--border-medium); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.85); z-index: 1060; padding: 12px; font-size: 0.78rem;">
-                                            <div style="font-size: 0.76rem; font-weight: 600; color: #e4e4e7; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
-                                                <span>Local Permissions</span>
-                                                <span class="hover-info-badge" data-tooltip="Set autonomy level for file modifications and terminal commands.">ⓘ</span>
+                                        <!-- Local Permissions Popover -->
+                                        <div id="permissionsPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 270px; background: #121316; border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 16px 40px rgba(0,0,0,0.85); z-index: 1060; padding: 10px; font-size: 0.78rem;">
+                                            <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;">
+                                                Local Permissions
                                             </div>
 
                                             <div style="display: flex; flex-direction: column; gap: 4px;">
-                                                <!-- 1. Request Review -->
-                                                <div class="perm-option" onclick="selectPermissionModeUI('review')" id="permOptReview" style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s ease;">
-                                                    <div style="margin-top: 2px; color: #94a3b8; display: flex; align-items: center;">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                <div class="perm-option" onclick="selectPermissionModeUI('review')" id="permOptReview" style="display: flex; align-items: flex-start; gap: 10px; padding: 7px 9px; border-radius: 6px; cursor: pointer;">
+                                                    <div style="margin-top: 2px; color: var(--text-secondary); display: flex; align-items: center;">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
                                                     </div>
                                                     <div style="flex: 1; display: flex; flex-direction: column;">
                                                         <div style="display: flex; align-items: center; justify-content: space-between;">
-                                                            <span style="font-weight: 600; color: #f4f4f5; font-size: 0.8rem;">Request Review</span>
-                                                            <span class="perm-check" id="checkReview" style="display: none; color: #38bdf8;">✓</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary); font-size: 0.78rem;">Request Review</span>
+                                                            <span class="perm-check" id="checkReview" style="display: none; color: #10b981;"></span>
                                                         </div>
-                                                        <span style="font-size: 0.7rem; color: #71717a; margin-top: 2px;">Every command requires approval.</span>
+                                                        <span style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Every command requires approval.</span>
                                                     </div>
                                                 </div>
 
-                                                <!-- 2. Default -->
-                                                <div class="perm-option active" onclick="selectPermissionModeUI('default')" id="permOptDefault" style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s ease;">
-                                                    <div style="margin-top: 2px; color: #a78bfa; display: flex; align-items: center;">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                                <div class="perm-option active" onclick="selectPermissionModeUI('default')" id="permOptDefault" style="display: flex; align-items: flex-start; gap: 10px; padding: 7px 9px; border-radius: 6px; cursor: pointer;">
+                                                    <div style="margin-top: 2px; color: var(--text-secondary); display: flex; align-items: center;">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                                     </div>
                                                     <div style="flex: 1; display: flex; flex-direction: column;">
                                                         <div style="display: flex; align-items: center; justify-content: space-between;">
-                                                            <span style="font-weight: 600; color: #f4f4f5; font-size: 0.8rem;">Default</span>
-                                                            <span class="perm-check" id="checkDefault" style="color: #38bdf8;">✓</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary); font-size: 0.78rem;">Default</span>
+                                                            <span class="perm-check" id="checkDefault" style="color: #10b981;"></span>
                                                         </div>
-                                                        <span style="font-size: 0.7rem; color: #71717a; margin-top: 2px;">Ask before sensitive operations.</span>
+                                                        <span style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Ask before sensitive operations.</span>
                                                     </div>
                                                 </div>
 
-                                                <!-- 3. Auto -->
-                                                <div class="perm-option" onclick="selectPermissionModeUI('auto')" id="permOptAuto" style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s ease;">
-                                                    <div style="margin-top: 2px; color: #38bdf8; display: flex; align-items: center;">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                                <div class="perm-option" onclick="selectPermissionModeUI('auto')" id="permOptAuto" style="display: flex; align-items: flex-start; gap: 10px; padding: 7px 9px; border-radius: 6px; cursor: pointer;">
+                                                    <div style="margin-top: 2px; color: var(--text-secondary); display: flex; align-items: center;">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                                                     </div>
                                                     <div style="flex: 1; display: flex; flex-direction: column;">
                                                         <div style="display: flex; align-items: center; justify-content: space-between;">
-                                                            <span style="font-weight: 600; color: #f4f4f5; font-size: 0.8rem;">Auto</span>
-                                                            <span class="perm-check" id="checkAuto" style="display: none; color: #38bdf8;">✓</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary); font-size: 0.78rem;">Auto</span>
+                                                            <span class="perm-check" id="checkAuto" style="display: none; color: #10b981;"></span>
                                                         </div>
-                                                        <span style="font-size: 0.7rem; color: #71717a; margin-top: 2px;">Automatically decide if commands run.</span>
+                                                        <span style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Automatically decide if commands run.</span>
                                                     </div>
                                                 </div>
 
-                                                <!-- 4. Turbo -->
-                                                <div class="perm-option" onclick="selectPermissionModeUI('turbo')" id="permOptTurbo" style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; transition: background 0.15s ease;">
-                                                    <div style="margin-top: 2px; color: #f59e0b; display: flex; align-items: center;">
-                                                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                                <div class="perm-option" onclick="selectPermissionModeUI('turbo')" id="permOptTurbo" style="display: flex; align-items: flex-start; gap: 10px; padding: 7px 9px; border-radius: 6px; cursor: pointer;">
+                                                    <div style="margin-top: 2px; color: var(--text-secondary); display: flex; align-items: center;">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                                                     </div>
                                                     <div style="flex: 1; display: flex; flex-direction: column;">
                                                         <div style="display: flex; align-items: center; justify-content: space-between;">
                                                             <div style="display: flex; align-items: center; gap: 6px;">
-                                                                <span style="font-weight: 600; color: #f4f4f5; font-size: 0.8rem;">Turbo</span>
+                                                                <span style="font-weight: 600; color: var(--text-primary); font-size: 0.78rem;">Turbo</span>
                                                                 <span style="font-size: 0.62rem; color: var(--text-muted); background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px;">Full Autonomy</span>
                                                             </div>
-                                                            <span class="perm-check" id="checkTurbo" style="display: none; color: #38bdf8;">✓</span>
+                                                            <span class="perm-check" id="checkTurbo" style="display: none; color: #10b981;"></span>
                                                         </div>
-                                                        <span style="font-size: 0.7rem; color: #71717a; margin-top: 2px;">Run all commands without restrictions.</span>
+                                                        <span style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Run all commands without restrictions.</span>
                                                     </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <!-- 🛡️ Turbo Execution Control & Fallback Waterfall Pill -->
+                                    <!-- Compute Tier Pill (Monochrome) -->
                                     <div style="position: relative; display: inline-block;">
-                                        <button type="button" id="btnTurboPill" onclick="toggleComputePolicyPopover()" class="btn-quiet" style="padding: 3px 10px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; color: var(--text-primary); border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); cursor: pointer;" title="Compute Tier & Fallback Policy (Turbo / Balanced / CPU Safe)">
-                                            <span id="turboPillIcon" style="display: inline-flex; align-items: center; color: #38bdf8;">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                        <button type="button" id="btnTurboPill" onclick="toggleComputePolicyPopover()" class="btn-quiet" style="padding: 3px 9px; font-size: 0.73rem; display: inline-flex; align-items: center; gap: 5px; border-radius: 6px; color: var(--text-secondary); border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); cursor: pointer;" title="Compute Tier &amp; Fallback Policy">
+                                            <span id="turboPillIcon" style="display: inline-flex; align-items: center; color: var(--text-secondary);">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                                             </span>
-                                            <span id="turboPillLabel" style="font-weight: 600;">Turbo</span>
-                                            <span class="hover-info-badge" data-tooltip="Compute Tier: Switch between Cloud Kaggle/Colab Dual T4, Local RTX 3050, or CPU Safe Mode.">ⓘ</span>
-                                            <svg id="turboPillChevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 15-6-6-6 6"/></svg>
+                                            <span id="turboPillLabel" style="font-weight: 500; color: var(--text-primary);">Turbo</span>
+                                            <svg id="turboPillChevron" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m18 15-6-6-6 6"/></svg>
                                         </button>
 
                                         <!-- Compute & Fallback Policy Popover Dropdown -->
-                                        <div id="computePolicyPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 320px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.65); z-index: 1050; padding: 10px 12px; font-size: 0.78rem;">
+                                        <div id="computePolicyPopover" style="display: none; position: absolute; bottom: calc(100% + 8px); left: 0; min-width: 300px; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 8px; box-shadow: 0 12px 32px rgba(0,0,0,0.65); z-index: 1050; padding: 10px 12px; font-size: 0.78rem;">
                                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                                 <span style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);">Compute &amp; Fallback Policy</span>
                                                 <button type="button" onclick="openCloudGpuModal(); toggleComputePolicyPopover(false);" class="btn-quiet" style="padding: 1px 6px; font-size: 0.65rem;">Config Tunnels</button>
                                             </div>
 
-                                            <!-- 3 Compute Tiers -->
                                             <div style="display: flex; flex-direction: column; gap: 5px;">
                                                 <label style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle);" onclick="selectComputeModeUI('turbo')">
                                                     <input type="radio" name="computeTierRadio" id="radioTierTurbo" value="turbo" checked style="margin-top: 2px;">
                                                     <div style="display: flex; flex-direction: column; flex: 1;">
                                                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                            <span style="font-weight: 600; color: #38bdf8;">🛡️ Turbo Mode</span>
-                                                            <span id="popoverTurboBadge" style="font-size: 0.65rem; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 1px 5px; border-radius: 4px;">Dual T4 (30GB)</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary);">Turbo Mode</span>
+                                                            <span id="popoverTurboBadge" style="font-size: 0.65rem; color: var(--text-secondary); background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px;">Dual T4 (30GB)</span>
                                                         </div>
-                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Cloud GPU: Kaggle / Colab (Fastest 14B-32B)</span>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Cloud GPU: Kaggle / Colab (14B-32B)</span>
                                                     </div>
                                                 </label>
 
@@ -1794,10 +1745,10 @@
                                                     <input type="radio" name="computeTierRadio" id="radioTierBalanced" value="balanced" style="margin-top: 2px;">
                                                     <div style="display: flex; flex-direction: column; flex: 1;">
                                                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                            <span style="font-weight: 600; color: #10b981;">⚡ Balanced Edge</span>
-                                                            <span style="font-size: 0.65rem; color: #10b981; background: rgba(16, 185, 129, 0.15); padding: 1px 5px; border-radius: 4px;">RTX 3050 6GB</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary);">Balanced Edge</span>
+                                                            <span style="font-size: 0.65rem; color: #10b981; background: rgba(16, 185, 129, 0.12); padding: 1px 5px; border-radius: 4px;">RTX 3050 6GB</span>
                                                         </div>
-                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Local GPU: Offline, unlimited, zero latency</span>
+                                                        <span style="font-size: 0.68rem; color: var(--text-muted);">Local GPU: Offline, zero latency</span>
                                                     </div>
                                                 </label>
 
@@ -1805,8 +1756,8 @@
                                                     <input type="radio" name="computeTierRadio" id="radioTierCpuSafe" value="cpu_safe" style="margin-top: 2px;">
                                                     <div style="display: flex; flex-direction: column; flex: 1;">
                                                         <div style="display: flex; justify-content: space-between; align-items: center;">
-                                                            <span style="font-weight: 600; color: #a3e635;">🌿 CPU Safe Mode</span>
-                                                            <span style="font-size: 0.65rem; color: #a3e635; background: rgba(163, 230, 53, 0.15); padding: 1px 5px; border-radius: 4px;">0% VRAM</span>
+                                                            <span style="font-weight: 600; color: var(--text-primary);">CPU Safe Mode</span>
+                                                            <span style="font-size: 0.65rem; color: var(--text-secondary); background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px;">0% VRAM</span>
                                                         </div>
                                                         <span style="font-size: 0.68rem; color: var(--text-muted);">Zero-crash execution using system RAM</span>
                                                     </div>
@@ -2232,11 +2183,11 @@
 
         <!-- Scrollable Settings Groups -->
         <div style="overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; max-height: calc(85vh - 130px);">
-            <!-- Group 1: 🎙️ Voice Synthesis & Wake Word Engine -->
+            <!-- Group 1: Voice Synthesis & Wake Word Engine -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
                 <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>🎙️ Voice Synthesis & Wake Word</span>
-                    <span id="settingsVoiceModeBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #10b981;">⚡ Active</span>
+                    <span>Voice Synthesis & Wake Word</span>
+                    <span id="settingsVoiceModeBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #10b981;">Active</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 12px;">
                     <!-- Default Speech & Voice Selection for Standard Models -->
@@ -2252,7 +2203,7 @@
                                 <option value="en-IE-EmilyNeural">🇮🇪 Irish English - Female (Emily Neural)</option>
                                 <option value="en-AU-WilliamNeural">🇦🇺 Australian English - Male (William Neural)</option>
                                 <option value="en-US-BrianNeural">🇺🇸 US English - Authoritative Male (Brian Neural)</option>
-                                <option value="none">🚫 None / Null (Pure Offline Mode — No Internet Audio)</option>
+                                <option value="none">None / Null (Pure Offline Mode — No Internet Audio)</option>
                             </select>
                             <button type="button" id="btnTestDefaultVoice" onclick="testVoiceAudio('chatDefaultInternetVoiceSelect')" class="btn-quiet" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #38bdf8; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;" title="Audition this voice">
                                 <span>▶</span>
@@ -2271,10 +2222,10 @@
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <select id="chatDefaultFallbackVoiceSelect" onchange="saveVoiceSettings()" style="flex: 1; height: 34px; font-size: 0.78rem; padding: 4px 8px; background: var(--bg-surface); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px;">
-                                <option value="default">💻 Windows Default Local System Voice</option>
-                                <option value="male">💻 Windows SAPI Male (Microsoft David)</option>
-                                <option value="female">💻 Windows SAPI Female (Microsoft Zira)</option>
-                                <option value="none">🚫 None (Silent when offline)</option>
+                                <option value="default">Windows Default Local System Voice</option>
+                                <option value="male">Windows SAPI Male (Microsoft David)</option>
+                                <option value="female">Windows SAPI Female (Microsoft Zira)</option>
+                                <option value="none">None (Silent when offline)</option>
                             </select>
                             <button type="button" id="btnTestFallbackVoice" onclick="testVoiceAudio('chatDefaultFallbackVoiceSelect', true)" class="btn-quiet" style="padding: 6px 12px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface-elevated); color: #10b981; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;" title="Audition local fallback voice">
                                 <span>▶</span>
@@ -2287,7 +2238,7 @@
                     <div style="margin-top: 4px; padding: 10px 12px; background: rgba(56, 189, 248, 0.04); border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 8px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                             <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary);">
-                                📁 Custom Jarvis Voice Model (.wav, .onnx, .bin, .mp3)
+                                Custom Jarvis Voice Model (.wav, .onnx, .bin, .mp3)
                             </div>
                             <span id="customVoiceUploadStatus" style="font-size: 0.70rem; color: #38bdf8; font-weight: 500;"></span>
                         </div>
@@ -2309,11 +2260,11 @@
                         <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Jarvis Model Tuning</div>
                         <div style="display: flex; gap: 8px;">
                             <button type="button" id="btnSettingsWorkMode" onclick="setJarvisVoiceModeFromSettings('work')" class="btn-quiet" style="flex: 1; padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid #10b981; background: rgba(16, 185, 129, 0.1); color: #10b981; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
-                                <span>⚡</span>
+                                <span></span>
                                 <span>Work Mode (Fast Butler)</span>
                             </button>
                             <button type="button" id="btnSettingsCinemaMode" onclick="setJarvisVoiceModeFromSettings('cinema')" class="btn-quiet" style="flex: 1; padding: 6px 10px; font-size: 0.75rem; border-radius: 6px; border: 1px solid var(--border-medium); color: var(--text-secondary); display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;">
-                                <span>🎬</span>
+                                <span></span>
                                 <span>Cinema Mode (Movie Jarvis)</span>
                             </button>
                         </div>
@@ -2381,10 +2332,10 @@
                 </div>
             </div>
 
-            <!-- Group 2: 🧠 Long-Term Memory & Cognitive Knowledge Graph -->
+            <!-- Group 2: Long-Term Memory & Cognitive Knowledge Graph -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
                 <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>🧠 Cognitive Memory & Knowledge Graph</span>
+                    <span>Cognitive Memory & Knowledge Graph</span>
                     <span id="memoryCountBadge" style="font-size: 0.7rem; font-family: var(--font-mono); color: #3b82f6;">Loading...</span>
                 </div>
 
@@ -2392,16 +2343,16 @@
                     <!-- Metrics Pills -->
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25); color: #60a5fa;">
-                            👤 <strong id="statEntitiesCount">0</strong> Entities
+                            <strong id="statEntitiesCount">0</strong> Entities
                         </span>
                         <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); color: #34d399;">
-                            🔗 <strong id="statRelationsCount">0</strong> Relationships
+                            <strong id="statRelationsCount">0</strong> Relationships
                         </span>
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); color: #fbbf24;">
-                            ⚡ <strong id="statHabitsCount">0</strong> Habits & Prefs
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); color: #fbbf24;">
+                            <strong id="statHabitsCount">0</strong> Habits & Prefs
                         </span>
-                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.25); color: #c084fc;">
-                            📅 <strong id="statEpisodesCount">0</strong> Past Events
+                        <span class="status-pill" style="font-size: 0.72rem; padding: 3px 8px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); color: #c084fc;">
+                            <strong id="statEpisodesCount">0</strong> Past Events
                         </span>
                     </div>
 
@@ -2410,8 +2361,8 @@
                         <input type="text" id="memorySearchInput" placeholder="Search memories, contacts, rules..." 
                                oninput="filterMemoriesUI(this.value)"
                                style="flex: 1; font-size: 0.78rem; padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border-medium); background: var(--bg-surface); color: var(--text-primary); box-sizing: border-box;">
-                        <button type="button" onclick="triggerConsolidateUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem; color: #c084fc; border-color: rgba(168, 85, 247, 0.3);" title="Autonomous Sleep-Cycle Consolidation (Deduplicate & Synthesize)">🌙 Consolidate</button>
-                        <button type="button" onclick="refreshMemoriesUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem;" title="Refresh memory list">🔄</button>
+                        <button type="button" onclick="triggerConsolidateUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem; color: #c084fc; border-color: rgba(255, 255, 255, 0.3);" title="Autonomous Sleep-Cycle Consolidation (Deduplicate & Synthesize)">Consolidate</button>
+                        <button type="button" onclick="refreshMemoriesUI()" class="btn-quiet" style="padding: 4px 8px; font-size: 0.74rem;" title="Refresh memory list"></button>
                     </div>
 
                     <!-- Memory List Cards Container -->
@@ -2431,11 +2382,11 @@
                 </div>
             </div>
 
-            <!-- Group 2.5: ⚡ Autonomous Background Workers & Project Governance -->
+            <!-- Group 2.5: Autonomous Background Workers & Project Governance -->
             <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 14px 16px;">
                 <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>⚡ Autonomous Background Tasks & Governance</span>
-                    <button type="button" onclick="refreshDaemonTasksUI()" class="btn-quiet" style="padding: 2px 6px; font-size: 0.7rem;" title="Refresh tasks">🔄</button>
+                    <span>Autonomous Background Tasks & Governance</span>
+                    <button type="button" onclick="refreshDaemonTasksUI()" class="btn-quiet" style="padding: 2px 6px; font-size: 0.7rem;" title="Refresh tasks"></button>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -2689,8 +2640,8 @@
     </div>
 </div>
 
-<!-- BOTTOM PERSISTENT WORKSTATION STATUS HUD -->
-<footer class="app-telemetry-bar">
+<!-- BOTTOM PERSISTENT WORKSTATION STATUS HUD (Hidden to prevent duplicate status bar clutter) -->
+<footer class="app-telemetry-bar" style="display: none;">
     <div class="telemetry-bar-left">
         <span class="telemetry-item" title="Local GPU Compute">
             <span class="status-dot"></span>
@@ -2727,7 +2678,7 @@
     </div>
 </footer>
 
-<script src="/static/script_v2.js?v=1795624000"></script>
+<script src="/static/script_v2.js?v=1795683000"></script>
 
 
 <!-- ============================================== -->
@@ -2777,7 +2728,7 @@
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
             <button type="button" onclick="closeChatSkillsQuickModal(); switchAppTab('skills-section');" class="btn-quiet" style="font-size: 0.76rem;">
-                Manage Skills in Library ➔
+                Manage Skills in Library 
             </button>
             <div style="display: flex; gap: 8px;">
                 <button type="button" onclick="openBakeSkillsModal()" class="btn-quiet" style="font-size: 0.76rem;">
@@ -2811,7 +2762,7 @@
         <!-- Baking Target Mode: In-Place vs New Model -->
         <div style="display: flex; gap: 10px; background: var(--bg-surface-elevated); padding: 4px; border-radius: 8px; border: 1px solid var(--border-subtle);">
             <button type="button" id="bakeModeInPlaceBtn" onclick="setBakeMode('inplace')" style="flex: 1; padding: 7px 10px; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; background: #60a5fa; color: #fff; cursor: pointer;">
-                ✓ Bake into Existing Model
+                Bake into Existing Model
             </button>
             <button type="button" id="bakeModeNewBtn" onclick="setBakeMode('new')" style="flex: 1; padding: 7px 10px; font-size: 0.78rem; font-weight: 600; border-radius: 6px; border: none; background: transparent; color: var(--text-muted); cursor: pointer;">
                 + Create New Model
@@ -2979,7 +2930,7 @@
             <div id="cardProviderColab" onclick="selectGpuTarget('colab')" style="cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); padding: 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <strong style="font-size: 0.85rem; color: var(--text-primary);">Google Colab T4</strong>
-                    <span style="font-size: 0.65rem; background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 2px 6px; border-radius: 4px;">FREE DAILY</span>
+                    <span style="font-size: 0.65rem; background: rgba(255, 255, 255, 0.2); color: #d4d4d8; padding: 2px 6px; border-radius: 4px;">FREE DAILY</span>
                 </div>
                 <div style="font-size: 0.72rem; color: var(--text-muted);">16.0 GB VRAM • Runs 14B</div>
                 <div id="colabQuotaDisplay" style="font-size: 0.78rem; color: #38bdf8; font-weight: 600;">12.0 hrs / session</div>
@@ -2989,7 +2940,7 @@
             <div id="cardProviderPurchased" onclick="selectGpuTarget('purchased')" style="cursor: pointer; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); padding: 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <strong style="font-size: 0.85rem; color: var(--text-primary);">Paid Cloud Credits</strong>
-                    <span style="font-size: 0.65rem; background: rgba(168, 85, 247, 0.2); color: #c084fc; padding: 2px 6px; border-radius: 4px;">CREDITS</span>
+                    <span style="font-size: 0.65rem; background: rgba(255, 255, 255, 0.2); color: #c084fc; padding: 2px 6px; border-radius: 4px;">CREDITS</span>
                 </div>
                 <div style="font-size: 0.72rem; color: var(--text-muted);">RunPod / Modal (A100 / H100)</div>
                 <div id="paidCreditsDisplay" style="font-size: 0.78rem; color: #10b981; font-weight: 600;">$0.00 Remaining</div>
@@ -3000,7 +2951,7 @@
         <div id="cloudConnectionDetails" style="background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-primary);">Connection Endpoint (Tunnel or URL)</span>
-                <button type="button" onclick="copyCloudOneClickScript()" class="btn-quiet" style="font-size: 0.7rem; padding: 2px 8px;">📋 Copy 1-Click Cloud Script</button>
+                <button type="button" onclick="copyCloudOneClickScript()" class="btn-quiet" style="font-size: 0.7rem; padding: 2px 8px;">Copy 1-Click Cloud Script</button>
             </div>
             <div style="display: flex; gap: 8px;">
                 <input type="text" id="cloudTunnelInput" placeholder="Enter remote URL (e.g. https://xxx.loca.lt or ngrok/cloudflare)" style="flex: 1; padding: 8px 12px; font-size: 0.8rem; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 6px; color: var(--text-primary);">
@@ -3029,7 +2980,7 @@
     <div class="modal-card" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: 14px; max-width: 580px; width: 100%; display: flex; flex-direction: column; padding: 22px; box-shadow: var(--shadow-xl); gap: 16px;">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px;">
             <div style="display: flex; align-items: center; gap: 9px;">
-                <span style="font-size: 1.2rem;">🛡️</span>
+                <span style="font-size: 1.2rem;"></span>
                 <h3 style="margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--text-primary);">Compute Boundary Reached</h3>
             </div>
             <button onclick="closeComputeBoundaryModal()" style="background: transparent; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted); line-height: 1;" title="Close">&times;</button>
@@ -3043,7 +2994,7 @@
             <!-- Choice 1: Cascade to Local GPU -->
             <button type="button" onclick="resolveComputeBoundaryChoice('balanced')" class="btn-quiet" style="text-align: left; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05); cursor: pointer; display: flex; flex-direction: column; gap: 3px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.85rem; color: #10b981;">⚡ Cascade to Local RTX 3050 (Recommended)</strong>
+                    <strong style="font-size: 0.85rem; color: #10b981;">Cascade to Local RTX 3050 (Recommended)</strong>
                     <span style="font-size: 0.65rem; background: rgba(16, 185, 129, 0.2); color: #10b981; padding: 1px 6px; border-radius: 4px;">6GB VRAM</span>
                 </div>
                 <span style="font-size: 0.72rem; color: var(--text-muted);">Transfers task using compressed context relay (&lt;3,500 tokens) to finish remaining goals offline.</span>
@@ -3052,8 +3003,8 @@
             <!-- Choice 2: Switch to CPU Safe Mode -->
             <button type="button" onclick="resolveComputeBoundaryChoice('cpu_safe')" class="btn-quiet" style="text-align: left; padding: 12px 14px; border-radius: 8px; border: 1px solid rgba(163, 230, 53, 0.3); background: rgba(163, 230, 53, 0.05); cursor: pointer; display: flex; flex-direction: column; gap: 3px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <strong style="font-size: 0.85rem; color: #a3e635;">🌿 Switch to CPU Safe Mode</strong>
-                    <span style="font-size: 0.65rem; background: rgba(163, 230, 53, 0.2); color: #a3e635; padding: 1px 6px; border-radius: 4px;">0% VRAM</span>
+                    <strong style="font-size: 0.85rem; color: #10b981;">Switch to CPU Safe Mode</strong>
+                    <span style="font-size: 0.65rem; background: rgba(163, 230, 53, 0.2); color: #10b981; padding: 1px 6px; border-radius: 4px;">0% VRAM</span>
                 </div>
                 <span style="font-size: 0.72rem; color: var(--text-muted);">Runs in pure system RAM with zero GPU load or crash risk.</span>
             </button>
@@ -3165,19 +3116,21 @@ function updateChatSpeechUI(enabled) {
 
     if (btn && icon && txt) {
         if (enabled) {
-            icon.textContent = '🔊';
+            icon.textContent = '';
+            icon.style.background = '#10b981';
             txt.textContent = 'Chat Speech: ON';
-            btn.style.color = '#38bdf8';
-            btn.style.borderColor = 'rgba(56, 189, 248, 0.45)';
-            btn.style.background = 'rgba(56, 189, 248, 0.12)';
-            btn.title = 'Chat Speech is ON: Jarvis reads typed chat replies aloud. Click to turn OFF (silent text replies).';
+            btn.style.color = 'var(--text-primary)';
+            btn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+            btn.style.background = 'rgba(16, 185, 129, 0.1)';
+            btn.title = 'Chat Speech is ON: Typed chat replies are spoken aloud.';
         } else {
-            icon.textContent = '🔇';
+            icon.textContent = '';
+            icon.style.background = 'var(--text-muted)';
             txt.textContent = 'Chat Speech: OFF';
-            btn.style.color = 'var(--text-muted, #94a3b8)';
-            btn.style.borderColor = 'var(--border-medium, rgba(255,255,255,0.1))';
-            btn.style.background = 'var(--bg-surface-elevated, rgba(255,255,255,0.03))';
-            btn.title = 'Chat Speech is OFF: Typed chat responses are silent text only. Wake-to-speak voice commands continue to speak aloud normally.';
+            btn.style.color = 'var(--text-secondary)';
+            btn.style.borderColor = 'var(--border-subtle)';
+            btn.style.background = 'var(--bg-surface-elevated)';
+            btn.title = 'Chat Speech is OFF: Typed chat responses are silent text only.';
         }
     }
 }
@@ -3291,14 +3244,14 @@ window.testVoiceAudio = async function(selectId, isFallback = false) {
         });
         const data = await res.json();
         if (data && data.status === 'success') {
-            if (btn) btn.innerHTML = '<span>🔊</span><span>Playing</span>';
+            if (btn) btn.innerHTML = '<span></span><span>Playing</span>';
         } else {
             console.warn('Voice test response:', data);
-            if (btn) btn.innerHTML = '<span>⚠️</span><span>Error</span>';
+            if (btn) btn.innerHTML = '<span></span><span>Error</span>';
         }
     } catch(e) {
         console.warn('Voice test failed:', e);
-        if (btn) btn.innerHTML = '<span>⚠️</span><span>Failed</span>';
+        if (btn) btn.innerHTML = '<span></span><span>Failed</span>';
     } finally {
         if (btn) {
             setTimeout(() => {
@@ -3390,10 +3343,10 @@ window.activateJarvisConversationalWindow = function(durationMs = 20000) {
         startWakeWordListening();
     }
     jarvisAwaitingFollowUp = true;
-    updateWakeWordBadge(true, '🟢 Jarvis Attentive (Hands-free)');
+    updateWakeWordBadge(true, 'Jarvis Attentive (Hands-free)');
     const inputArea = document.getElementById('chatInputMessage');
     if (inputArea) {
-        inputArea.placeholder = '🎤 Jarvis is listening... (speak hands-free, no need to say "Hey Jarvis")';
+        inputArea.placeholder = 'Jarvis is listening... (speak hands-free, no need to say "Hey Jarvis")';
     }
     const micBtn = document.getElementById('btnJarvisMic');
     if (micBtn) micBtn.style.color = '#10b981';
@@ -3460,12 +3413,12 @@ window.showJarvisExecutiveHUD = function(title, message, durationMs = 7000) {
     }
 
     hud.innerHTML = `
-        <div style="font-size: 1.35rem; line-height: 1; margin-top: 2px;">⚡</div>
+        <div style="font-size: 1.35rem; line-height: 1; margin-top: 2px;"></div>
         <div style="flex: 1;">
             <div style="font-size: 0.78rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; color: #38bdf8;">${title}</div>
             <div style="font-size: 0.88rem; margin-top: 4px; line-height: 1.45; color: #e2e8f0;">${message}</div>
         </div>
-        <button onclick="document.getElementById('jarvisExecutiveHUD').style.opacity='0'" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; padding:0 4px;">✕</button>
+        <button onclick="document.getElementById('jarvisExecutiveHUD').style.opacity='0'" style="background:none; border:none; color:#94a3b8; cursor:pointer; font-size:14px; padding:0 4px;"></button>
     `;
 
     hud.style.display = 'flex';
@@ -3488,7 +3441,7 @@ window.executeConcurrentJarvisExecutive = async function(commandText) {
     console.log("[Jarvis Concurrent Executive]: Dispatching query:", cleanCmd);
 
     if (jarvisWakeSound) playJarvisWakeChime();
-    window.showJarvisExecutiveHUD("Jarvis Voice Pilot", `⚡ Processing: "${cleanCmd}"...`, 3000);
+    window.showJarvisExecutiveHUD("Jarvis Voice Pilot", `Processing: "${cleanCmd}"...`, 3000);
 
     try {
         const res = await fetch('/api/chat/executive', {
@@ -3541,7 +3494,7 @@ function _executeJarvisVoiceCommand(commandText) {
     const micBtn = document.getElementById('btnJarvisMic');
     if (micBtn) micBtn.style.color = '#3b82f6';
 
-    updateWakeWordBadge(true, '⚡ Executing Voice Command...');
+    updateWakeWordBadge(true, 'Executing Voice Command...');
 
     if (jarvisAutoSubmit && typeof window.sendChatArenaMessage === 'function') {
         setTimeout(() => {
@@ -3744,10 +3697,10 @@ function startWakeWordListening() {
                     if (micBtn) micBtn.style.color = '#10b981';
                     if (inputArea) {
                         inputArea.value = '';
-                        inputArea.placeholder = '🎤 Jarvis is listening... speak your command now';
+                        inputArea.placeholder = 'Jarvis is listening... speak your command now';
                         inputArea.focus();
                     }
-                    updateWakeWordBadge(true, '🟢 Jarvis Listening...');
+                    updateWakeWordBadge(true, 'Jarvis Listening...');
                     return;
                 }
 
@@ -3803,10 +3756,10 @@ function startWakeWordListening() {
                     jarvisAwaitingFollowUp = true;
                     if (inputArea) {
                         inputArea.value = '';
-                        inputArea.placeholder = '🎤 Jarvis is listening... speak your command now';
+                        inputArea.placeholder = 'Jarvis is listening... speak your command now';
                         inputArea.focus();
                     }
-                    updateWakeWordBadge(true, '🟢 Jarvis Listening...');
+                    updateWakeWordBadge(true, 'Jarvis Listening...');
                     clearTimeout(jarvisFollowUpTimer);
                     jarvisFollowUpTimer = setTimeout(() => {
                         _cancelFollowUpListening();
@@ -3887,21 +3840,23 @@ function updateJarvisVoiceUI(mode) {
     const settingsBadge = document.getElementById('settingsVoiceModeBadge');
     if (icon && txt && btn) {
         if (isCinema) {
-            icon.textContent = '🎬';
+            icon.textContent = '';
+            icon.style.background = '#d4d4d8';
             txt.textContent = 'Cinema Mode';
-            btn.style.color = '#f59e0b';
-            btn.title = 'Active: 🎬 Resonant Studio Mode (Deep Timbre) - Click to switch to Low-Latency Mode';
+            btn.style.color = 'var(--text-primary)';
+            btn.title = 'Resonant Studio Mode - Click to switch to Neural Mode';
             if (settingsBadge) {
-                settingsBadge.textContent = '🎬 Studio Mode';
-                settingsBadge.style.color = '#f59e0b';
+                settingsBadge.textContent = 'Studio Mode';
+                settingsBadge.style.color = 'var(--text-primary)';
             }
         } else {
-            icon.textContent = '⚡';
+            icon.textContent = '';
+            icon.style.background = '#10b981';
             txt.textContent = 'Neural Mode';
-            btn.style.color = '#10b981';
-            btn.title = 'Active: ⚡ Low-Latency Neural Mode - Click to switch to Studio Mode';
+            btn.style.color = 'var(--text-primary)';
+            btn.title = 'Low-Latency Neural Mode - Click to switch to Studio Mode';
             if (settingsBadge) {
-                settingsBadge.textContent = '⚡ Neural Mode';
+                settingsBadge.textContent = 'Neural Mode';
                 settingsBadge.style.color = '#10b981';
             }
         }
@@ -3913,12 +3868,12 @@ function updateJarvisVoiceUI(mode) {
             btnWork.style.border = '1px solid var(--border-medium)';
             btnWork.style.background = 'transparent';
             btnWork.style.color = 'var(--text-secondary)';
-            btnCinema.style.border = '1px solid #f59e0b';
-            btnCinema.style.background = 'rgba(245, 158, 11, 0.12)';
-            btnCinema.style.color = '#f59e0b';
+            btnCinema.style.border = '1px solid #e4e4e7';
+            btnCinema.style.background = 'rgba(255, 255, 255, 0.08)';
+            btnCinema.style.color = 'var(--text-primary)';
         } else {
             btnWork.style.border = '1px solid #10b981';
-            btnWork.style.background = 'rgba(16, 185, 129, 0.12)';
+            btnWork.style.background = 'rgba(16, 185, 129, 0.1)';
             btnWork.style.color = '#10b981';
             btnCinema.style.border = '1px solid var(--border-medium)';
             btnCinema.style.background = 'transparent';
@@ -4137,7 +4092,7 @@ function renderMemoryCards(data, filterText = '') {
             cards.push(`
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.74rem;">
-                        <span style="color:#34d399; font-weight:600;">🔗 ${rel.source_name}</span>
+                        <span style="color:#34d399; font-weight:600;">${rel.source_name}</span>
                         <span style="color:var(--text-muted); font-style:italic; margin:0 4px;">--${rel.relation}--></span>
                         <span style="color:#60a5fa; font-weight:600;">${rel.target_name}</span>
                     </div>
@@ -4154,7 +4109,7 @@ function renderMemoryCards(data, filterText = '') {
             cards.push(`
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.74rem;">
-                        <span style="color:#fbbf24; font-weight:600;">⚡ [${h.category}]</span>
+                        <span style="color:#fbbf24; font-weight:600;">[${h.category}]</span>
                         <span style="color:var(--text-primary); margin-left:4px;">${h.rule_text}</span>
                     </div>
                     <button type="button" onclick="deleteMemoryItem('habit', ${h.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Habit">&times;</button>
@@ -4170,7 +4125,7 @@ function renderMemoryCards(data, filterText = '') {
             cards.push(`
                 <div style="background:var(--bg-surface); border:1px solid var(--border-subtle); border-radius:6px; padding:6px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
                     <div style="font-size:0.74rem;">
-                        <span style="color:#a855f7; font-weight:600;">📝 Fact:</span>
+                        <span style="color:#d4d4d8; font-weight:600;">Fact:</span>
                         <span style="color:var(--text-primary); margin-left:4px;">${raw.content}</span>
                     </div>
                     <button type="button" onclick="deleteMemoryItem('raw', ${raw.id})" class="btn-quiet" style="padding:2px 6px; font-size:0.7rem; color:var(--text-muted); cursor:pointer;" title="Delete Fact">&times;</button>
@@ -4365,10 +4320,10 @@ function renderPersonaDomainChips() {
     personaDomainTags.forEach((domain, index) => {
         const chip = document.createElement('span');
         chip.className = 'domain-chip';
-        chip.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); color: #a5b4fc; border-radius: 999px; font-size: 0.76rem; font-weight: 500;';
+        chip.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 999px; font-size: 0.76rem; font-weight: 500;';
         chip.innerHTML = `
             <span>${domain}</span>
-            <span onclick="removePersonaDomainTag(${index})" style="cursor: pointer; font-size: 0.85rem; font-weight: 700; color: #818cf8; line-height: 1; padding-left: 2px;" title="Remove domain">×</span>
+            <span onclick="removePersonaDomainTag(${index})" style="cursor: pointer; font-size: 0.85rem; font-weight: 700; color: #d4d4d8; line-height: 1; padding-left: 2px;" title="Remove domain">×</span>
         `;
         container.insertBefore(chip, input);
     });
@@ -4417,7 +4372,7 @@ async function loadAvailableVoices() {
                     if (!exists) {
                         const opt = document.createElement('option');
                         opt.value = sapi.id;
-                        opt.textContent = `💻 Windows SAPI: ${sapi.name}`;
+                        opt.textContent = `Windows SAPI: ${sapi.name}`;
                         sel.appendChild(opt);
                     }
                 });
@@ -4436,7 +4391,7 @@ async function loadAvailableVoices() {
                     if (!exists) {
                         const opt = document.createElement('option');
                         opt.value = v.id;
-                        opt.textContent = `📁 Custom Local Voice: ${v.name}`;
+                        opt.textContent = `Custom Local Voice: ${v.name}`;
                         sel.appendChild(opt);
                     }
                 });
@@ -4473,7 +4428,7 @@ async function handleCustomVoiceUpload(event) {
         const data = await res.json();
         if (res.ok && data.status === 'success') {
             if (statusEl) {
-                statusEl.textContent = `✅ Saved ${data.filename}!`;
+                statusEl.textContent = `Saved ${data.filename}!`;
                 statusEl.style.color = '#10b981';
             }
             // Refresh voices in select dropdowns
@@ -4496,14 +4451,14 @@ async function handleCustomVoiceUpload(event) {
             }, 4000);
         } else {
             if (statusEl) {
-                statusEl.textContent = `❌ ${data.detail || 'Upload failed'}`;
+                statusEl.textContent = `${data.detail || 'Upload failed'}`;
                 statusEl.style.color = '#ef4444';
             }
         }
     } catch (err) {
         console.error('Custom voice upload failed:', err);
         if (statusEl) {
-            statusEl.textContent = '❌ Upload error';
+            statusEl.textContent = 'Upload error';
             statusEl.style.color = '#ef4444';
         }
     } finally {
@@ -4516,7 +4471,7 @@ async function initPersonaForge() {
     updatePersonaDialLabels();
     renderPersonaDomainChips();
     try {
-        const res = await fetch('/api/lab/models');
+        const res = await fetch('/api/chat/models');
         if (res.ok) {
             const data = await res.json();
             const select = document.getElementById('forgeBaseModelSelect');
@@ -4539,7 +4494,7 @@ async function synthesizePersonaDataset() {
     if (consoleBox) {
         consoleBox.style.display = 'block';
         consoleBox.innerHTML = `
-            <div>⚡ <strong>Synthesizing Level 2 QLoRA Reasoning Pairs...</strong></div>
+            <div><strong>Synthesizing Level 2 QLoRA Reasoning Pairs...</strong></div>
             <div style="color: var(--text-muted);">Injecting &lt;thought&gt; metacognition traces, advisory pushback, and domain specializations...</div>
         `;
     }
@@ -4575,7 +4530,7 @@ async function synthesizePersonaDataset() {
             if (consoleBox) {
                 consoleBox.innerHTML += `
                     <div style="color: #10b981; font-weight: 600; margin-top: 8px;">
-                        ✨ SUCCESS: ${data.sample_count} QLoRA Reasoning Pairs Synthesized!
+                        SUCCESS: ${data.sample_count} QLoRA Reasoning Pairs Synthesized!
                     </div>
                     <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
                         Dataset generated at: ${data.dataset_path} (${data.format})
@@ -4587,7 +4542,7 @@ async function synthesizePersonaDataset() {
         }
     } catch(err) {
         if (consoleBox) {
-            consoleBox.innerHTML += `<div style="color: #ef4444; font-weight: 600; margin-top: 8px;">❌ Synthesis Error: ${err.message}</div>`;
+            consoleBox.innerHTML += `<div style="color: #ef4444; font-weight: 600; margin-top: 8px;">Synthesis Error: ${err.message}</div>`;
         }
     } finally {
         if (btn) btn.disabled = false;
@@ -4601,7 +4556,7 @@ async function launchPersonaKaggle() {
     if (consoleBox) {
         consoleBox.style.display = 'block';
         consoleBox.innerHTML = `
-            <div>🚀 <strong>Authenticating with Kaggle Cloud API...</strong></div>
+            <div><strong>Authenticating with Kaggle Cloud API...</strong></div>
             <div style="color: var(--text-muted);">Allocating Dual NVIDIA Tesla T4 GPUs (32GB VRAM, 30 hrs/week Free)...</div>
         `;
     }
@@ -4633,7 +4588,7 @@ async function launchPersonaKaggle() {
             if (consoleBox) {
                 consoleBox.innerHTML += `
                     <div style="color: #38bdf8; font-weight: 600; margin-top: 8px;">
-                        ✨ SUCCESS: Kernel '${data.kernel_slug}' pushed to Kaggle Cloud!
+                        SUCCESS: Kernel '${data.kernel_slug}' pushed to Kaggle Cloud!
                     </div>
                     <div style="color: #10b981; margin-top: 4px;">
                         Status: <strong>${data.message}</strong>
@@ -4651,8 +4606,8 @@ async function launchPersonaKaggle() {
         } else if (data.status === 'credentials_required') {
             if (consoleBox) {
                 consoleBox.innerHTML += `
-                    <div style="color: #f59e0b; margin-top: 6px;">
-                        ⚠️ ${data.message}
+                    <div style="color: #d4d4d8; margin-top: 6px;">
+                        ${data.message}
                     </div>
                 `;
             }
@@ -4663,7 +4618,7 @@ async function launchPersonaKaggle() {
         if (consoleBox) {
             consoleBox.innerHTML += `
                 <div style="color: #ef4444; font-weight: 600; margin-top: 8px;">
-                    ❌ Kaggle Dispatch Error: ${err.message}
+                    Kaggle Dispatch Error: ${err.message}
                 </div>
             `;
         }
@@ -4678,7 +4633,7 @@ async function packagePersonaCloudBundle() {
     if (btn) btn.disabled = true;
     if (consoleBox) {
         consoleBox.style.display = 'block';
-        consoleBox.innerHTML = `<div>📦 <strong>Packaging 1-Click Cloud Bundle (.zip)...</strong></div>`;
+        consoleBox.innerHTML = `<div><strong>Packaging 1-Click Cloud Bundle (.zip)...</strong></div>`;
     }
 
     const agentName = document.getElementById('forgeAgentName')?.value.trim() || 'Jarvis';
@@ -4708,7 +4663,7 @@ async function packagePersonaCloudBundle() {
             if (consoleBox) {
                 consoleBox.innerHTML += `
                     <div style="color: #10b981; font-weight: 600; margin-top: 6px;">
-                        ✨ Bundle Generated! Starting direct download...
+                        Bundle Generated! Starting direct download...
                     </div>
                 `;
             }
@@ -4718,7 +4673,7 @@ async function packagePersonaCloudBundle() {
         }
     } catch(err) {
         if (consoleBox) {
-            consoleBox.innerHTML += `<div style="color: #ef4444; margin-top: 6px;">❌ Error: ${err.message}</div>`;
+            consoleBox.innerHTML += `<div style="color: #ef4444; margin-top: 6px;">Error: ${err.message}</div>`;
         }
     } finally {
         if (btn) btn.disabled = false;
@@ -4732,7 +4687,7 @@ async function bakePersonaModel() {
     if (consoleBox) {
         consoleBox.style.display = 'block';
         consoleBox.innerHTML = `
-            <div>⚡ <strong>Initiating Persona Compilation...</strong></div>
+            <div><strong>Initiating Persona Compilation...</strong></div>
             <div style="color: var(--text-muted);">[1/3] Compiling behavioral directives and identity constraints...</div>
         `;
     }
@@ -4772,7 +4727,7 @@ async function bakePersonaModel() {
             if (consoleBox) {
                 consoleBox.innerHTML += `
                     <div style="color: #10b981; font-weight: 600; margin-top: 8px;">
-                        ✨ [3/3] SUCCESS: Persona '${data.agent_name}' (${data.model_tag}) successfully baked into Ollama!
+                        [3/3] SUCCESS: Persona '${data.agent_name}' (${data.model_tag}) successfully baked into Ollama!
                     </div>
                     <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px;">
                         Modelfile compiled at: ${data.modelfile_path}
@@ -4791,7 +4746,7 @@ async function bakePersonaModel() {
         if (consoleBox) {
             consoleBox.innerHTML += `
                 <div style="color: #ef4444; font-weight: 600; margin-top: 8px;">
-                    ❌ Compilation Error: ${err.message}
+                    Compilation Error: ${err.message}
                 </div>
             `;
         }

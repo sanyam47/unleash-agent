@@ -208,6 +208,23 @@ html, body {
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
+@media (max-width: 900px) {
+    .app-navbar {
+        padding: 8px 12px;
+        gap: 8px;
+    }
+    .app-navbar .tab-btn {
+        padding: 5px 8px;
+        font-size: 0.76rem;
+    }
+    .app-navbar .nav-status {
+        gap: 6px !important;
+    }
+    .app-navbar #btnStandardSettings span {
+        display: none;
+    }
+}
+
 .nav-brand {
     display: flex;
     align-items: center;

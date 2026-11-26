@@ -2,11 +2,16 @@ const API_BASE = window.location.origin;
 
 function switchAppTab(tabId) {
     console.log("Switching to tab:", tabId);
-    const sections = ['train-section', 'lab-section', 'llm-section', 'synth-section', 'skills-section', 'chat-section'];
+    const forgeSections = ['train-section', 'lab-section', 'llm-section', 'synth-section'];
+    const sections = [...forgeSections, 'skills-section', 'chat-section'];
     sections.forEach(s => {
         const el = document.getElementById(s);
         if (el) el.style.display = (s === tabId) ? 'block' : 'none';
     });
+
+    const isForge = forgeSections.includes(tabId);
+    const subNav = document.getElementById('modelForgeSubNav');
+    if (subNav) subNav.style.display = isForge ? 'flex' : 'none';
 
     const btnMap = {
         'train-section': 'btn-train',
@@ -21,6 +26,9 @@ function switchAppTab(tabId) {
         const btn = document.getElementById(btnId);
         if (btn) btn.classList.toggle('active', sec === tabId);
     });
+
+    const forgeBtn = document.getElementById('btn-forge');
+    if (forgeBtn) forgeBtn.classList.toggle('active', isForge);
 
     if (tabId === 'lab-section' && window.refreshLabModels) window.refreshLabModels();
     if (tabId === 'llm-section') {
@@ -41,6 +49,33 @@ function switchAppTab(tabId) {
 }
 window.showTab = switchAppTab;
 window.switchAppTab = switchAppTab;
+
+window.toggleVoiceMenuPopover = function() {
+    const pop = document.getElementById('voiceMenuPopover');
+    if (!pop) return;
+    pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
+};
+window.toggleContextMenuPopover = function(forceState) {
+    const pop = document.getElementById('contextMenuPopover');
+    if (!pop) return;
+    if (typeof forceState === 'boolean') {
+        pop.style.display = forceState ? 'flex' : 'none';
+    } else {
+        pop.style.display = (pop.style.display === 'flex') ? 'none' : 'flex';
+    }
+};
+document.addEventListener('click', (e) => {
+    const pop = document.getElementById('voiceMenuPopover');
+    const pill = document.getElementById('btnVoiceMenuPill');
+    if (pop && pop.style.display === 'flex' && !pop.contains(e.target) && (!pill || !pill.contains(e.target))) {
+        pop.style.display = 'none';
+    }
+    const ctxPop = document.getElementById('contextMenuPopover');
+    const ctxPill = document.getElementById('btnContextMenuPill');
+    if (ctxPop && ctxPop.style.display === 'flex' && !ctxPop.contains(e.target) && (!ctxPill || !ctxPill.contains(e.target))) {
+        ctxPop.style.display = 'none';
+    }
+});
 
 async function refreshLabModels(modelToSelect = null) {
     console.log("Refreshing Lab Models...");
@@ -708,7 +743,7 @@ async function sendLabFeedback() {
         currentLabAnalysis = await res.json();
         
         actionText.innerHTML = `
-            <div style="color: #818cf8; font-weight: bold; margin-bottom: 5px;">REFINED ACTION: ${currentLabAnalysis.action}</div>
+            <div style="color: #d4d4d8; font-weight: bold; margin-bottom: 5px;">REFINED ACTION: ${currentLabAnalysis.action}</div>
             <div style="font-size: 0.9rem; color: #ccc;">${currentLabAnalysis.reasoning}</div>
             <div style="margin-top: 10px; font-size: 0.8rem; color: #888;">Updated Targets: ${currentLabAnalysis.new_labels.join(', ')}</div>
         `;
@@ -956,6 +991,7 @@ async function refineTrainModel() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+    switchAppTab('chat-section');
     const analyzeBtn = document.getElementById("analyzeLabBtn");
     if (analyzeBtn) analyzeBtn.onclick = analyzeLab;
 
@@ -1343,7 +1379,7 @@ window.updateSituationRecommendations = async function() {
     } else if (winningPlatform === "colab") {
         if (cardColab) {
             cardColab.style.border = "2px solid #fbbf24";
-            cardColab.style.boxShadow = "0 0 20px rgba(245, 158, 11, 0.4)";
+            cardColab.style.boxShadow = "0 0 20px rgba(255, 255, 255, 0.4)";
         }
         if (recColab) {
             recColab.style.display = "block";
@@ -1422,7 +1458,7 @@ window.selectTrainingPlatform = function(platformId, autoScroll = false) {
     }
     if (badgeColab) {
         badgeColab.textContent = "12h Session";
-        badgeColab.style.background = "rgba(245, 158, 11, 0.15)";
+        badgeColab.style.background = "rgba(255, 255, 255, 0.15)";
         badgeColab.style.color = "#fbbf24";
     }
 
@@ -1507,7 +1543,7 @@ window.selectTrainingPlatform = function(platformId, autoScroll = false) {
     if (btnColab) {
         btnColab.innerHTML = platformId === 'colab' ? '<span>Selected Target (Google Colab)</span>' : '<span>Select Google Colab</span>';
         btnColab.className = platformId === 'colab' ? 'primary' : 'secondary';
-        if (platformId === 'colab') btnColab.style.background = 'linear-gradient(135deg, #d97706, #f59e0b)';
+        if (platformId === 'colab') btnColab.style.background = 'linear-gradient(135deg, #d97706, #d4d4d8)';
         else btnColab.style.background = 'transparent';
     }
     if (btnLocal) {
@@ -2019,7 +2055,7 @@ window.packageCloudTraining = async function(targetPlatform = null) {
         const optionalUrl = platform === 'kaggle' ? 'https://www.kaggle.com/code?new=true' : 'https://colab.research.google.com/#create=true';
 
         resultDiv.innerHTML = `
-            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${platform === 'kaggle' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(245, 158, 11, 0.4)'}; border-radius: 10px; padding: 16px;">
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${platform === 'kaggle' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(255, 255, 255, 0.4)'}; border-radius: 10px; padding: 16px;">
                 <h4 style="color: ${platform === 'kaggle' ? '#38bdf8' : '#fbbf24'}; margin: 0 0 8px 0; font-size: 1.05rem;">
                     1-Click Training Package Ready for ${platformTitle}!
                 </h4>
@@ -2076,7 +2112,7 @@ window.refreshCloudQuota = async function() {
             if (progressEl) {
                 const pct = Math.max(0, Math.min(100, (kaggle.remaining_hours / Math.max(1, kaggle.total_hours)) * 100));
                 progressEl.style.width = `${pct}%`;
-                progressEl.style.background = pct < 20 ? 'linear-gradient(90deg, #f43f5e, #f59e0b)' : 'linear-gradient(90deg, #38bdf8, #10b981)';
+                progressEl.style.background = pct < 20 ? 'linear-gradient(90deg, #f43f5e, #d4d4d8)' : 'linear-gradient(90deg, #38bdf8, #10b981)';
             }
             if (badgeEl) {
                 badgeEl.textContent = kaggle.connected ? `Connected (${kaggle.username || 'User'})` : '30h / Week Free';
@@ -2374,9 +2410,9 @@ window.runDataDoctorAudit = async function() {
         const data = await res.json();
 
         const isGood = data.health_score >= 75;
-        const color = isGood ? '#10b981' : '#f59e0b';
-        const bg = isGood ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)';
-        const border = isGood ? '#10b981' : '#f59e0b';
+        const color = isGood ? '#10b981' : '#d4d4d8';
+        const bg = isGood ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.12)';
+        const border = isGood ? '#10b981' : '#d4d4d8';
 
         banner.style.background = bg;
         banner.style.borderColor = border;
@@ -2466,7 +2502,7 @@ window.runModelBenchmarkEvaluation = async function() {
             tr.innerHTML = `
                 <td style="font-size: 0.82rem; font-weight: 600; color: #fff;">
                     ${item.prompt}
-                    ${item.is_simulated ? '<div style="font-size: 0.68rem; color: #f59e0b; margin-top: 4px;">Ground-truth reference (Model not yet compiled into Ollama)</div>' : ''}
+                    ${item.is_simulated ? '<div style="font-size: 0.68rem; color: #d4d4d8; margin-top: 4px;">Ground-truth reference (Model not yet compiled into Ollama)</div>' : ''}
                 </td>
                 <td style="font-size: 0.8rem; color: #94a3b8; line-height: 1.4;">
                     <div style="font-size: 0.7rem; color: #64748b; margin-bottom: 2px;">Score: ${item.base_score}/10</div>
@@ -3397,7 +3433,7 @@ window.refreshDockerStatus = async function() {
                 dot.style.height = '6px';
                 dot.style.background = '#10b981';
             }
-            if (text) text.textContent = '🐳 Docker: Online (--network none)';
+            if (text) text.textContent = 'Docker: Online (--network none)';
             if (btn) {
                 btn.style.display = 'inline-flex';
                 btn.style.borderColor = 'rgba(239, 68, 68, 0.3)';
@@ -3417,7 +3453,7 @@ window.refreshDockerStatus = async function() {
                 dot.style.height = '6px';
                 dot.style.background = 'var(--text-muted)';
             }
-            if (text) text.textContent = '🛡️ Sandbox: Local Jail';
+            if (text) text.textContent = 'Sandbox: Local Jail';
             if (btn) {
                 btn.style.display = 'inline-flex';
                 btn.style.borderColor = 'rgba(56, 189, 248, 0.35)';
@@ -3425,7 +3461,7 @@ window.refreshDockerStatus = async function() {
                 btn.style.color = '#38bdf8';
                 btn.title = 'Launch Docker Desktop for hardware kernel isolation';
             }
-            if (btnText) btnText.textContent = '🐳 Turn On Docker';
+            if (btnText) btnText.textContent = 'Turn On Docker';
         }
     } catch (err) {
         console.warn("Docker status check failed:", err);
@@ -3710,8 +3746,8 @@ window.scanLocalGgufs = async function() {
                 let colorText = isZip ? 'var(--accent-text)' : (isModel ? '#10b981' : '#38bdf8');
 
                 if (isStarter) {
-                    colorBg = 'rgba(245, 158, 11, 0.12)';
-                    colorBorder = 'rgba(245, 158, 11, 0.35)';
+                    colorBg = 'rgba(255, 255, 255, 0.12)';
+                    colorBorder = 'rgba(255, 255, 255, 0.35)';
                     colorText = '#fbbf24';
                 }
                 
@@ -4044,7 +4080,7 @@ window.onCloudLlmProviderChange = function() {
         keyInput.placeholder = `Stored: ${prov.masked_key}`;
         if (disconnectBtn) disconnectBtn.style.display = 'block';
         if (keyStatusText) {
-            keyStatusText.innerHTML = `<span style="color:#10b981;font-weight:600;">✓ Connected & Encrypted (AES-256-GCM)</span>. Enter a new key only to replace.`;
+            keyStatusText.innerHTML = `<span style="color:#10b981;font-weight:600;">Connected & Encrypted (AES-256-GCM)</span>. Enter a new key only to replace.`;
         }
     } else {
         keyInput.value = '';
@@ -4113,14 +4149,14 @@ window.testCloudLlmKeyUI = async function() {
             banner.style.background = 'rgba(16, 185, 129, 0.1)';
             banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
             banner.style.color = '#10b981';
-            banner.textContent = `✓ Success! Connected in ${data.latency_ms}ms to ${data.model}. API key is valid.`;
+            banner.textContent = `Success! Connected in ${data.latency_ms}ms to ${data.model}. API key is valid.`;
         }
     } catch (err) {
         if (banner) {
             banner.style.background = 'rgba(239, 68, 68, 0.1)';
             banner.style.border = '1px solid rgba(239, 68, 68, 0.3)';
             banner.style.color = '#ef4444';
-            banner.textContent = `✗ ${err.message}`;
+            banner.textContent = `${err.message}`;
         }
     } finally {
         if (btn) btn.disabled = false;
@@ -4183,7 +4219,7 @@ window.saveCloudLlmKeyUI = async function() {
             banner.style.background = 'rgba(239, 68, 68, 0.1)';
             banner.style.border = '1px solid rgba(239, 68, 68, 0.3)';
             banner.style.color = '#ef4444';
-            banner.textContent = `✗ ${err.message}`;
+            banner.textContent = `${err.message}`;
         }
     } finally {
         if (saveBtn) saveBtn.disabled = false;
@@ -4231,7 +4267,7 @@ window.refreshChatModels = async function(modelToSelect = null) {
 
         if (cloudModels.length > 0) {
             const cloudGroup = document.createElement('optgroup');
-            cloudGroup.label = "⚡ Cloud Frontier Models (BYOK)";
+            cloudGroup.label = "Cloud Frontier Models (BYOK)";
             cloudModels.forEach(m => {
                 const opt = document.createElement('option');
                 opt.value = m.id || m.name;
@@ -4244,7 +4280,7 @@ window.refreshChatModels = async function(modelToSelect = null) {
 
         if (localModels.length > 0) {
             const localGroup = document.createElement('optgroup');
-            localGroup.label = "💻 Local Offline Models (RTX 3050)";
+            localGroup.label = "Local Offline Models (RTX 3050)";
             localModels.forEach(m => {
                 const opt = document.createElement('option');
                 opt.value = m.name;
@@ -4411,9 +4447,9 @@ window.sendChatArenaMessage = async function() {
         if (pauseLbl) pauseLbl.textContent = 'Pause';
         if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
         if (pauseBtn) {
-            pauseBtn.style.color = '#f59e0b';
-            pauseBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-            pauseBtn.style.background = 'rgba(245, 158, 11, 0.1)';
+            pauseBtn.style.color = '#d4d4d8';
+            pauseBtn.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+            pauseBtn.style.background = 'rgba(255, 255, 255, 0.1)';
         }
     }
 
@@ -4569,7 +4605,7 @@ window.sendChatArenaMessage = async function() {
             window.jarvisIsSpeaking = true;
             window.jarvisCurrentSpeechTranscript = (data.reply || '').toLowerCase();
             if (typeof updateWakeWordBadge === 'function') {
-                updateWakeWordBadge(true, '🔊 Jarvis Speaking...');
+                updateWakeWordBadge(true, 'Jarvis Speaking...');
             }
 
             if (!data.spoken && shouldSpeak && data.reply) {
@@ -4653,9 +4689,9 @@ window.sendChatArenaMessage = async function() {
         if (err.name === 'AbortError') {
             if (window._chatTimedOut) {
                 window._chatTimedOut = false;
-                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+                appendMessageElement('assistant', `**Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
             } else {
-                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+                appendMessageElement('assistant', `**Execution Halted:** Operations were cancelled upon your directive, Sir.`);
             }
         } else {
             appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
@@ -4705,9 +4741,9 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
     avatar.style.alignItems = 'center';
     avatar.style.justifyContent = 'center';
     avatar.style.flexShrink = '0';
-    avatar.style.background = isUser ? 'var(--accent)' : 'var(--bg-surface-elevated)';
-    avatar.style.border = isUser ? 'none' : '1px solid var(--border-medium)';
-    avatar.style.color = isUser ? '#ffffff' : 'var(--text-secondary)';
+    avatar.style.background = 'var(--bg-surface-elevated)';
+    avatar.style.border = '1px solid var(--border-medium)';
+    avatar.style.color = isUser ? 'var(--text-primary)' : 'var(--text-secondary)';
     avatar.innerHTML = isUser
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`
         : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 9h.01"/><path d="M15 9h.01"/><path d="M9 15h6"/></svg>`;
@@ -4855,7 +4891,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             </div>
             <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
                 <button type="button" onclick="triggerBakeRecommendation('${recBaseModel}', '${recSuggName}', ${JSON.stringify(bakeRec.skill_ids || []).replace(/"/g, '&apos;')})" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 14px; font-weight: 600; cursor: pointer; background: #1e2229; border: 1px solid #3b4252; color: #e2e8f0; border-radius: 6px;">
-                    ⚡ Bake into Dedicated Model (1-Click)
+                    Bake into Dedicated Model (1-Click)
                 </button>
             </div>
         `;
@@ -4896,7 +4932,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             </div>
             <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
                 <button type="button" onclick="executeAgentInstall(this, '${pType}', '${pName}')" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 14px; font-weight: 600; cursor: pointer; background: var(--bg-surface); border: 1px solid var(--border-strong); color: var(--text-primary); border-radius: 6px;">
-                    ✓ Approve & Install (${pName})
+                    Approve & Install (${pName})
                 </button>
             </div>
         `;
@@ -4932,7 +4968,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             </div>
             <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
                 <button type="button" onclick="confirmEnableAgenticAndRetry(this)" class="btn-quiet" style="font-size: 0.74rem; padding: 6px 14px; font-weight: 600; cursor: pointer; background: var(--bg-surface-elevated); border: 1px solid var(--border-strong); color: var(--text-primary); border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;">
-                    <span>⚡ Turn ON & Continue</span>
+                    <span>Turn ON & Continue</span>
                 </button>
                 <button type="button" onclick="dismissAgenticProposal(this)" class="btn-quiet" style="font-size: 0.74rem; padding: 6px 12px; cursor: pointer; border: 1px solid var(--border-subtle); color: var(--text-muted); border-radius: 6px;">
                     Skip (Keep OFF)
@@ -4984,7 +5020,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
             </div>
             <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
                 <button type="button" onclick="executeKnowledgeAcquire(this, '${escapeHtml(kDomain)}', '${escapeHtml(kDbName)}')" class="btn-quiet" style="font-size: 0.76rem; padding: 6px 16px; font-weight: 600; cursor: pointer; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
-                    <span>⚡ Download & Setup into Model (1-Click)</span>
+                    <span>Download & Setup into Model (1-Click)</span>
                 </button>
             </div>
         `;
@@ -5007,20 +5043,20 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
         card.innerHTML = `
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <span style="font-weight:600;font-size:0.78rem;color:#f4f4f5;display:inline-flex;align-items:center;gap:6px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d4d4d8" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                     Action Proposed: <code>${escapeHtml(actionName)}</code>
                 </span>
-                <span style="font-size:0.65rem;color:#a78bfa;background:rgba(167,139,250,0.15);padding:1px 6px;border-radius:4px;font-weight:600;">Approval Required</span>
+                <span style="font-size:0.65rem;color:#d4d4d8;background:rgba(167,139,250,0.15);padding:1px 6px;border-radius:4px;font-weight:600;">Approval Required</span>
             </div>
             <div style="font-size:0.74rem;color:var(--text-secondary);margin-bottom:10px;">
                 Target: <strong>${escapeHtml(targetFile || 'Workspace')}</strong>
             </div>
             <div style="display:flex;gap:8px;">
                 <button type="button" onclick="resolveActionApprovalUI('${escapeHtml(projName)}', true, this)" class="btn-primary" style="padding:4px 14px;font-size:0.75rem;font-weight:600;border-radius:5px;background:#3b82f6;border:none;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:4px;">
-                    <span>✓ Approve &amp; Run</span>
+                    <span>Approve &amp; Run</span>
                 </button>
                 <button type="button" onclick="resolveActionApprovalUI('${escapeHtml(projName)}', false, this)" class="btn-quiet" style="padding:4px 12px;font-size:0.75rem;border-radius:5px;color:#ef4444;border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.08);cursor:pointer;">
-                    <span>✕ Reject</span>
+                    <span>Reject</span>
                 </button>
             </div>
         `;
@@ -5028,43 +5064,49 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
     }
 
     // 2. Render Created Project Files Artifact Card directly beneath message
-        if (!isUser && agenticData && agenticData.project_name) {
-        let files = (agenticData.created_files && agenticData.created_files.length > 0) ? agenticData.created_files : ['index.html', 'styles.css', 'app.js'];
-        const projCard = document.createElement('div');
-        projCard.className = 'studio-workspace-card';
+    if (!isUser && agenticData && agenticData.project_name) {
+        const internalFiles = new Set(['decision_trace.json', 'project_manifest.json']);
+        const files = (Array.isArray(agenticData.created_files) ? agenticData.created_files : []).filter(f => {
+            const base = String(f || '').split(/[\\/]/).pop().toLowerCase();
+            return base && !internalFiles.has(base);
+        });
+        if (files.length > 0) {
+            const projCard = document.createElement('div');
+            projCard.className = 'studio-workspace-card';
 
-        const filePillsHtml = files.map(f => `
-            <div class="studio-file-pill" onclick="openAgentProjectModal('${agenticData.project_name}', '${f}', 'code')">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <span>${f}</span>
-            </div>
-        `).join('');
+            const filePillsHtml = files.map(f => `
+                <div class="studio-file-pill" onclick="openAgentProjectModal('${agenticData.project_name}', '${f}', 'code')">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>${f}</span>
+                </div>
+            `).join('');
 
-        projCard.innerHTML = `
-            <div class="studio-workspace-header">
-                <div class="title-group">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                    <span>WORKSPACE • ${files.length} Files</span>
+            projCard.innerHTML = `
+                <div class="studio-workspace-header">
+                    <div class="title-group">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <span>WORKSPACE • ${files.length} Files</span>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <button type="button" class="studio-btn-primary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'preview')">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            <span>Live Preview</span>
+                        </button>
+                        <button type="button" class="studio-btn-secondary" onclick="openProjectInVSCode('${agenticData.project_name}')">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            <span>VS Code</span>
+                        </button>
+                        <button type="button" class="studio-btn-secondary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'code')">
+                            <span>Code ↗</span>
+                        </button>
+                    </div>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <button type="button" class="studio-btn-primary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'preview')">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        <span>Live Preview</span>
-                    </button>
-                    <button type="button" class="studio-btn-secondary" onclick="openProjectInVSCode('${agenticData.project_name}')">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                        <span>VS Code</span>
-                    </button>
-                    <button type="button" class="studio-btn-secondary" onclick="openAgentProjectModal('${agenticData.project_name}', null, 'code')">
-                        <span>Code ↗</span>
-                    </button>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+                    ${filePillsHtml}
                 </div>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
-                ${filePillsHtml}
-            </div>
-        `;
-        bubble.appendChild(projCard);
+            `;
+            bubble.appendChild(projCard);
+        }
     }
 
     // 3. Render Antigravity ReAct Steps Trace as sleek, collapsed developer accordion at bottom
@@ -5082,7 +5124,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
         let stepsDetailHtml = agenticData.steps.map((st, idx) => {
             const stepNum = idx + 1;
             const thoughtText = st.thought ? `<div style="color:var(--text-secondary); margin-bottom:4px; font-style:italic;">Thought: ${escapeHtml(st.thought)}</div>` : '';
-            const actionText = st.action ? `<div style="font-family:var(--font-mono); color:#38bdf8; font-size:0.72rem;">⚡ ${escapeHtml(st.action)} ${st.args ? escapeHtml(JSON.stringify(st.args)) : ''}</div>` : '';
+            const actionText = st.action ? `<div style="font-family:var(--font-mono); color:#38bdf8; font-size:0.72rem;">${escapeHtml(st.action)} ${st.args ? escapeHtml(JSON.stringify(st.args)) : ''}</div>` : '';
             const rawObs = (typeof st.observation === 'object' && st.observation !== null)
                 ? (st.observation.message || st.observation.error || JSON.stringify(st.observation))
                 : st.observation;
@@ -5091,7 +5133,7 @@ function appendMessageElement(role, content, telemetry = null, autoScroll = true
                 <div style="padding: 6px 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; font-size: 0.73rem;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px; font-weight:600; color:var(--text-primary);">
                         <span>Step ${stepNum}</span>
-                        <span style="color:#22c55e; font-size:0.68rem;">✓ Done</span>
+                        <span style="color:#22c55e; font-size:0.68rem;">Done</span>
                     </div>
                     ${thoughtText}
                     ${actionText}
@@ -5373,7 +5415,7 @@ function appendTypingIndicator(modelName, projectName) {
                     <span id="${id}_timer" style="font-size: 0.70rem; color: var(--text-muted); font-family: var(--font-mono);">0.0s</span>
                 </div>
                 <div id="${id}_status" style="font-size: 0.76rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-                    <span>⚡ Analyzing directive & routing intent...</span>
+                    <span>Analyzing directive & routing intent...</span>
                 </div>
             </div>
         `;
@@ -5387,11 +5429,11 @@ function appendTypingIndicator(modelName, projectName) {
             if (statusEl) {
                 const s = parseFloat(elapsed);
                 if (s < 1.5) {
-                    statusEl.innerHTML = `<span>⚡ Analyzing directive & routing intent...</span>`;
+                    statusEl.innerHTML = `<span>Analyzing directive & routing intent...</span>`;
                 } else if (s < 4.0) {
-                    statusEl.innerHTML = `<span>🧠 Processing with ${modelName}...</span>`;
+                    statusEl.innerHTML = `<span>Processing with ${modelName}...</span>`;
                 } else if (s < 8.0) {
-                    statusEl.innerHTML = `<span>⚙️ Synthesizing response (${modelName})...</span>`;
+                    statusEl.innerHTML = `<span>Synthesizing response (${modelName})...</span>`;
                 } else {
                     statusEl.innerHTML = `<span>⏳ Deep inference in progress (${elapsed}s elapsed — active)...</span>`;
                 }
@@ -5399,26 +5441,26 @@ function appendTypingIndicator(modelName, projectName) {
         }, 500);
         div._pollInterval = nonAgenticInterval;
     } else {
-        // Antigravity Live Agentic Execution Telemetry Indicator
+        // Clean Monochrome Agentic Execution Telemetry Indicator
         div.innerHTML = `
-            <div style="width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.15)); border: 1px solid rgba(129, 140, 248, 0.4); color: #818cf8; flex-shrink: 0;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <div style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-primary); flex-shrink: 0;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             </div>
-            <div style="min-width: 280px; max-width: 520px; padding: 10px 14px; border-radius: 12px 12px 12px 2px; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); box-shadow: 0 4px 14px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 6px;">
+            <div style="min-width: 280px; max-width: 520px; padding: 10px 14px; border-radius: 10px; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); display: flex; flex-direction: column; gap: 6px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 7px;">
-                        <span id="${id}_dot" class="status-dot agent-status-pulse" style="background: #3b82f6; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 8px #3b82f6; display: inline-block;"></span>
-                        <span id="${id}_phase" style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">THINKING</span>
+                        <span id="${id}_dot" class="status-dot agent-status-pulse" style="background: #10b981; width: 7px; height: 7px; border-radius: 50%; display: inline-block;"></span>
+                        <span id="${id}_phase" style="font-size: 0.66rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.06); color: var(--text-primary); border: 1px solid var(--border-medium);">THINKING</span>
                         <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">${modelName}</span>
                     </div>
                     <span id="${id}_timer" style="font-size: 0.70rem; color: var(--text-muted); font-family: var(--font-mono);">0.0s</span>
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                     <div id="${id}_headline" style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                        <span>Analyzing prompt & intent...</span>
+                        <span>Analyzing prompt &amp; intent...</span>
                     </div>
                     <div id="${id}_detail" style="font-size: 0.73rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        Frontier intent classification & pre-flight routing
+                        Routing request &amp; inspecting tools
                     </div>
                 </div>
                 <div id="${id}_plan" style="display: none; flex-direction: column; gap: 3px; margin-top: 4px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);"></div>
@@ -5449,9 +5491,9 @@ function appendTypingIndicator(modelName, projectName) {
                     let icon = '○';
                     let color = 'var(--text-muted)';
                     let weight = '400';
-                    if (status === 'done') { icon = '✓'; color = '#10b981'; }
-                    else if (status === 'in_progress') { icon = '●'; color = '#60a5fa'; weight = '600'; }
-                    else if (status === 'failed') { icon = '✕'; color = '#ef4444'; }
+                    if (status === 'done') { icon = ''; color = '#10b981'; }
+                    else if (status === 'in_progress') { icon = '●'; color = '#e4e4e7'; weight = '600'; }
+                    else if (status === 'failed') { icon = ''; color = '#ef4444'; }
                     return `<div style="display:flex; align-items:center; gap:6px; font-size:0.72rem; color:${color}; font-weight:${weight};"><span>${icon}</span><span>${escapeHtml(st.title || '')}</span></div>`;
                 }).join('');
             }
@@ -5462,10 +5504,10 @@ function appendTypingIndicator(modelName, projectName) {
                     const ph = (ev.phase || '').toLowerCase();
                     let icon = '•';
                     let color = 'var(--text-secondary)';
-                    if (ph === 'completed') { icon = '✓'; color = '#10b981'; }
-                    else if (ph === 'self_repairing' || ph === 'error') { icon = '!'; color = '#f97316'; }
-                    else if (ph === 'executing') { icon = '▶'; color = '#60a5fa'; }
-                    else if (ph === 'coding' || ph === 'validating') { icon = '✓'; color = '#a855f7'; }
+                    if (ph === 'completed') { icon = ''; color = '#10b981'; }
+                    else if (ph === 'error' || ph === 'self_repairing') { icon = '!'; color = '#ef4444'; }
+                    else if (ph === 'executing') { icon = '›'; color = '#e4e4e7'; }
+                    else if (ph === 'coding' || ph === 'validating') { icon = ''; color = '#10b981'; }
                     const tsText = typeof ev.ts === 'number' ? `${ev.ts.toFixed(1)}s` : '';
                     return `<div style="display:flex; align-items:baseline; justify-content:space-between; gap:8px; font-size:0.70rem; color:${color};">
                         <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${icon} ${escapeHtml(ev.headline || '')}</span>
@@ -5479,34 +5521,26 @@ function appendTypingIndicator(modelName, projectName) {
                 const phase = pData.phase.toLowerCase();
                 phaseEl.textContent = phase.toUpperCase();
 
-                let color = '#3b82f6';
-                let bg = 'rgba(59, 130, 246, 0.15)';
-                let border = 'rgba(59, 130, 246, 0.3)';
+                let color = '#e4e4e7';
+                let bg = 'rgba(255, 255, 255, 0.06)';
+                let border = 'var(--border-medium)';
 
-                if (phase === 'coding' || phase === 'styling' || phase === 'scripting' || phase === 'executing') {
-                    color = '#a855f7';
-                    bg = 'rgba(168, 85, 247, 0.15)';
-                    border = 'rgba(168, 85, 247, 0.3)';
-                } else if (phase === 'validating') {
-                    color = '#eab308';
-                    bg = 'rgba(234, 179, 8, 0.15)';
-                    border = 'rgba(234, 179, 8, 0.3)';
-                } else if (phase === 'self_repairing' || phase === 'error') {
-                    color = '#f97316';
-                    bg = 'rgba(249, 115, 22, 0.15)';
-                    border = 'rgba(249, 115, 22, 0.3)';
+                if (phase === 'error' || phase === 'self_repairing') {
+                    color = '#ef4444';
+                    bg = 'rgba(239, 68, 68, 0.1)';
+                    border = 'rgba(239, 68, 68, 0.25)';
                 } else if (phase === 'completed') {
                     color = '#10b981';
-                    bg = 'rgba(16, 185, 129, 0.15)';
-                    border = 'rgba(16, 185, 129, 0.3)';
+                    bg = 'rgba(16, 185, 129, 0.1)';
+                    border = 'rgba(16, 185, 129, 0.25)';
                 }
 
                 phaseEl.style.color = color;
                 phaseEl.style.background = bg;
                 phaseEl.style.borderColor = border;
                 if (dotEl) {
-                    dotEl.style.background = color;
-                    dotEl.style.boxShadow = `0 0 8px ${color}`;
+                    dotEl.style.background = (phase === 'error' || phase === 'self_repairing') ? '#ef4444' : '#10b981';
+                    dotEl.style.boxShadow = 'none';
                 }
             }
         };
@@ -5531,7 +5565,7 @@ function appendTypingIndicator(modelName, projectName) {
                 const pData = await pRes.json();
                 if (!pData || pData.phase === 'idle') {
                     if (parseFloat(elapsed) > 2.0 && headEl && headEl.textContent.includes('Analyzing')) {
-                        headEl.innerHTML = `<span>🧠 Synthesizing response (${modelName})...</span>`;
+                        headEl.innerHTML = `<span>Synthesizing response (${modelName})...</span>`;
                         if (detailEl) detailEl.textContent = `Frontier neural inference in progress`;
                     }
                     return;
@@ -5700,7 +5734,7 @@ window.renderKBDocuments = function(docs) {
         let sevColor = '#38bdf8';
         const sev = (d.severity || 'MEDIUM').toUpperCase();
         if (sev === 'CRITICAL') sevColor = '#f43f5e';
-        else if (sev === 'HIGH') sevColor = '#f97316';
+        else if (sev === 'HIGH') sevColor = '#ef4444';
         else if (sev === 'LOW') sevColor = '#10b981';
 
         card.innerHTML = `
@@ -5813,13 +5847,13 @@ window.refreshSynthTelemetry = async function() {
             if (dPill) dPill.style.borderColor = 'rgba(16, 185, 129, 0.4)';
             if (dDot) dDot.style.background = '#10b981';
             if (dTxt) dTxt.textContent = dStat.cyber_image_built ? 'Docker: cyber-sandbox Ready' : 'Docker: Online';
-            if (noticeIcon) noticeIcon.textContent = '🟢';
+            if (noticeIcon) noticeIcon.textContent = '';
             if (noticeTxt) noticeTxt.textContent = 'Ready to generate. Docker air-gapped micro-container online.';
         } else {
             if (dPill) dPill.style.borderColor = 'rgba(244, 63, 94, 0.4)';
             if (dDot) dDot.style.background = '#f43f5e';
             if (dTxt) dTxt.textContent = 'Docker: Offline (RAM Saved)';
-            if (noticeIcon) noticeIcon.textContent = '🟡';
+            if (noticeIcon) noticeIcon.textContent = '';
             if (noticeTxt) noticeTxt.textContent = 'Docker offline. Will ask permission to start or fallback to Windows Jail.';
         }
 
@@ -6058,12 +6092,12 @@ function updateSynthMonitorUI(data) {
         const last = data.recent_samples[data.recent_samples.length - 1];
         if (codeEl) {
             if (last.thought) {
-                codeEl.textContent = `// 🧠 DeepSeek-R1 CoT Reasoning Trace:\n/*\n${last.thought}\n*/\n\n# 💻 Verified Code Solution:\n${last.output || ''}`;
+                codeEl.textContent = `// DeepSeek-R1 CoT Reasoning Trace:\n/*\n${last.thought}\n*/\n\n# Verified Code Solution:\n${last.output || ''}`;
             } else {
                 codeEl.textContent = last.output || '';
             }
         }
-        if (badgeEl) badgeEl.textContent = `✔ Verified in ${last.metadata?.engine || 'Sandbox'} (${last.metadata?.execution_time_ms || 0}ms)`;
+        if (badgeEl) badgeEl.textContent = `Verified in ${last.metadata?.engine || 'Sandbox'} (${last.metadata?.execution_time_ms || 0}ms)`;
     }
 }
 
@@ -6098,10 +6132,10 @@ window.loadSavedDatasetsList = async function() {
                     ${d.filename}
                 </td>
                 <td style="font-weight: 700; color: var(--success); font-size: 0.82rem;">
-                    ✔ ${d.sample_count} Samples
+                    ${d.sample_count} Samples
                 </td>
                 <td style="font-size: 0.75rem;">
-                    ${d.has_cot ? '<span style="color:#818cf8; font-weight:700; background:rgba(99, 102, 241,0.15); border:1px solid rgba(99, 102, 241,0.3); padding:2px 8px; border-radius:10px;">🧠 CoT Active</span>' : '<span style="color:var(--text-muted);">Standard</span>'}
+                    ${d.has_cot ? '<span style="color:#d4d4d8; font-weight:700; background:rgba(99, 102, 241,0.15); border:1px solid rgba(99, 102, 241,0.3); padding:2px 8px; border-radius:10px;">CoT Active</span>' : '<span style="color:var(--text-muted);">Standard</span>'}
                 </td>
                 <td style="color: var(--text-muted); font-size: 0.78rem;">
                     ${d.size_kb} KB
@@ -6111,7 +6145,7 @@ window.loadSavedDatasetsList = async function() {
                         ⬇ Download
                     </a>
                     <button type="button" onclick="exportSynthDatasetToStudio('${d.filename}')" class="btn primary" style="font-size: 0.72rem; padding: 4px 10px; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
-                        🚀 Train in Studio
+                        Train in Studio
                     </button>
                 </td>
             </tr>
@@ -6171,7 +6205,7 @@ window.exportSynthDatasetToStudio = async function(filename) {
             window.switchAppTab('llm-section');
         }
 
-        alert(`🚀 Successfully bridged "${filename}" (${data.sample_count} verified samples) into LLM Fine-Tuning Studio!\n\nYour curated dataset is loaded and hyper-parameters are auto-calibrated.`);
+        alert(`Successfully bridged "${filename}" (${data.sample_count} verified samples) into LLM Fine-Tuning Studio!\n\nYour curated dataset is loaded and hyper-parameters are auto-calibrated.`);
         
         if (btn) {
             btn.innerHTML = origText;
@@ -6227,7 +6261,7 @@ window.triggerCouncilDeliberation = async function() {
                 const badge = node.querySelector('.relay-step-badge');
                 if (i < step) {
                     node.classList.add('completed');
-                    if (badge) badge.textContent = '✓';
+                    if (badge) badge.textContent = '';
                 } else if (i === step) {
                     node.classList.add('active');
                     if (badge) badge.textContent = `0${i}`;
@@ -6307,16 +6341,16 @@ window.triggerCouncilDeliberation = async function() {
 
         // Populate Champion Card
         const c = data.champion;
-        document.getElementById('councilChampTitle').textContent = `👑 ${c.moniker} Crowned Council Champion`;
+        document.getElementById('councilChampTitle').textContent = `${c.moniker} Crowned Council Champion`;
         document.getElementById('councilChampAuthor').textContent = `Author Model: ${c.author_model} (Unmasked)`;
         document.getElementById('councilChampScore').textContent = `${c.composite_score} / 10`;
-        document.getElementById('councilChampLatency').textContent = `✔ ${c.duration_ms}ms in Container`;
+        document.getElementById('councilChampLatency').textContent = `${c.duration_ms}ms in Container`;
         document.getElementById('councilChampPeerScore').textContent = `${c.peer_score} / 10`;
         
         const codeView = document.getElementById('councilChampCodeView');
         if (codeView) {
             if (c.thought) {
-                codeView.textContent = `// 🧠 DeepSeek-R1 Style Reasoning Trace:\n/*\n${c.thought}\n*/\n\n# 💻 Verified Code Champion:\n${c.code}`;
+                codeView.textContent = `// DeepSeek-R1 Style Reasoning Trace:\n/*\n${c.thought}\n*/\n\n# Verified Code Champion:\n${c.code}`;
             } else {
                 codeView.textContent = c.code;
             }
@@ -6328,11 +6362,11 @@ window.triggerCouncilDeliberation = async function() {
             tbody.innerHTML = data.standings.map((s, idx) => {
                 const isWinner = idx === 0 && s.passed_sandbox;
                 const statusBadge = s.passed_sandbox 
-                    ? `<span style="color:#10b981; font-weight:700; background:rgba(16, 185, 129,0.15); padding:2px 8px; border-radius:10px;">✔ PASSED (${s.duration_ms}ms)</span>`
-                    : `<span style="color:#f43f5e; font-weight:700; background:rgba(244, 63, 94,0.15); padding:2px 8px; border-radius:10px;">✘ VETOED (Crash/Fail)</span>`;
+                    ? `<span style="color:#10b981; font-weight:700; background:rgba(16, 185, 129,0.15); padding:2px 8px; border-radius:10px;">PASSED (${s.duration_ms}ms)</span>`
+                    : `<span style="color:#f43f5e; font-weight:700; background:rgba(244, 63, 94,0.15); padding:2px 8px; border-radius:10px;">VETOED (Crash/Fail)</span>`;
                 
                 const rankBadge = isWinner 
-                    ? `<span style="color:#fbbf24; font-weight:800;">👑 WINNER</span>`
+                    ? `<span style="color:#fbbf24; font-weight:800;">WINNER</span>`
                     : `<span style="color:var(--text-muted);">Rank #${idx + 1}</span>`;
 
                 return `
@@ -6340,7 +6374,7 @@ window.triggerCouncilDeliberation = async function() {
                         <td style="color: #60a5fa; font-weight: 700;">${s.moniker}</td>
                         <td style="font-family: monospace; font-size: 0.78rem;">${s.author_model}</td>
                         <td style="font-size: 0.75rem;">${statusBadge}</td>
-                        <td style="font-size: 0.8rem; color: #818cf8; font-weight: 700;">${s.peer_score} / 10</td>
+                        <td style="font-size: 0.8rem; color: #d4d4d8; font-weight: 700;">${s.peer_score} / 10</td>
                         <td style="font-size: 0.9rem; color: var(--success); font-weight: 800;">${s.composite_score}</td>
                         <td style="text-align: center;">${rankBadge}</td>
                     </tr>
@@ -6433,7 +6467,7 @@ window.bridgeCouncilChampToStudio = function() {
     if (typeof window.switchAppTab === 'function') {
         window.switchAppTab('llm-section');
     }
-    alert(`🚀 Council Champion code (${c.author_model}) bridged directly into LLM Fine-Tuning Studio for training!`);
+    alert(`Council Champion code (${c.author_model}) bridged directly into LLM Fine-Tuning Studio for training!`);
 };
 
 /* ========================================================
@@ -6914,7 +6948,7 @@ window.renderQuickSkillsList = function() {
                 </div>
 
                 <button type="button" onclick="toggleSkillActive('${s.id}')" class="${isActive ? 'primary' : 'btn-quiet'}" style="font-size: 0.74rem; padding: 4px 10px; font-weight: 600;">
-                    ${isActive ? '✓ Attached' : '+ Attach'}
+                    ${isActive ? 'Attached' : '+ Attach'}
                 </button>
             </div>
         `;
@@ -7090,8 +7124,8 @@ window.executeBakeSkillsIntoModel = async function() {
             feedback.style.background = 'rgba(16, 185, 129, 0.15)';
             feedback.style.color = '#10b981';
             feedback.innerHTML = isOverwriting
-                ? `<strong>✓ Success!</strong> Skills successfully baked directly into <code>${data.model_name}</code>!`
-                : `<strong>✓ Success!</strong> Created and compiled model <code>${data.model_name}</code> into Ollama!`;
+                ? `<strong>Success!</strong> Skills successfully baked directly into <code>${data.model_name}</code>!`
+                : `<strong>Success!</strong> Created and compiled model <code>${data.model_name}</code> into Ollama!`;
         }
 
         setTimeout(async () => {
@@ -7236,7 +7270,7 @@ window.renderQuickSkillsList = function() {
                 </div>
 
                 <button type="button" onclick="toggleSkillForCurrentChat('${s.id}')" class="${isActive ? 'primary' : 'btn-quiet'}" style="font-size: 0.74rem; padding: 4px 10px; font-weight: 600;">
-                    ${isActive ? '✓ Attached' : '+ Attach'}
+                    ${isActive ? 'Attached' : '+ Attach'}
                 </button>
             </div>
         `;
@@ -7388,7 +7422,7 @@ window.executeImportChats = function() {
         feedback.style.background = 'rgba(16, 185, 129, 0.15)';
         feedback.style.color = '#10b981';
         feedback.style.border = '1px solid rgba(16, 185, 129, 0.3)';
-        feedback.textContent = `✓ Successfully imported ${importedCount} chat${importedCount === 1 ? '' : 's'} into ${targetModel}.`;
+        feedback.textContent = `Successfully imported ${importedCount} chat${importedCount === 1 ? '' : 's'} into ${targetModel}.`;
     }
 
     setTimeout(() => {
@@ -7507,7 +7541,7 @@ window.promptMountWorkspace = async function() {
         const pill = document.getElementById('btnMountWorkspacePill');
         if (label) {
             const shortName = hostPath.trim().split(/[\\/]/).filter(Boolean).pop();
-            label.textContent = `📁 ${shortName}`;
+            label.textContent = `${shortName}`;
             label.style.color = '#10b981';
             if (pill) {
                 pill.style.borderColor = '#10b981';
@@ -7515,7 +7549,7 @@ window.promptMountWorkspace = async function() {
             }
         }
 
-        alert(`✅ Repository Mounted Successfully!\nDirectory: ${data.workspace_path}\nFiles Indexed: ${data.files_count}\nGit Shadow & 1-Click Rollback Enabled.`);
+        alert(`Repository Mounted Successfully!\nDirectory: ${data.workspace_path}\nFiles Indexed: ${data.files_count}\nGit Shadow & 1-Click Rollback Enabled.`);
     } catch (err) {
         alert("Mount Repository Failed: " + err.message);
     }
@@ -7539,7 +7573,7 @@ window.openProjectInVSCode = async function(projectName) {
         note.style.fontSize = '0.8rem';
         note.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5)';
         note.style.zIndex = '99999';
-        note.innerHTML = `<span>💙 Workspace '${escapeHtml(projectName)}' opened in VS Code!</span>`;
+        note.innerHTML = `<span>Workspace '${escapeHtml(projectName)}' opened in VS Code!</span>`;
         document.body.appendChild(note);
         setTimeout(() => note.remove(), 3500);
     } catch (err) {
@@ -7588,17 +7622,17 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                     <div style="display: flex; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px;">
                         ${hasHtml ? `
                             <button type="button" onclick="window._setWorkspaceView('preview')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'preview' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'preview' ? '#ffffff' : 'var(--text-secondary)'};">
-                                🖥️ Live Preview
+                                Live Preview
                             </button>
                         ` : ''}
                         <button type="button" onclick="window._setWorkspaceView('code')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'code' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'code' ? '#ffffff' : 'var(--text-secondary)'};">
-                            📄 Code
+                            Code
                         </button>
                         <button type="button" onclick="window._setWorkspaceView('audit')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'audit' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'audit' ? '#ffffff' : 'var(--text-secondary)'};" title="Explainability Timeline & Decision Tracer">
-                            🔍 Audit Trail
+                            Audit Trail
                         </button>
                         <button type="button" onclick="window._setWorkspaceView('snapshots')" style="font-size: 0.74rem; font-weight: 600; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; background: ${currentView === 'snapshots' ? 'var(--accent)' : 'transparent'}; color: ${currentView === 'snapshots' ? '#ffffff' : 'var(--text-secondary)'};" title="Workspace Snapshots & History">
-                            🕒 Snapshots
+                            Snapshots
                         </button>
                     </div>
 
@@ -7613,11 +7647,11 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                     ` : ''}
 
                     <button type="button" onclick="openProjectInVSCode('${projectName}')" class="btn-quiet" style="font-size: 0.72rem; padding: 4px 10px; color: var(--text-secondary); border: 1px solid var(--border-subtle); display: inline-flex; align-items: center; gap: 4px;" title="Open this workspace in VS Code">
-                        <span>💙 VS Code</span>
+                        <span>VS Code</span>
                     </button>
 
                     <button type="button" onclick="openProjectFolder('${projectName}')" class="btn-quiet" style="font-size: 0.72rem; padding: 4px 10px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 4px;" title="Open directory in Windows Explorer">
-                        <span>📁 Folder</span>
+                        <span>Folder</span>
                     </button>
                 `;
             }
@@ -7631,10 +7665,10 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                         <div style="background: var(--bg-surface); padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle);">
                             <div style="display: flex; align-items: center; gap: 6px;">
                                 <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; opacity: 0.8;"></span>
-                                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f59e0b; opacity: 0.8;"></span>
+                                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #d4d4d8; opacity: 0.8;"></span>
                                 <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #10b981; opacity: 0.8;"></span>
                                 <div style="margin-left: 10px; background: var(--bg-base); border: 1px solid var(--border-subtle); padding: 2px 12px; border-radius: 4px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px;">
-                                    <span style="color: var(--text-muted);">🔒</span>
+                                    <span style="color: var(--text-muted);"></span>
                                     <span>${window.location.origin}${previewUrl}</span>
                                 </div>
                             </div>
@@ -7682,7 +7716,7 @@ window.openAgentProjectModal = async function(projectName, initialFile = null, i
                                         intent_analysis: '#3b82f6',
                                         milestone_plan: '#8b5cf6',
                                         action_execution: '#10b981',
-                                        gate_audit: '#f59e0b',
+                                        gate_audit: '#d4d4d8',
                                         provenance_routed: '#ec4899',
                                         security_check: '#ef4444'
                                     };
@@ -7847,7 +7881,7 @@ window.escalateRepairToCloud = async function(projectName, filePath) {
     const btn = window.event ? window.event.target.closest('button') : null;
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '⚡ Repairing with Cloud Frontier...';
+        btn.innerHTML = 'Repairing with Cloud Frontier...';
         btn.style.opacity = '0.8';
     }
 
@@ -7864,7 +7898,7 @@ window.escalateRepairToCloud = async function(projectName, filePath) {
         if (!res.ok) throw new Error(data.detail || data.message || 'Escalation failed');
 
         if (btn) {
-            btn.innerHTML = '✅ Cloud Fix Verified & Passing!';
+            btn.innerHTML = 'Cloud Fix Verified & Passing!';
             btn.style.background = '#10b981';
             btn.style.color = '#ffffff';
         }
@@ -7882,7 +7916,7 @@ window.escalateRepairToCloud = async function(projectName, filePath) {
     } catch (err) {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '⚠️ Retry Cloud Escalation';
+            btn.innerHTML = 'Retry Cloud Escalation';
             btn.style.opacity = '1.0';
         }
         alert('Cloud Escalation Error: ' + err.message);
@@ -7910,7 +7944,7 @@ window.executeKnowledgeAcquire = async function(btn, domainKey, dbName) {
         btn.style.background = 'rgba(16, 185, 129, 0.12)';
         btn.style.color = '#10b981';
         btn.style.borderColor = 'rgba(16, 185, 129, 0.35)';
-        btn.innerHTML = `<span>✓ ${data.records_indexed || 'All'} Records Indexed into Model Memory</span>`;
+        btn.innerHTML = `<span>${data.records_indexed || 'All'} Records Indexed into Model Memory</span>`;
 
         if (parent) {
             const notice = document.createElement('div');
@@ -7966,7 +8000,7 @@ window.executeAgentInstall = async function(btn, pkgType, pkgName) {
         btn.className = 'btn-quiet';
         btn.style.color = '#10b981';
         btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-        btn.innerHTML = '✓ Installed';
+        btn.innerHTML = 'Installed';
 
         if (parent) {
             const notice = document.createElement('div');
@@ -8114,7 +8148,7 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
             window.jarvisIsSpeaking = true;
             window.jarvisCurrentSpeechTranscript = (data.reply || '').toLowerCase();
             if (typeof updateWakeWordBadge === 'function') {
-                updateWakeWordBadge(true, '🔊 Jarvis Speaking...');
+                updateWakeWordBadge(true, 'Jarvis Speaking...');
             }
 
             if (!data.spoken && shouldSpeak && data.reply) {
@@ -8174,9 +8208,9 @@ window.confirmEnableAgenticAndRetry = async function(btn) {
         if (err.name === 'AbortError') {
             if (window._chatTimedOut) {
                 window._chatTimedOut = false;
-                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+                appendMessageElement('assistant', `**Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
             } else {
-                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+                appendMessageElement('assistant', `**Execution Halted:** Operations were cancelled upon your directive, Sir.`);
             }
         } else {
             appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
@@ -8274,9 +8308,9 @@ window.dismissAgenticProposal = async function(btn) {
         if (err.name === 'AbortError') {
             if (window._chatTimedOut) {
                 window._chatTimedOut = false;
-                appendMessageElement('assistant', `⚠️ **Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
+                appendMessageElement('assistant', `**Response Timeout:** Local inference timed out. Please retry with a concise prompt.`);
             } else {
-                appendMessageElement('assistant', `🛑 **Execution Halted:** Operations were cancelled upon your directive, Sir.`);
+                appendMessageElement('assistant', `**Execution Halted:** Operations were cancelled upon your directive, Sir.`);
             }
         } else {
             appendMessageElement('assistant', `**Local Engine Error:** ${err.message}\n\nPlease verify that Ollama is online.`);
@@ -8365,7 +8399,7 @@ window.renderModelPickerPopoverList = function() {
             const check = document.createElement('span');
             check.style.fontSize = '0.75rem';
             check.style.color = '#10b981';
-            check.textContent = '✓';
+            check.textContent = '';
             item.appendChild(check);
         }
 
@@ -8509,8 +8543,8 @@ window.refreshCloudGpuStatus = async function() {
                 quotaBadge.style.color = '#10b981';
             } else {
                 quotaBadge.textContent = `${Number(data.remaining_quota || 0).toFixed(1)} hrs left`;
-                quotaBadge.style.background = 'rgba(245, 158, 11, 0.15)';
-                quotaBadge.style.color = '#f59e0b';
+                quotaBadge.style.background = 'rgba(255, 255, 255, 0.15)';
+                quotaBadge.style.color = '#d4d4d8';
             }
         }
 
@@ -8732,19 +8766,19 @@ window.refreshComputePolicyStatus = async function() {
         if (pillLbl && pillIcon) {
             if (mode === 'turbo') {
                 pillLbl.textContent = 'Turbo';
-                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
-                pillIcon.style.color = '#38bdf8';
+                pillIcon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+                pillIcon.style.color = 'var(--text-secondary)';
                 if (pillBtn) pillBtn.title = 'Turbo Mode (Cloud GPU: Kaggle/Colab Dual T4)';
             } else if (mode === 'balanced') {
                 pillLbl.textContent = 'Balanced';
-                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
+                pillIcon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>';
                 pillIcon.style.color = '#10b981';
                 if (pillBtn) pillBtn.title = 'Balanced Edge (Local GPU: RTX 3050 6GB)';
             } else {
                 pillLbl.textContent = 'CPU Safe';
-                pillIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>';
-                pillIcon.style.color = '#a3e635';
-                if (pillBtn) pillBtn.title = 'CPU Safe Mode (0% VRAM / Zero-Crash RAM)';
+                pillIcon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
+                pillIcon.style.color = 'var(--text-secondary)';
+                if (pillBtn) pillBtn.title = 'CPU Safe Mode (0% VRAM / System RAM)';
             }
         }
 
@@ -8831,17 +8865,17 @@ window.refreshPermissionsMode = async function() {
         }
         if (icon) {
             if (mode === 'review') {
-                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
-                icon.style.color = '#94a3b8';
+                icon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+                icon.style.color = 'var(--text-secondary)';
             } else if (mode === 'default') {
-                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
-                icon.style.color = '#a78bfa';
+                icon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+                icon.style.color = 'var(--text-secondary)';
             } else if (mode === 'auto') {
-                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
-                icon.style.color = '#38bdf8';
+                icon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>';
+                icon.style.color = '#10b981';
             } else {
-                icon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
-                icon.style.color = '#f59e0b';
+                icon.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+                icon.style.color = '#e4e4e7';
             }
         }
 
@@ -8865,7 +8899,7 @@ window.resolveActionApprovalUI = async function(projectName, approved, btnElemen
     if (btnElement) {
         const card = btnElement.closest('.hitl-approval-card');
         if (card) {
-            card.innerHTML = `<span style="font-size:0.74rem;color:${approved ? '#10b981' : '#ef4444'};font-weight:600;">${approved ? '✓ Approved by user. Executing...' : '✕ Rejected by user.'}</span>`;
+            card.innerHTML = `<span style="font-size:0.74rem;color:${approved ? '#10b981' : '#ef4444'};font-weight:600;">${approved ? 'Approved by user. Executing...' : 'Rejected by user.'}</span>`;
         }
     }
     const typingId = appendTypingIndicator('Agent Execution', projectName);
@@ -8930,9 +8964,9 @@ window.handlePauseExecutionClick = async function() {
             if (pauseLbl) pauseLbl.textContent = 'Pause';
             if (pauseIcon) pauseIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
             if (pauseBtn) {
-                pauseBtn.style.color = '#f59e0b';
-                pauseBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-                pauseBtn.style.background = 'rgba(245, 158, 11, 0.1)';
+                pauseBtn.style.color = '#d4d4d8';
+                pauseBtn.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                pauseBtn.style.background = 'rgba(255, 255, 255, 0.1)';
             }
 
             if (data && data.reply) {
@@ -9061,7 +9095,7 @@ window.stopAllJarvisOperations = async function(reason = "Stop command") {
         } catch(e) {}
 
         if (typeof appendMessageElement === 'function') {
-            appendMessageElement('assistant', `🛑 **Execution Halted:** Active operations have been cancelled upon your directive, Sir.`);
+            appendMessageElement('assistant', `**Execution Halted:** Active operations have been cancelled upon your directive, Sir.`);
         }
     }
 
@@ -9072,7 +9106,7 @@ window.stopAllJarvisOperations = async function(reason = "Stop command") {
         inputArea.placeholder = 'Type an instruction or command for Jarvis...';
     }
     if (typeof updateWakeWordBadge === 'function') {
-        updateWakeWordBadge(true, '🟢 Jarvis Online (Standing By)');
+        updateWakeWordBadge(true, 'Jarvis Online (Standing By)');
     }
 };
 
@@ -9102,7 +9136,7 @@ window.resolveComputeBoundaryChoice = async function(choice) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ project_name: projName, rollback: true })
             });
-            appendMessageElement('assistant', '⚠️ **Execution Cancelled**: Workspace rolled back to pre-turn state.');
+            appendMessageElement('assistant', '**Execution Cancelled**: Workspace rolled back to pre-turn state.');
             const execControls = document.getElementById('activeExecutionControls');
             const sendBtn = document.getElementById('btnSendChat');
             if (execControls) execControls.style.display = 'none';

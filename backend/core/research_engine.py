@@ -8,6 +8,7 @@ Runs a separate 4-agent workflow without altering coding worker agents:
   4. ReportSynthesizerAgent   -> builds cited Markdown report with zero-fabrication guardrail
 """
 
+import datetime
 import html
 import json
 import os
@@ -17,6 +18,7 @@ import urllib.request
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from backend.core.agent_engine import call_unified_chat, sanitize_project_name
 from backend.core.agent_progress import set_project_plan, set_project_progress
@@ -38,6 +40,8 @@ class ResearchSource:
     raw_text: str
     reliability_score: float = 0.65
     reliability_tier: str = "MEDIUM"
+    source_date: str = ""
+    freshness_status: str = "UNKNOWN"  # "CURRENT" | "RECENT" | "OUTDATED" | "UNKNOWN"
     retrieved_at: float = field(default_factory=time.time)
 
 
@@ -67,6 +71,68 @@ def _score_source_reliability(location: str, source_type: str) -> Tuple[float, s
     return 0.65, "MEDIUM"
 
 
+def _root_domain(location: str) -> str:
+    """Extracts root domain (or local/rag identifier) for independent-source corroboration."""
+    loc = (location or "").strip()
+    if loc.startswith(("http://", "https://")):
+        host = (urlparse(loc).hostname or "").lower()
+        parts = host.split(".")
+        return ".".join(parts[-2:]) if len(parts) >= 2 else host
+    return loc.lower()
+
+
+def _detect_source_date_and_freshness(location: str, source_type: str, raw_text: str) -> Tuple[str, str]:
+    """Extracts upload/publish date (file mtime, PDF metadata, or URL/text year) and classifies freshness."""
+    current_year = datetime.datetime.now().year
+    detected_date = ""
+    detected_year: Optional[int] = None
+
+    # 1. Local / uploaded file mtime (or PDF metadata if available)
+    if source_type in ("pdf", "docx", "pptx", "file") and location and not location.startswith(("http://", "https://", "rag://", "search://")):
+        try:
+            p = Path(location)
+            if p.exists():
+                dt = datetime.datetime.fromtimestamp(p.stat().st_mtime)
+                detected_date = dt.strftime("%Y-%m-%d")
+                detected_year = dt.year
+                if source_type == "pdf":
+                    try:
+                        import fitz
+                        doc = fitz.open(str(p))
+                        meta = doc.metadata or {}
+                        doc.close()
+                        raw_d = str(meta.get("modDate") or meta.get("creationDate") or "")
+                        ym = re.search(r"(20\d{2}|19\d{2})", raw_d)
+                        if ym:
+                            detected_year = int(ym.group(1))
+                            detected_date = f"{detected_year} (PDF meta)"
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    # 2. Web URL or text date fallback
+    if detected_year is None:
+        m = re.search(r"\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b", f"{location} {raw_text[:2000]}")
+        if m:
+            detected_date = m.group(0)
+            detected_year = int(m.group(1))
+        else:
+            years = [int(y) for y in re.findall(r"\b(20[0-3]\d)\b", f"{location} {raw_text[:2500]}") if 2005 <= int(y) <= current_year + 1]
+            if years:
+                detected_year = max(years)
+                detected_date = str(detected_year)
+
+    if detected_year is None:
+        return "", "UNKNOWN"
+    age = current_year - detected_year
+    if age <= 1:
+        return detected_date, "CURRENT"
+    if age <= 3:
+        return detected_date, "RECENT"
+    return detected_date, "OUTDATED"
+
+
 class EvidenceLedger:
     """Shared research memory storing sources, claims, and contradiction records."""
 
@@ -94,6 +160,7 @@ class EvidenceLedger:
                     return s
         sid = f"S{len(self.sources) + 1}"
         rel_score, rel_tier = _score_source_reliability(norm_loc, source_type)
+        s_date, freshness = _detect_source_date_and_freshness(norm_loc, source_type, raw_text or snippet)
         src = ResearchSource(
             source_id=sid,
             title=(title or sid).strip()[:160],
@@ -103,6 +170,8 @@ class EvidenceLedger:
             raw_text=(raw_text or snippet or "")[:8000],
             reliability_score=rel_score,
             reliability_tier=rel_tier,
+            source_date=s_date,
+            freshness_status=freshness,
         )
         self.sources[sid] = src
         if norm_loc:
@@ -323,6 +392,7 @@ def _discover_sources_for_queries(
             full_txt = _fetch_url_text(src.location)
             if len(full_txt) > len(src.raw_text):
                 src.raw_text = full_txt
+                src.source_date, src.freshness_status = _detect_source_date_and_freshness(src.location, src.source_type, full_txt)
                 fetched_count += 1
                 step_logs.append({"step": step_num, "action": "deep_fetch_url", "target": src.location, "bytes": len(full_txt), "status": "success"})
 
@@ -383,7 +453,7 @@ def _verify_evidence_and_detect_conflicts(
     if not ledger.claims:
         return [f"{ledger.objective[:90]} evidence statistics"], 0.0, 0
 
-    # Deterministic lexical grounding check + confidence scoring (0-100%)
+    # Deterministic lexical + exact substring + number + domain-independent + freshness scoring
     for c in ledger.claims:
         src = ledger.sources.get(c.source_id)
         if not src:
@@ -391,20 +461,41 @@ def _verify_evidence_and_detect_conflicts(
             c.confidence_score = 10
             c.verification_note = "Referenced source ID missing from ledger."
             continue
-        haystack = (src.raw_text or src.snippet).lower()
-        quote_words = [w for w in re.findall(r"[a-z0-9]{4,}", c.quote.lower())][:6]
+        raw_low = (src.raw_text or src.snippet).lower()
+        norm_haystack = re.sub(r"\s+", " ", raw_low)
+        norm_quote = re.sub(r"\s+", " ", (c.quote or "").lower()).strip()
+        quote_words = [w for w in re.findall(r"[a-z0-9]{4,}", norm_quote)][:6]
+
+        src_domain = _root_domain(src.location)
         corroborating = sum(
             1 for other in ledger.claims
-            if other.source_id != c.source_id and other.subquestion == c.subquestion
+            if other.source_id != c.source_id
+            and other.subquestion == c.subquestion
+            and other.status != "CONFLICTING"
+            and _root_domain(ledger.sources[other.source_id].location) != src_domain
         )
-        if quote_words:
-            hits = sum(1 for w in quote_words if w in haystack)
-            match_ratio = hits / len(quote_words)
-            base_conf = int(round(src.reliability_score * 55 + match_ratio * 35 + (10 if corroborating > 0 else 0)))
-            if hits >= max(1, len(quote_words) // 2):
+
+        # Numeric consistency check: numbers/percentages in the claim must appear in source text
+        claim_nums = set(re.findall(r"\b\d+(?:\.\d+)?\b", c.claim))
+        src_nums = set(re.findall(r"\b\d+(?:\.\d+)?\b", raw_low))
+        missing_nums = [n for n in claim_nums if n not in src_nums]
+
+        freshness_adj = -10 if src.freshness_status == "OUTDATED" else 0
+
+        if missing_nums:
+            c.status = "UNVERIFIED"
+            c.confidence_score = 25
+            c.verification_note = f"Number mismatch: {', '.join(missing_nums)} not found in {c.source_id}."
+        elif quote_words:
+            exact_sub = bool(norm_quote and len(norm_quote) >= 12 and norm_quote in norm_haystack)
+            hits = sum(1 for w in quote_words if w in norm_haystack)
+            match_ratio = 1.0 if exact_sub else min(0.85, hits / len(quote_words))
+            base_conf = int(round(src.reliability_score * 55 + match_ratio * 35 + (10 if corroborating > 0 else 0) + freshness_adj))
+            if exact_sub or hits >= max(1, len(quote_words) // 2):
                 c.status = "VERIFIED"
-                c.confidence_score = max(40, min(100, base_conf))
-                c.verification_note = f"Grounded in {c.source_id} ({src.reliability_tier} authority, {hits}/{len(quote_words)} quote terms matched)."
+                c.confidence_score = max(35, min(100, base_conf))
+                mode_tag = "exact quote" if exact_sub else f"{hits}/{len(quote_words)} terms"
+                c.verification_note = f"Grounded in {c.source_id} ({src.reliability_tier}, {src.freshness_status}, {mode_tag})."
             else:
                 c.status = "UNVERIFIED"
                 c.confidence_score = min(35, max(10, base_conf // 2))
@@ -504,7 +595,8 @@ def _synthesize_verified_report(
     if ledger.sources and "### Sources" not in safe_report:
         src_lines = ["", "### Sources"]
         for s in ledger.sources.values():
-            src_lines.append(f"- **[{s.source_id}]** {s.title} — `{s.location}` ({s.source_type} · {s.reliability_tier} authority: {int(round(s.reliability_score * 100))}%)")
+            date_info = f" · {s.source_date} ({s.freshness_status})" if s.source_date else ""
+            src_lines.append(f"- **[{s.source_id}]** {s.title} — `{s.location}` ({s.source_type} · {s.reliability_tier} authority: {int(round(s.reliability_score * 100))}%{date_info})")
         safe_report = safe_report + "\n" + "\n".join(src_lines)
 
     return safe_report, float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))

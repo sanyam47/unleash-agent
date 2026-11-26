@@ -566,12 +566,18 @@ def _synthesize_verified_report(
         "sources": [{"id": s.source_id, "title": s.title, "location": s.location} for s in ledger.sources.values()],
     }
 
+    empty_verified_rule = (
+        "- verified_claims is EMPTY: do NOT invent or list any Verified Findings; state 'None — see Conflicting/Unverified Claims below.'\n"
+        if not verified
+        else ""
+    )
     prompt = (
         "You are ReportSynthesizerAgent. Write a clear, structured research report answering the objective.\n"
         "STRICT SAFETY BOUNDARIES:\n"
         "- Cite ONLY real source IDs from the provided ledger using [S1], [S2], etc.\n"
         "- NEVER invent URLs, citations, or facts not present in the evidence.\n"
-        "- Explicitly separate Verified Findings, Conflicting/Unverified Claims (if any), and Sources.\n\n"
+        "- Explicitly separate Verified Findings, Conflicting/Unverified Claims (if any), and Sources.\n"
+        f"{empty_verified_rule}\n"
         f"Evidence Ledger:\n{json.dumps(evidence_payload, indent=2)[:12000]}"
     )
     resp = call_unified_chat(
@@ -590,6 +596,14 @@ def _synthesize_verified_report(
         raw_report = "\n".join(lines)
 
     safe_report = _sanitize_citations(raw_report, set(ledger.sources.keys()))
+
+    # Deterministic guard: never allow Verified Findings bullets when verified_claims is empty
+    if not verified:
+        safe_report = re.sub(
+            r"(?is)(?:^|\n)(?:#+\s*)?Verified Findings\s*:?[\s\S]*?(?=\n(?:#+\s*)?(?:Conflicting|Unverified|Sources)\b)",
+            "\n### Verified Findings\n- None (no claims reached independent VERIFIED status; see Conflicting / Unverified Claims below).\n\n",
+            safe_report,
+        )
 
     # Append deterministic Source References footer so every [Sn] is traceable
     if ledger.sources and "### Sources" not in safe_report:

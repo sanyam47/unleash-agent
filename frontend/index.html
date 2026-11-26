@@ -1624,6 +1624,13 @@
                                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10"/><path d="M6 10h10"/></svg>
                                                 <span>Knowledge (RAG)</span>
                                             </button>
+                                            <button type="button" id="btnResearchModeToggle" onclick="toggleResearchMode()" class="btn-quiet" style="padding: 6px 10px; font-size: 0.74rem; display: flex; align-items: center; justify-content: space-between; gap: 7px; border-radius: 6px; color: var(--text-secondary); width: 100%;" title="Multi-Agent Verified Research &amp; Citation Pipeline">
+                                                <span style="display: inline-flex; align-items: center; gap: 7px;">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                                    <span>Verified Research</span>
+                                                </span>
+                                                <strong id="researchStatusLabel" style="font-size: 0.68rem; color: var(--text-muted);">OFF</strong>
+                                            </button>
                                         </div>
                                     </div>
 
@@ -2678,7 +2685,7 @@
     </div>
 </footer>
 
-<script src="/static/script_v2.js?v=1795683000"></script>
+<script src="/static/script_v2.js?v=1795684000"></script>
 
 
 <!-- ============================================== -->

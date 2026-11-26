@@ -415,6 +415,57 @@ def read_project_file(
         return {"status": "error", "error": f"Failed to read file '{file_path}': {str(e)}"}
 
 
+def read_pdf_file(
+    project_name: str,
+    file_path: str,
+    start_page: int = 1,
+    end_page: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Extracts text page-by-page from a PDF document with 1-indexed page numbers for citations."""
+    try:
+        target = resolve_safe_project_path(project_name, file_path)
+        if not target.exists() or not target.is_file():
+            return {"status": "error", "error": f"PDF '{file_path}' does not exist."}
+
+        s_page = max(1, int(start_page or 1))
+        pages_out: List[Dict[str, Any]] = []
+        total_pages = 0
+
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(str(target))
+            try:
+                total_pages = len(doc)
+                e_page = min(total_pages, int(end_page)) if end_page is not None else min(total_pages, s_page + 14)
+                e_page = max(s_page, min(e_page, s_page + 14))
+                for pno in range(s_page, e_page + 1):
+                    txt = (doc[pno - 1].get_text("text") or "").strip()
+                    pages_out.append({"page": pno, "text": txt[:8000]})
+            finally:
+                doc.close()
+        except ImportError:
+            import PyPDF2
+            with open(target, "rb") as fh:
+                reader = PyPDF2.PdfReader(fh)
+                total_pages = len(reader.pages)
+                e_page = min(total_pages, int(end_page)) if end_page is not None else min(total_pages, s_page + 14)
+                e_page = max(s_page, min(e_page, s_page + 14))
+                for pno in range(s_page, e_page + 1):
+                    txt = (reader.pages[pno - 1].extract_text() or "").strip()
+                    pages_out.append({"page": pno, "text": txt[:8000]})
+
+        return {
+            "status": "success",
+            "file": str(target),
+            "total_pages": total_pages,
+            "start_page": s_page,
+            "end_page": s_page + len(pages_out) - 1 if pages_out else s_page,
+            "pages": pages_out,
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to read PDF '{file_path}': {str(e)}"}
+
+
 def list_dir(project_name: str, dir_path: str = ".") -> Dict[str, Any]:
     """Lists files and folders inside the project workspace or any safe host OS directory."""
     try:
@@ -1415,6 +1466,20 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         e_line = args.get("end_line")
         return read_project_file(str(target_proj), str(path), start_line=s_line, end_line=e_line)
 
+    elif tool_name in ("read_pdf", "extract_pdf", "read_document"):
+        target_proj = args.get("project_name") or args.get("project") or project_name
+        path = args.get("file_path") or args.get("path") or args.get("filename")
+        if not path:
+            return {"status": "error", "error": "Missing 'file_path' argument for read_pdf"}
+        s_page = args.get("start_page")
+        e_page = args.get("end_page")
+        return read_pdf_file(
+            str(target_proj),
+            str(path),
+            start_page=int(s_page) if s_page is not None else 1,
+            end_page=int(e_page) if e_page is not None else None,
+        )
+
     elif tool_name in ("list_dir", "list_directory", "ls", "dir"):
         d_path = args.get("dir_path") or args.get("path") or args.get("directory") or "."
         return list_dir(project_name, str(d_path))
@@ -1961,6 +2026,15 @@ FRONTIER_PRO_EXTRA_TOOLS = [
         "description": "Inspect real interactive UI controls (buttons, inputs, menu items) and their exact (x, y) coordinates in an open native Windows app via UI Automation.",
         "parameters": {
             "window_title": "Optional partial window title (defaults to focused window)"
+        }
+    },
+    {
+        "name": "read_pdf",
+        "description": "Extract text page-by-page from a PDF document with page numbers for accurate citations.",
+        "parameters": {
+            "file_path": "Path to the PDF file",
+            "start_page": "Optional 1-indexed start page (default 1)",
+            "end_page": "Optional 1-indexed end page (max 15 pages per call)"
         }
     }
 ]

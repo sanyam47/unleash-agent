@@ -107,6 +107,7 @@ class ChatRequest(BaseModel):
     project_name: Optional[str] = Field(default=None, description="Workspace project name for autonomous file generation")
     workspace_path: Optional[str] = Field(default=None, description="Optional existing host repository directory to mount directly")
     use_swarm: bool = Field(default=False, description="Enable Dynamic Multi-Agent Swarm (Builder ➔ Verifier Relay)")
+    use_research: bool = Field(default=False, description="Enable 4-agent Verified Research & Citation pipeline")
     skip_agentic_prompt: bool = Field(default=False, description="Skip agentic confirmation proposal and continue in pure text")
     speak_reply: bool = Field(default=False, description="Whether to speak text chat responses aloud")
     is_voice: bool = Field(default=False, description="Flag indicating if the prompt was transcribed from hands-free voice or wake-word")
@@ -778,6 +779,30 @@ def send_chat_message(req: ChatRequest):
                             threading.Thread(target=speak_aloud, args=("Initiating codebase construction now.",), daemon=True).start()
                     except Exception:
                         pass
+
+            _research_triggers = ("verified research", "deep research", "fact check", "fact-check", "research report with citations")
+            _wants_research = bool(getattr(req, "use_research", False)) or any(t in latest_prompt.lower() for t in _research_triggers)
+            if _wants_research:
+                from backend.core.research_engine import run_verified_research_pipeline
+                res_out = run_verified_research_pipeline(
+                    model=req.model,
+                    user_prompt=latest_prompt,
+                    project_name=req.project_name,
+                    context_window=req.context_window or 8192,
+                )
+                return {
+                    "status": "success",
+                    "model": req.model,
+                    "reply": sanitize_executive_response(res_out.get("reply", "")),
+                    "role": "assistant",
+                    "agentic": True,
+                    "research_mode": True,
+                    "project_name": res_out.get("project_name"),
+                    "created_files": [],
+                    "steps": res_out.get("steps", []),
+                    "research_ledger": res_out.get("research_ledger"),
+                    "telemetry": res_out.get("telemetry", {}),
+                }
 
             from backend.core.agent_engine import run_agentic_react_loop
             skills_prompt_str = "\n\n".join(skill_blocks) if (chosen and 'skill_blocks' in locals()) else None

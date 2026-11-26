@@ -4495,6 +4495,7 @@ window.sendChatArenaMessage = async function() {
                     skill_ids: activeSkillIds,
                     agentic: isAgentic,
                     use_swarm: window.swarmModeEnabled === true,
+                    use_research: window.researchModeEnabled === true,
                     workspace_path: window.activeMountedWorkspacePath || undefined,
                     project_name: window.activeMountedProjectName || projectName,
                     speak_reply: isChatSpeech,
@@ -7513,6 +7514,24 @@ window.toggleAgenticMode = function() {
 
 // Dynamic Multi-Agent Swarm Mode (Opt-in via toggle, or auto-triggered in backend for greenfield web/app builds)
 window.swarmModeEnabled = false;
+window.researchModeEnabled = localStorage.getItem('research_mode_enabled') === 'true';
+window.updateResearchModeUI = function() {
+    const lbl = document.getElementById('researchStatusLabel');
+    const btn = document.getElementById('btnResearchModeToggle');
+    if (lbl) {
+        lbl.textContent = window.researchModeEnabled ? 'ON' : 'OFF';
+        lbl.style.color = window.researchModeEnabled ? '#10b981' : 'var(--text-muted)';
+    }
+    if (btn) {
+        btn.style.color = window.researchModeEnabled ? 'var(--text-primary)' : 'var(--text-secondary)';
+    }
+};
+window.toggleResearchMode = function() {
+    window.researchModeEnabled = !window.researchModeEnabled;
+    try { localStorage.setItem('research_mode_enabled', window.researchModeEnabled ? 'true' : 'false'); } catch (e) {}
+    window.updateResearchModeUI();
+};
+document.addEventListener('DOMContentLoaded', () => { if (window.updateResearchModeUI) window.updateResearchModeUI(); });
 window.activeMountedWorkspacePath = null;
 window.activeMountedProjectName = null;
 window.updateSwarmModeUI = function() {};

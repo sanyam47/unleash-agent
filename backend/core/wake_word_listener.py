@@ -33,17 +33,85 @@ _IS_LISTENING = False
 _DUPLEX_STATE = "IDLE"  # "IDLE", "LISTENING", "THINKING", "SPEAKING"
 _LAST_BARGE_IN: Optional[Dict[str, Any]] = None
 _BARGE_IN_COUNT = 0
+_WHISPER_MODEL = None
+_WHISPER_LOCK = threading.Lock()
+
+
+def _get_local_whisper_model():
+    """Lazy-loads lightweight offline CPU INT8 Whisper model only when voice recognition runs."""
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is not None:
+        return _WHISPER_MODEL
+    with _WHISPER_LOCK:
+        if _WHISPER_MODEL is not None:
+            return _WHISPER_MODEL
+        try:
+            from faster_whisper import WhisperModel
+            # Prefer locally cached multilingual 'tiny' / 'tiny.en' cleanly without blocking offline
+            try:
+                _WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8", local_files_only=True)
+                print("[WakeWord STT]: Local cached faster-whisper (tiny, int8 CPU) loaded.")
+            except Exception:
+                _WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+                print("[WakeWord STT]: Local offline faster-whisper (tiny, int8 CPU) loaded.")
+        except Exception as e:
+            print(f"[WakeWord STT]: Local faster-whisper unavailable ({e}).")
+            _WHISPER_MODEL = False
+    return _WHISPER_MODEL if _WHISPER_MODEL is not False else None
+
+
+def transcribe_audio_local_or_cloud(recognizer, audio) -> str:
+    """
+    Privacy-aware hybrid speech recognition:
+    1. Prefers local offline faster-whisper (CPU int8, zero cloud dependency).
+    2. Falls back to Google Web Speech only when NOT in air_gapped mode and local STT is unavailable.
+    """
+    model = _get_local_whisper_model()
+    if model is not None:
+        try:
+            import numpy as np
+            pcm_bytes = audio.get_raw_data(convert_rate=16000, convert_width=2)
+            samples = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            if len(samples) > 1600:
+                segments, _ = model.transcribe(
+                    samples,
+                    language="en",
+                    beam_size=1,
+                    vad_filter=True,
+                    initial_prompt="Hey Jarvis, Jarvis, Friday, Unleash",
+                )
+                text = " ".join(seg.text.strip() for seg in segments if seg.text).strip()
+                if text:
+                    return text
+        except Exception as e:
+            print(f"[WakeWord Local STT Notice]: {e}")
+
+    # Cloud fallback only when privacy mode permits external calls
+    try:
+        from backend.core.privacy_mode import is_frontier_allowed
+        if not is_frontier_allowed():
+            return ""
+    except Exception:
+        pass
+
+    try:
+        return (recognizer.recognize_google(audio) or "").strip()
+    except Exception:
+        return ""
 
 
 def get_duplex_listener_status() -> Dict[str, Any]:
     """Returns the real-time duplex state machine and telemetry."""
     global _IS_LISTENING, _DUPLEX_STATE, _LAST_BARGE_IN, _BARGE_IN_COUNT
     duplex_audio = get_duplex_state()
+    thread_alive = bool(_LISTENER_THREAD and _LISTENER_THREAD.is_alive())
+    listening_now = bool(_IS_LISTENING and thread_alive)
     current_state = "SPEAKING" if duplex_audio["is_speaking"] else _DUPLEX_STATE
     return {
         "status": "success",
-        "is_listening": _IS_LISTENING,
+        "is_listening": listening_now,
         "is_speaking": duplex_audio["is_speaking"],
+        "speech_energy": duplex_audio.get("speech_energy", 0.0),
         "duplex_state": current_state,
         "active_playback_alias": duplex_audio.get("active_alias"),
         "barge_in_count": _BARGE_IN_COUNT,
@@ -133,11 +201,7 @@ def listen_for_wake_words(
                     # Short slice to detect user vocal interruption
                     barge_audio = recognizer.listen(source, timeout=0.6, phrase_time_limit=2.5)
                     # Transcribe FIRST before cutting off speech to prevent acoustic self-echo from cutting off assistant speech!
-                    interrupted_text = ""
-                    try:
-                        interrupted_text = recognizer.recognize_google(barge_audio).strip()
-                    except Exception:
-                        interrupted_text = ""
+                    interrupted_text = transcribe_audio_local_or_cloud(recognizer, barge_audio)
 
                     # Only cut off if user actually spoke recognized words (prevents background noise / speaker echo from cutting off speech)
                     if interrupted_text and len(interrupted_text) > 1:
@@ -205,7 +269,7 @@ def listen_for_wake_words(
 
             # Transcribe phrase locally/lightweight
             try:
-                text = recognizer.recognize_google(audio).lower().strip()
+                text = transcribe_audio_local_or_cloud(recognizer, audio).lower().strip()
                 if not text:
                     continue
 
@@ -243,24 +307,144 @@ def listen_for_wake_words(
     print("[WakeWord]: Background Listener stopped.")
 
 
+def _fallback_voice_reply(text: str) -> str:
+    """Routes general conversational voice queries through privacy-aware LLM when executive actions don't match."""
+    try:
+        from backend.core.privacy_mode import is_frontier_allowed
+        if is_frontier_allowed():
+            from backend.core.gemini_client import gemini_available, _call_gemini
+            if gemini_available():
+                ans = _call_gemini(
+                    f"Answer concisely in 1-2 natural spoken sentences for a desktop voice assistant:\nUser: {text}"
+                )
+                if ans and ans.strip():
+                    return ans.strip()
+    except Exception:
+        pass
+    try:
+        import urllib.request
+        payload = json.dumps({
+            "model": "jarvis-qlora:latest",
+            "messages": [
+                {"role": "system", "content": "Answer concisely in 1-2 natural spoken sentences with no markdown."},
+                {"role": "user", "content": text},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.4, "num_predict": 140},
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "http://127.0.0.1:11434/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content = (data.get("message") or {}).get("content", "").strip()
+            if content:
+                return content
+    except Exception:
+        pass
+    return "Directive noted, though my reasoning engine is currently offline."
+
+
+def _is_complex_task_prompt(text: str) -> bool:
+    """Detects multi-step coding, research, file, or build directives suitable for background ReAct execution."""
+    import re
+    p = (text or "").lower().strip()
+    if len(p.split()) < 3:
+        return False
+    return bool(re.search(
+        r"\b(build|create|write|fix|debug|refactor|research|analyze|summarize|generate|implement|script|website|app|project|search\s+for|find\s+all|inspect\s+files)\b",
+        p,
+    ))
+
+
+def _dispatch_complex_background_task(text: str) -> str:
+    """Runs multi-step agentic tasks asynchronously with live daemon progress tracking."""
+    task_id = None
+    try:
+        from backend.core.task_daemon import spawn_daemon_task, _update_task_row
+        t_rec = spawn_daemon_task(
+            title=text[:72],
+            description=text,
+            steps=["Planning directive", "Executing agentic workflow", "Summarizing result"],
+        )
+        task_id = t_rec.get("task_id") if isinstance(t_rec, dict) else None
+    except Exception:
+        _update_task_row = None
+
+    def _runner():
+        global _DUPLEX_STATE
+        try:
+            from backend.core.agent_engine import run_agentic_react_loop
+            model_name = "jarvis-qlora:latest"
+            try:
+                from backend.core.privacy_mode import is_frontier_allowed
+                if is_frontier_allowed():
+                    from backend.core.gemini_client import gemini_available
+                    if gemini_available():
+                        model_name = "gemini-3.5-flash"
+            except Exception:
+                pass
+
+            res = run_agentic_react_loop(model=model_name, user_prompt=text, max_steps=12)
+            summary = ""
+            if isinstance(res, dict):
+                summary = (res.get("reply") or res.get("final_answer") or "").strip()
+            if task_id and _update_task_row is not None:
+                _update_task_row(task_id, status="completed", progress=100.0, current_step="Complete")
+            if summary:
+                short_summary = summary[:240].replace("`", "")
+                _DUPLEX_STATE = "SPEAKING"
+                speak_aloud(short_summary)
+        except Exception as e:
+            print(f"[WakeWord Complex Task Error]: {e}")
+            if task_id and _update_task_row is not None:
+                _update_task_row(task_id, status="failed", current_step=str(e)[:80])
+        finally:
+            _DUPLEX_STATE = "IDLE"
+
+    threading.Thread(target=_runner, daemon=True, name="JarvisVoiceComplexTask").start()
+    return "On it. Running that task in the background now."
+
+
 def handle_wake_activation(initial_command: str, recognizer, source):
     """Handles prompt playback and command execution when wake word fires."""
+    global _DUPLEX_STATE
     send_desktop_notification("Voice Assistant Active", "Listening for your directive...")
 
     def _execute_directive(text: str):
+        global _DUPLEX_STATE
+        _DUPLEX_STATE = "THINKING"
+        reply = ""
         try:
             from backend.core.fast_path_router import try_fast_path_os_dispatch
             fast_res = try_fast_path_os_dispatch(text)
-            if fast_res is not None:
-                reply = fast_res.get("reply", "Command executed.")
-                speak_aloud(reply)
-                return
+            if isinstance(fast_res, dict) and fast_res.get("reply"):
+                reply = fast_res["reply"]
         except Exception:
             pass
-        res = dispatch_jarvis_executive_action(text)
-        reply = res.get("reply", "Command executed.")
-        speak_aloud(reply)
-    
+
+        if not reply and _is_complex_task_prompt(text):
+            reply = _dispatch_complex_background_task(text)
+
+        if not reply:
+            try:
+                res = dispatch_jarvis_executive_action(text)
+                if isinstance(res, dict) and res.get("reply"):
+                    reply = res["reply"]
+            except Exception as e:
+                print(f"[WakeWord Directive Error]: {e}")
+
+        if not reply:
+            reply = _fallback_voice_reply(text)
+
+        _DUPLEX_STATE = "SPEAKING"
+        try:
+            speak_aloud(reply)
+        finally:
+            _DUPLEX_STATE = "IDLE"
+
     if initial_command and len(initial_command) > 2:
         # User spoke the directive in the same breath
         print(f"[WakeWord Processing Direct Command]: '{initial_command}'")
@@ -268,19 +452,23 @@ def handle_wake_activation(initial_command: str, recognizer, source):
         return
 
     # Acknowledge and prompt user
+    _DUPLEX_STATE = "SPEAKING"
     speak_aloud("Listening.")
-    time.sleep(1.0)  # Give time for the speech playback to finish
+    time.sleep(0.9)  # Give time for the short prompt playback to settle
 
     # Listen for directive
+    _DUPLEX_STATE = "LISTENING"
     try:
         print("[WakeWord]: Awaiting your directive...")
         cmd_audio = recognizer.listen(source, timeout=5.0, phrase_time_limit=8.0)
-        cmd_text = recognizer.recognize_google(cmd_audio).strip()
+        cmd_text = transcribe_audio_local_or_cloud(recognizer, cmd_audio)
         print(f"[WakeWord Directive Captured]: '{cmd_text}'")
         if cmd_text:
             _execute_directive(cmd_text)
     except Exception as e:
         print(f"[WakeWord Notice]: {e}")
+    finally:
+        _DUPLEX_STATE = "IDLE"
 
 
 def start_native_wake_word_daemon(in_background: bool = True):
@@ -303,8 +491,11 @@ def start_native_wake_word_daemon(in_background: bool = True):
 
 def stop_native_wake_word_daemon():
     """Stops the native OS wake-word listener thread."""
-    global _STOP_EVENT
+    global _STOP_EVENT, _IS_LISTENING, _DUPLEX_STATE
     _STOP_EVENT.set()
+    _IS_LISTENING = False
+    if _DUPLEX_STATE == "LISTENING":
+        _DUPLEX_STATE = "IDLE"
     print("[WakeWord]: Stop signal dispatched.")
 
 

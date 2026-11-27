@@ -3472,6 +3472,10 @@ window.refreshDockerStatus = async function() {
         const text = document.getElementById('chatDockerText');
         const btn = document.getElementById('btnToggleDocker');
         const btnText = document.getElementById('btnDockerText');
+        const autoToggle = document.getElementById('chatDockerAutoStartToggle');
+        if (autoToggle && typeof data.auto_start === 'boolean') {
+            autoToggle.checked = data.auto_start;
+        }
 
         if (data.status === 'online') {
             if (badge) {
@@ -3517,6 +3521,27 @@ window.refreshDockerStatus = async function() {
         }
     } catch (err) {
         console.warn("Docker status check failed:", err);
+    }
+};
+
+window.toggleDockerAutoStart = async function(enabled) {
+    const autoToggle = document.getElementById('chatDockerAutoStartToggle');
+    if (autoToggle) autoToggle.disabled = true;
+    try {
+        const res = await fetch('/api/chat/sandbox/docker/auto_start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !!enabled })
+        });
+        const data = await res.json();
+        if (autoToggle && typeof data.enabled === 'boolean') {
+            autoToggle.checked = data.enabled;
+        }
+    } catch (err) {
+        if (autoToggle) autoToggle.checked = !enabled;
+        console.warn('Docker auto-start toggle failed:', err);
+    } finally {
+        if (autoToggle) autoToggle.disabled = false;
     }
 };
 

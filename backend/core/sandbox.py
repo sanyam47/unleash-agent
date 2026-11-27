@@ -13,6 +13,36 @@ from typing import Dict, Any, List, Optional
 # Base directory for isolated execution runs
 SANDBOX_BASE_DIR = Path(__file__).resolve().parent.parent / "data" / "sandbox"
 SANDBOX_BASE_DIR.mkdir(parents=True, exist_ok=True)
+SANDBOX_CONFIG_FILE = SANDBOX_BASE_DIR / "sandbox_config.json"
+
+
+def load_sandbox_config() -> Dict[str, Any]:
+    """Loads persisted sandbox runtime settings (auto_start_docker defaults to False)."""
+    import json
+    default_cfg = {"auto_start_docker": False}
+    try:
+        if SANDBOX_CONFIG_FILE.exists():
+            data = json.loads(SANDBOX_CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {**default_cfg, **data}
+    except Exception:
+        pass
+    return default_cfg
+
+
+def get_docker_auto_start() -> bool:
+    """Returns True only if the user explicitly enabled Docker auto-start at launch."""
+    return bool(load_sandbox_config().get("auto_start_docker", False))
+
+
+def set_docker_auto_start(enabled: bool) -> Dict[str, Any]:
+    """Persists whether Docker Desktop should auto-start when Unleash launches."""
+    import json
+    cfg = load_sandbox_config()
+    cfg["auto_start_docker"] = bool(enabled)
+    SANDBOX_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    SANDBOX_CONFIG_FILE.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    return {"status": "success", "auto_start_docker": cfg["auto_start_docker"], "config": cfg}
 
 MAX_TIMEOUT_SECONDS = 7.0
 DEFAULT_TIMEOUT_SECONDS = 4.0
@@ -176,16 +206,33 @@ def is_docker_available() -> bool:
     """Checks if Docker CLI and daemon are reachable on the host."""
     try:
         docker_bin = get_docker_cmd()
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         res = subprocess.run(
             [docker_bin, "info"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=1.5,
-            check=False
+            creationflags=flags,
+            check=False,
         )
         return res.returncode == 0
     except Exception:
         return False
+
+
+def ensure_docker_ready(timeout_sec: float = 20.0) -> bool:
+    """Lazily starts Docker Desktop on demand and waits up to `timeout_sec` for engine readiness."""
+    if is_docker_available():
+        return True
+    res = ensure_docker_daemon_async()
+    if res.get("status") in ("not_installed", "error"):
+        return False
+    deadline = time.monotonic() + max(1.0, float(timeout_sec))
+    while time.monotonic() < deadline:
+        time.sleep(1.0)
+        if is_docker_available():
+            return True
+    return is_docker_available()
 
 
 def ensure_docker_daemon_async() -> Dict[str, Any]:
@@ -454,10 +501,12 @@ class SecurityASTVisitor(ast.NodeVisitor):
 def inspect_code_safety(code: str, language: str = "python") -> Dict[str, Any]:
     """
     Scans submitted code for dangerous host-destroying operations before spawning sandbox.
+    Also marks MEDIUM/HIGH risk operations (`requires_docker`) for lazy container isolation.
     """
     report = {
         "safe_to_execute": True,
         "risk_level": "LOW",
+        "requires_docker": False,
         "warnings": [],
         "block_reason": None
     }
@@ -485,7 +534,8 @@ def inspect_code_safety(code: str, language: str = "python") -> Dict[str, Any]:
         except Exception:
             pass
 
-    if language.lower() in ("python", "py"):
+    lang_lower = (language or "python").lower().strip()
+    if lang_lower in ("python", "py", "python3"):
         try:
             tree = ast.parse(code)
             visitor = SecurityASTVisitor()
@@ -499,6 +549,19 @@ def inspect_code_safety(code: str, language: str = "python") -> Dict[str, Any]:
             report["risk_level"] = visitor.risk_level
         except SyntaxError:
             pass
+
+    # Risky host/system or security-tooling calls require hard Docker container isolation
+    high_risk_code_patterns = [
+        r"\b(subprocess\.(run|Popen|call|check_output|check_call)|os\.(system|popen|execv|spawn)|ctypes\.|winreg)\b",
+        r"\b(pwn|pwntools|scapy|impacket)\b",
+        r"\b(child_process|fs\.(rmSync|unlinkSync|rmdirSync))\b",
+    ]
+    for pat in high_risk_code_patterns:
+        if re.search(pat, code):
+            if report["risk_level"] == "LOW":
+                report["risk_level"] = "HIGH"
+            report["requires_docker"] = lang_lower in ("python", "py", "python3", "javascript", "js", "node")
+            break
 
     return report
 
@@ -570,8 +633,30 @@ def execute_in_sandbox(
             "timestamp": time.time()
         }
 
-    # 2. Attempt Docker Isolation if available and language supports it
-    if is_docker_available():
+    # 2. Docker Isolation:
+    # - Always use Docker if already running.
+    # - If code is HIGH/MEDIUM risk (`requires_docker`), lazily start Docker on demand & fail closed if unavailable.
+    docker_ready = is_docker_available()
+    if not docker_ready and safety_check.get("requires_docker"):
+        docker_ready = ensure_docker_ready(timeout_sec=20.0)
+        if not docker_ready:
+            return {
+                "run_id": run_id,
+                "status": "blocked",
+                "exit_code": -1,
+                "stdout": "",
+                "stderr": "SECURITY POLICY BLOCK: High-risk script requires Docker container isolation, but Docker Desktop is unavailable or failed to initialize.",
+                "execution_time_ms": 0,
+                "language": language,
+                "risk_level": safety_check["risk_level"],
+                "created_files": [],
+                "sandboxed": True,
+                "engine": "security_gate",
+                "engine_detail": "Fail-Closed Docker Isolation Required",
+                "timestamp": time.time()
+            }
+
+    if docker_ready:
         docker_result = execute_in_docker(code, language, scratch_dir, timeout, stdin_input)
         if docker_result:
             created_files = _inventory_files(scratch_dir)

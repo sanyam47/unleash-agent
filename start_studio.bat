@@ -46,11 +46,19 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8001 ^| findstr LISTENING') 
     taskkill /F /PID %%a >nul 2>&1
 )
 
-:: 5. Launch Browser in background
+:: 5. Arm Floating Gyro Sphere Hotkey in Standby (Ctrl+Shift+Space to show/hide)
+where pythonw >nul 2>&1
+if %errorlevel% equ 0 (
+    start /B "" pythonw backend\scripts\jarvis_desktop_hud.py --hidden
+) else (
+    start /B "" python backend\scripts\jarvis_desktop_hud.py --hidden
+)
+
+:: 6. Launch Browser in background
 echo [*] Launching Unleash-Agent Studio UI at http://localhost:8001 ...
 start "" http://localhost:8001
 
-:: 6. Launch FastAPI Server
+:: 7. Launch FastAPI Server
 echo [*] Booting Air-Gapped Executive API & Sensory Telemetry Engine...
 echo =====================================================================
 python -m uvicorn backend.api.main:app --port 8001 --reload

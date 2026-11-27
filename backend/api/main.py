@@ -65,10 +65,14 @@ def get_system_telemetry_top_level():
 
 @app.on_event("startup")
 def startup_event():
-    """Background startup warm-up: launches Docker & Ollama supervisors, and starts proactive watchdog."""
+    """Background startup warm-up: conditionally starts Docker if user enabled it, Ollama, and watchdog."""
     import threading
-    from backend.core.sandbox import ensure_docker_daemon_async
-    threading.Thread(target=ensure_docker_daemon_async, daemon=True).start()
+    try:
+        from backend.core.sandbox import get_docker_auto_start, ensure_docker_daemon_async
+        if get_docker_auto_start():
+            threading.Thread(target=ensure_docker_daemon_async, daemon=True).start()
+    except Exception as e:
+        print(f"[Startup Warning] Docker lazy check notice: {e}")
 
     from backend.api.chat_router import ensure_ollama_daemon
     threading.Thread(target=ensure_ollama_daemon, daemon=True).start()
@@ -84,6 +88,16 @@ def startup_event():
             start_native_wake_word_daemon(in_background=True)
     except Exception as e:
         print(f"[Startup Warning] Native Wake-Word Daemon startup notice: {e}")
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Ensures Ctrl+C / terminal shutdown stops Gyro Sphere, Ollama, Docker, and voice daemons."""
+    try:
+        from backend.api.daemon_router import cleanup_all_runtime_processes
+        cleanup_all_runtime_processes()
+    except Exception as e:
+        print(f"[Shutdown Notice]: {e}")
 
 
 @app.get("/debug/gemini")

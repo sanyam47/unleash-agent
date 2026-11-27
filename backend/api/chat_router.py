@@ -2037,7 +2037,7 @@ def get_sandbox_status_endpoint():
 def get_docker_status_endpoint():
     """Returns whether Docker Desktop is installed, running, and if cyber-sandbox image is available."""
     import shutil
-    from backend.core.sandbox import is_docker_available, is_cyber_image_available
+    from backend.core.sandbox import is_docker_available, is_cyber_image_available, get_docker_auto_start
 
     standard_paths = [
         r"C:\Program Files\Docker\Docker\Docker Desktop.exe",
@@ -2052,10 +2052,27 @@ def get_docker_status_endpoint():
         "status": "online" if is_running else "offline",
         "installed": is_installed,
         "running": is_running,
+        "auto_start": get_docker_auto_start(),
         "cyber_image_ready": image_ready,
         "active_engine": "docker" if is_running else "windows_job_object",
         "engine_detail": "Docker Linux Container (cyber-sandbox:latest • --network none)" if is_running else "Windows Job Object Jail (256MB RAM Cap)"
     }
+
+
+@router.get("/sandbox/docker/auto_start")
+def get_docker_auto_start_endpoint():
+    """Returns whether Docker Desktop should auto-start when Unleash launches."""
+    from backend.core.sandbox import get_docker_auto_start
+    return {"status": "success", "enabled": get_docker_auto_start()}
+
+
+@router.post("/sandbox/docker/auto_start")
+def set_docker_auto_start_endpoint(payload: Dict[str, Any]):
+    """Persists whether Docker Desktop should auto-start on Unleash launch."""
+    from backend.core.sandbox import set_docker_auto_start
+    enabled = bool((payload or {}).get("enabled", False))
+    res = set_docker_auto_start(enabled)
+    return {"status": "success", "enabled": res["auto_start_docker"], "message": f"Docker auto-start on launch {'enabled' if enabled else 'disabled'}."}
 
 
 @router.post("/sandbox/docker/start")

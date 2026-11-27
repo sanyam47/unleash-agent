@@ -97,6 +97,12 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>Settings</span>
         </button>
+
+        <!-- Shutdown App (Sphere + Background Server) -->
+        <button id="btnQuitUnleashApp" type="button" onclick="quitUnleashApplication()" class="btn-quiet" style="font-size: 0.73rem; padding: 4px 8px; display: inline-flex; align-items: center; gap: 4px; background: transparent; border: 1px solid rgba(248, 113, 113, 0.25); color: #f87171; border-radius: 6px; cursor: pointer; white-space: nowrap;" title="Stop Unleash Agent background server and Sphere">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+            <span>Quit App</span>
+        </button>
     </div>
 </header>
 
@@ -1529,8 +1535,28 @@
                                         <span id="chatSpeechIcon" style="width:6px;height:6px;border-radius:50%;background:var(--text-muted);display:inline-block;"></span>
                                         <span id="chatSpeechText">Chat Speech: OFF</span>
                                     </button>
+                                    <button type="button" id="btnLaunchHUD" onclick="launchDesktopHUD()" class="btn-quiet" style="font-size: 0.73rem; font-family: var(--font-mono); padding: 6px 10px; display: flex; align-items: center; gap: 6px; color: var(--text-primary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); cursor: pointer; width: 100%; justify-content: flex-start;" title="Show / Hide Floating Gyro Sphere (Ctrl+Shift+Space)">
+                                        <span id="hudLaunchMenuDot" style="width:6px;height:6px;border-radius:50%;background:#60a5fa;display:inline-block;"></span>
+                                        <span>Gyro Sphere (Ctrl+Shift+Space)</span>
+                                    </button>
+                                    <button type="button" id="btnQuitHUD" onclick="quitDesktopHUD()" class="btn-quiet" style="font-size: 0.72rem; font-family: var(--font-mono); padding: 5px 10px; display: flex; align-items: center; gap: 6px; color: #f87171; border-radius: 6px; border: 1px solid rgba(248, 113, 113, 0.25); background: rgba(248, 113, 113, 0.08); cursor: pointer; width: 100%; justify-content: flex-start;" title="Completely stop the background Gyro Sphere process">
+                                        <span style="width:6px;height:6px;border-radius:50%;background:#f87171;display:inline-block;"></span>
+                                        <span>Stop Sphere Process</span>
+                                    </button>
+                                    <label style="font-size: 0.72rem; font-family: var(--font-mono); padding: 5px 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated); cursor: pointer;" title="Auto-arm Gyro Sphere hotkey on Windows login">
+                                        <span>Auto-Start on Boot</span>
+                                        <input type="checkbox" id="popoverHudStartupToggle" onchange="toggleHudStartupSetting(this.checked)" style="width: 14px; height: 14px; cursor: pointer;">
+                                    </label>
                                 </div>
                             </div>
+
+                            <button type="button" id="btnHeaderGyroSphere" onclick="launchDesktopHUD()" class="btn-quiet" style="width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary); border-radius: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface-elevated);" title="Summon Floating Gyro Sphere (Ctrl+Shift+Space)">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                                    <circle cx="12" cy="12" r="3.5" fill="currentColor" opacity="0.85"/>
+                                    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-30 12 12)"/>
+                                    <ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(30 12 12)"/>
+                                </svg>
+                            </button>
 
                             <button type="button" onclick="exportCurrentSession()" class="btn-quiet" style="font-size: 0.75rem; padding: 5px 10px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-secondary); border-radius: 6px;" title="Export transcript as Markdown">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1837,23 +1863,428 @@
                                     }
                                 }
                             }
-                            async function launchDesktopHUD() {
-                                var btn = document.getElementById('btnLaunchHUD');
-                                if (btn) btn.disabled = true;
-                                try {
-                                    var res = await fetch('/api/daemon/hud/launch', { method: 'POST' });
-                                    var data = await res.json();
-                                    if (data.status === 'success') {
-                                        console.log("Desktop HUD launched:", data.message);
-                                    } else {
-                                        alert("Notice: " + (data.error || data.message || "Failed to launch HUD."));
+                            async function toggleStudioGyroSphere(forceVisible) {
+                                var overlay = document.getElementById('studioGyroSphereOverlay');
+                                var hdrBtn = document.getElementById('btnHeaderGyroSphere');
+                                if (!overlay) return;
+
+                                if (forceVisible === false) {
+                                    overlay.style.display = 'none';
+                                    if (window.stopStudioGyroLoop) window.stopStudioGyroLoop();
+                                    if (hdrBtn) {
+                                        hdrBtn.style.borderColor = 'var(--border-subtle)';
+                                        hdrBtn.style.color = 'var(--text-secondary)';
                                     }
-                                } catch(e) {
-                                    console.warn("Launch HUD error:", e);
-                                } finally {
-                                    if (btn) btn.disabled = false;
+                                    return;
+                                }
+
+                                // 1-click ON / 1-click OFF against live Desktop Sphere process
+                                try {
+                                    var stRes = await fetch('/api/daemon/hud/state');
+                                    if (stRes.ok) {
+                                        var st = await stRes.json();
+                                        if (st && st.hud_running) {
+                                            overlay.style.display = 'none';
+                                            if (window.stopStudioGyroLoop) window.stopStudioGyroLoop();
+                                            await fetch('/api/daemon/hud/quit', { method: 'POST' });
+                                            if (hdrBtn) {
+                                                hdrBtn.style.borderColor = 'var(--border-subtle)';
+                                                hdrBtn.style.color = 'var(--text-secondary)';
+                                            }
+                                            return;
+                                        }
+                                    }
+                                } catch(_) {}
+
+                                var isOpen = overlay.style.display !== 'none';
+                                var nextOpen = (typeof forceVisible === 'boolean') ? forceVisible : !isOpen;
+                                if (nextOpen) {
+                                    // Launch OS-wide Desktop sphere first; only fall back to in-browser orb if Desktop HUD cannot bind IPC
+                                    try {
+                                        await fetch('/api/daemon/hud/launch', { method: 'POST' });
+                                        for (var w = 0; w < 4; w++) {
+                                            await new Promise(function(res) { setTimeout(res, 350); });
+                                            var chk = await fetch('/api/daemon/hud/state');
+                                            if (chk.ok) {
+                                                var chkData = await chk.json();
+                                                if (chkData && chkData.hud_running) {
+                                                    overlay.style.display = 'none';
+                                                    if (window.stopStudioGyroLoop) window.stopStudioGyroLoop();
+                                                    if (hdrBtn) {
+                                                        hdrBtn.style.borderColor = 'rgba(96, 165, 250, 0.55)';
+                                                        hdrBtn.style.color = '#60a5fa';
+                                                    }
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                    } catch(_) {}
+                                    // Restore saved viewport coordinates safely
+                                    try {
+                                        var saved = JSON.parse(localStorage.getItem('unleash_gyro_pos') || 'null');
+                                        if (saved && typeof saved.left === 'number' && typeof saved.top === 'number') {
+                                            var maxX = Math.max(0, window.innerWidth - 104);
+                                            var maxY = Math.max(0, window.innerHeight - 104);
+                                            overlay.style.left = Math.min(maxX, Math.max(0, saved.left)) + 'px';
+                                            overlay.style.top = Math.min(maxY, Math.max(0, saved.top)) + 'px';
+                                            overlay.style.right = 'auto';
+                                            overlay.style.bottom = 'auto';
+                                        }
+                                    } catch(_) {}
+                                    overlay.style.display = 'block';
+                                    if (window._gyroState) window._gyroState.clickPop = 1.0;
+                                    startStudioGyroLoop();
+                                    if (hdrBtn) {
+                                        hdrBtn.style.borderColor = 'rgba(96, 165, 250, 0.55)';
+                                        hdrBtn.style.color = '#60a5fa';
+                                    }
+                                } else {
+                                    overlay.style.display = 'none';
+                                    stopStudioGyroLoop();
+                                    if (hdrBtn) {
+                                        hdrBtn.style.borderColor = 'var(--border-subtle)';
+                                        hdrBtn.style.color = 'var(--text-secondary)';
+                                    }
                                 }
                             }
+
+                            async function launchDesktopHUD() {
+                                toggleStudioGyroSphere();
+                            }
+
+                            async function quitDesktopHUD() {
+                                toggleStudioGyroSphere(false);
+                                try {
+                                    await fetch('/api/daemon/hud/quit', { method: 'POST' });
+                                } catch(_) {}
+                                var hdrBtn = document.getElementById('btnHeaderGyroSphere');
+                                if (hdrBtn) {
+                                    hdrBtn.style.borderColor = 'var(--border-subtle)';
+                                    hdrBtn.style.color = 'var(--text-secondary)';
+                                }
+                            }
+
+                            async function quitUnleashApplication() {
+                                var btn = document.getElementById('btnQuitUnleashApp');
+                                if (btn) {
+                                    btn.disabled = true;
+                                    btn.textContent = 'Stopping...';
+                                }
+                                toggleStudioGyroSphere(false);
+                                try {
+                                    var res = await fetch('/api/daemon/app/shutdown', { method: 'POST' });
+                                    if (res.ok && btn) {
+                                        btn.textContent = 'Stopped';
+                                    }
+                                } catch(_) {
+                                    if (btn) btn.textContent = 'Stopped';
+                                }
+                            }
+
+                            (function bindHeaderGyroTooltip() {
+                                var hdrBtn = document.getElementById('btnHeaderGyroSphere');
+                                if (hdrBtn) {
+                                    hdrBtn.title = 'One-click: Turn Gyro Sphere ON / OFF';
+                                }
+                            })();
+
+                            // Global Studio hotkey: Ctrl+Shift+Space toggles the Floating Gyro Sphere cleanly
+                            document.addEventListener('keydown', function(ev) {
+                                if (ev.ctrlKey && ev.shiftKey && ev.code === 'Space') {
+                                    ev.preventDefault();
+                                    toggleStudioGyroSphere();
+                                }
+                            });
+
+                            (function initStudioGyroCanvas() {
+                                if (document.getElementById('studioGyroSphereOverlay')) return;
+                                var overlay = document.createElement('div');
+                                overlay.id = 'studioGyroSphereOverlay';
+                                overlay.title = 'Click: Mic ON/OFF · Drag: Move · Right-Click or Ctrl+Shift+Space: Hide';
+                                overlay.style.cssText = 'display:none;position:fixed;right:28px;bottom:84px;width:104px;height:104px;z-index:9500;cursor:pointer;user-select:none;touch-action:none;';
+                                var canvas = document.createElement('canvas');
+                                canvas.id = 'studioGyroCanvas';
+                                canvas.width = 208;
+                                canvas.height = 208;
+                                canvas.style.cssText = 'width:104px;height:104px;display:block;';
+                                overlay.appendChild(canvas);
+                                document.body.appendChild(overlay);
+
+                                var state = window._gyroState = {
+                                    phase: 0,
+                                    pop: 0,
+                                    popVel: 0,
+                                    clickPop: 0,
+                                    ripple: 0,
+                                    rippleAlpha: 0,
+                                    lastPeak: 0,
+                                    hovered: false,
+                                    micActive: false,
+                                    mode: 'IDLE',
+                                    speechEnergy: 0,
+                                    taskProgress: 0,
+                                    activeTasksCount: 0,
+                                    rafId: null,
+                                    pollTimer: null,
+                                    lastTs: 0
+                                };
+
+                                // Drag vs short click
+                                var ptrDown = false, moved = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+                                overlay.addEventListener('pointerdown', function(e) {
+                                    if (e.button !== 0) return;
+                                    ptrDown = true;
+                                    moved = false;
+                                    startX = e.clientX;
+                                    startY = e.clientY;
+                                    var rect = overlay.getBoundingClientRect();
+                                    startLeft = rect.left;
+                                    startTop = rect.top;
+                                    overlay.setPointerCapture(e.pointerId);
+                                });
+                                overlay.addEventListener('pointermove', function(e) {
+                                    if (!ptrDown) return;
+                                    var dx = e.clientX - startX;
+                                    var dy = e.clientY - startY;
+                                    if (!moved && (dx * dx + dy * dy) >= 25) moved = true;
+                                    if (moved) {
+                                        var maxX = Math.max(0, window.innerWidth - 104);
+                                        var maxY = Math.max(0, window.innerHeight - 104);
+                                        var nx = Math.min(maxX, Math.max(0, startLeft + dx));
+                                        var ny = Math.min(maxY, Math.max(0, startTop + dy));
+                                        overlay.style.left = nx + 'px';
+                                        overlay.style.top = ny + 'px';
+                                        overlay.style.right = 'auto';
+                                        overlay.style.bottom = 'auto';
+                                    }
+                                });
+                                overlay.addEventListener('pointerup', function(e) {
+                                    if (!ptrDown) return;
+                                    ptrDown = false;
+                                    try { overlay.releasePointerCapture(e.pointerId); } catch(_) {}
+                                    if (moved) {
+                                        var rect = overlay.getBoundingClientRect();
+                                        try { localStorage.setItem('unleash_gyro_pos', JSON.stringify({ left: rect.left, top: rect.top })); } catch(_) {}
+                                    } else {
+                                        state.clickPop = 1.0;
+                                        state.popVel += 4.8;
+                                        if (typeof onWakeWordBadgeClick === 'function') {
+                                            onWakeWordBadgeClick();
+                                        }
+                                    }
+                                });
+                                overlay.addEventListener('pointerenter', function() { state.hovered = true; });
+                                overlay.addEventListener('pointerleave', function() { state.hovered = false; });
+                                overlay.addEventListener('contextmenu', function(e) {
+                                    e.preventDefault();
+                                    if (state.mode === 'SPEAKING') {
+                                        fetch('/api/voice/stop', { method: 'POST' }).catch(function(){});
+                                    } else {
+                                        toggleStudioGyroSphere(false);
+                                    }
+                                });
+
+                                function pollGyroState() {
+                                    if (document.hidden || overlay.style.display === 'none') return;
+                                    fetch('/api/daemon/hud/state').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+                                        if (!d) return;
+                                        state.micActive = !!(d.mic_active || window.isWakeWordListening);
+                                        state.speechEnergy = Number(d.speech_energy || 0);
+                                        state.activeTasksCount = Number(d.active_tasks_count || 0);
+                                        state.taskProgress = Number(d.top_task_progress || 0);
+                                        var m = String(d.duplex_state || 'IDLE').toUpperCase();
+                                        if (d.is_speaking || (window.speechSynthesis && window.speechSynthesis.speaking)) m = 'SPEAKING';
+                                        else if (m === 'IDLE' && state.micActive) m = 'LISTENING';
+                                        else if (m === 'IDLE' && state.activeTasksCount > 0) m = 'THINKING';
+                                        state.mode = m;
+                                        var hdrBtn = document.getElementById('btnHeaderGyroSphere');
+                                        if (hdrBtn && overlay.style.display !== 'none') {
+                                            hdrBtn.style.color = state.micActive ? '#10b981' : '#60a5fa';
+                                            hdrBtn.style.borderColor = state.micActive ? 'rgba(16,185,129,0.55)' : 'rgba(96,165,250,0.55)';
+                                        }
+                                    }).catch(function(){});
+                                }
+
+                                function rotPt(x, y, rx, ry, rz) {
+                                    var cx = Math.cos(rx), sx = Math.sin(rx);
+                                    var cy = Math.cos(ry), sy = Math.sin(ry);
+                                    var cz = Math.cos(rz), sz = Math.sin(rz);
+                                    var y1 = y * cx, z1 = y * sx;
+                                    var x2 = x * cy + z1 * sy, y2 = y1, z2 = -x * sy + z1 * cy;
+                                    return [x2 * cz - y2 * sz, x2 * sz + y2 * cz, z2];
+                                }
+
+                                function drawFrame(ts) {
+                                    if (overlay.style.display === 'none') { state.rafId = null; return; }
+                                    var dt = state.lastTs ? Math.min(0.05, Math.max(0.004, (ts - state.lastTs) / 1000)) : 1 / 60;
+                                    state.lastTs = ts;
+
+                                    // Sync local browser mic/TTS cleanly between backend polls
+                                    if (typeof isWakeWordListening !== 'undefined' && isWakeWordListening) state.micActive = true;
+                                    if (window.speechSynthesis && window.speechSynthesis.speaking) {
+                                        state.mode = 'SPEAKING';
+                                        state.speechEnergy = Math.max(state.speechEnergy, 0.35 + 0.55 * Math.abs(Math.sin(ts * 0.014) * Math.cos(ts * 0.007)));
+                                    }
+
+                                    var spd = (state.mode === 'SPEAKING') ? (2.6 + 1.8 * state.speechEnergy)
+                                            : (state.mode === 'THINKING' || state.activeTasksCount > 0) ? 2.3
+                                            : state.micActive ? 1.55 : 0.65;
+                                    state.phase += dt * spd;
+
+                                    var tPop = 0;
+                                    if (state.mode === 'SPEAKING') {
+                                        var en = Math.min(1, Math.max(0, state.speechEnergy));
+                                        tPop = Math.pow(en, 0.72) * 0.92 + 0.14;
+                                        if (en - state.lastPeak > 0.22 && en > 0.52) {
+                                            state.ripple = 0;
+                                            state.rippleAlpha = Math.min(0.95, 0.45 + en * 0.5);
+                                        }
+                                        state.lastPeak = en * 0.85;
+                                    } else {
+                                        state.lastPeak *= 0.85;
+                                        tPop = state.hovered ? 0.08 : 0;
+                                        if (state.micActive) tPop += 0.05 * (0.5 + 0.5 * Math.sin(state.phase * 2.1));
+                                    }
+                                    if (state.clickPop > 0.001) {
+                                        tPop = Math.max(tPop, state.clickPop * 0.72);
+                                        state.clickPop *= Math.exp(-dt * 9);
+                                    }
+                                    var acc = 195 * (tPop - state.pop) - 17.5 * state.popVel;
+                                    state.popVel += acc * dt;
+                                    state.pop = Math.max(-0.08, Math.min(1.35, state.pop + state.popVel * dt));
+                                    if (state.rippleAlpha > 0.01) {
+                                        state.ripple += dt * 1.9;
+                                        state.rippleAlpha *= Math.exp(-dt * 4.2);
+                                        if (state.ripple > 1) state.rippleAlpha = 0;
+                                    }
+
+                                    var ctx = canvas.getContext('2d');
+                                    ctx.clearRect(0, 0, 208, 208);
+                                    var cx = 104, cy = 104, pop = Math.max(0, state.pop);
+                                    var coreR = (18 + pop * 4.2) * 2;
+                                    var accent = state.mode === 'SPEAKING' ? [110, 247, 198]
+                                               : state.micActive ? [16, 185, 129]
+                                               : (state.mode === 'THINKING' || state.activeTasksCount > 0) ? [96, 165, 250]
+                                               : [180, 192, 204];
+                                    var accCss = accent[0] + ',' + accent[1] + ',' + accent[2];
+
+                                    // Aura glow
+                                    var aura = ctx.createRadialGradient(cx, cy, coreR * 0.4, cx, cy, 96);
+                                    var auraAlpha = state.mode === 'SPEAKING' ? 0.46 : state.micActive ? 0.34 : 0.16;
+                                    aura.addColorStop(0, 'rgba(' + accCss + ',' + auraAlpha + ')');
+                                    aura.addColorStop(1, 'rgba(' + accCss + ',0)');
+                                    ctx.fillStyle = aura;
+                                    ctx.beginPath(); ctx.arc(cx, cy, 96, 0, Math.PI * 2); ctx.fill();
+
+                                    if (state.rippleAlpha > 0.02) {
+                                        ctx.strokeStyle = 'rgba(' + accCss + ',' + (state.rippleAlpha * 0.75) + ')';
+                                        ctx.lineWidth = 2.4;
+                                        ctx.beginPath();
+                                        ctx.arc(cx, cy, coreR + (11 + state.ripple * 20) * 2, 0, Math.PI * 2);
+                                        ctx.stroke();
+                                    }
+
+                                    var p = state.phase;
+                                    var specs = [
+                                        { r: (26.5 + pop * 5.0) * 2, rx: 0.62, ry: 0.35 + p * 0.92, rz: p * 0.41, w: 5.2 },
+                                        { r: (30.2 + pop * 5.8) * 2, rx: -0.58, ry: 1.15 - p * 0.78, rz: -0.45 + p * 0.52, w: 4.5 },
+                                        { r: (33.5 + pop * 6.5) * 2, rx: 1.18 + Math.sin(p * 0.35) * 0.14, ry: -0.45 + p * 0.64, rz: 0.75 + p * 0.48, w: 4.0 }
+                                    ];
+
+                                    function drawRingLayer(frontHalf) {
+                                        specs.forEach(function(sp) {
+                                            var N = 64, runs = [], cur = null;
+                                            for (var i = 0; i <= N; i++) {
+                                                var u = (i % N) / N * Math.PI * 2;
+                                                var pt = rotPt(Math.cos(u) * sp.r, Math.sin(u) * sp.r, sp.rx, sp.ry, sp.rz);
+                                                var isF = pt[2] >= 0;
+                                                var x2d = cx + pt[0], y2d = cy + pt[1];
+                                                if (!cur || cur.f !== isF) {
+                                                    if (cur) cur.pts.push([x2d, y2d]);
+                                                    cur = { f: isF, pts: [[x2d, y2d]] };
+                                                    runs.push(cur);
+                                                } else {
+                                                    cur.pts.push([x2d, y2d]);
+                                                }
+                                            }
+                                            runs.forEach(function(run) {
+                                                if (run.f !== frontHalf || run.pts.length < 2) return;
+                                                ctx.lineCap = 'round';
+                                                ctx.lineJoin = 'round';
+                                                ctx.beginPath();
+                                                ctx.moveTo(run.pts[0][0], run.pts[0][1]);
+                                                for (var k = 1; k < run.pts.length; k++) ctx.lineTo(run.pts[k][0], run.pts[k][1]);
+                                                ctx.strokeStyle = frontHalf ? 'rgba(14,16,22,0.75)' : 'rgba(14,16,22,0.45)';
+                                                ctx.lineWidth = sp.w + 2.2;
+                                                ctx.stroke();
+                                                var mix = state.mode === 'SPEAKING' ? 0.75 : state.micActive ? 0.55 : 0.25;
+                                                var base = frontHalf ? 205 : 105;
+                                                var rC = Math.round(base * (1 - mix * 0.55) + accent[0] * mix);
+                                                var gC = Math.round(base * (1 - mix * 0.55) + accent[1] * mix);
+                                                var bC = Math.round(base * (1 - mix * 0.55) + accent[2] * mix);
+                                                ctx.strokeStyle = 'rgba(' + rC + ',' + gC + ',' + bC + ',' + (frontHalf ? 0.94 : 0.55) + ')';
+                                                ctx.lineWidth = sp.w;
+                                                ctx.stroke();
+                                            });
+                                        });
+                                    }
+
+                                    // 1. Back half of gyroscopic rings
+                                    drawFrameRingsBack: drawRingLayer(false);
+
+                                    // 2. Central obsidian 3D titanium core sphere + inner glowing lens
+                                    var sphGrad = ctx.createRadialGradient(cx - coreR * 0.32, cy - coreR * 0.34, coreR * 0.08, cx, cy, coreR);
+                                    sphGrad.addColorStop(0, '#525866');
+                                    sphGrad.addColorStop(0.55, '#191d26');
+                                    sphGrad.addColorStop(1, '#0b0d12');
+                                    ctx.fillStyle = sphGrad;
+                                    ctx.beginPath(); ctx.arc(cx, cy, coreR, 0, Math.PI * 2); ctx.fill();
+                                    ctx.strokeStyle = 'rgba(220,228,240,0.45)';
+                                    ctx.lineWidth = 2.0;
+                                    ctx.stroke();
+
+                                    // Machined lens aperture + glowing core eye
+                                    ctx.strokeStyle = 'rgba(145,155,170,0.32)';
+                                    ctx.lineWidth = 1.6;
+                                    ctx.beginPath(); ctx.arc(cx, cy, coreR * 0.58, 0, Math.PI * 2); ctx.stroke();
+
+                                    var eyeR = (7.2 + pop * 3.4) * 2;
+                                    var eyePower = state.mode === 'SPEAKING' ? 1.0 : state.micActive ? 0.85 : 0.42;
+                                    var eyeGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, eyeR);
+                                    eyeGrad.addColorStop(0, 'rgba(255,255,255,' + Math.min(1, eyePower * 1.1) + ')');
+                                    eyeGrad.addColorStop(0.45, 'rgba(' + accCss + ',' + Math.min(1, eyePower * 0.9) + ')');
+                                    eyeGrad.addColorStop(1, 'rgba(' + accCss + ',0)');
+                                    ctx.fillStyle = eyeGrad;
+                                    ctx.beginPath(); ctx.arc(cx, cy, eyeR, 0, Math.PI * 2); ctx.fill();
+
+                                    // 3. Front half of gyroscopic rings
+                                    drawRingLayer(true);
+
+                                    // 4. Outer sapphire task progress arc
+                                    if (state.activeTasksCount > 0 || state.taskProgress > 0.5) {
+                                        var pct = Math.max(0.02, Math.min(1, state.taskProgress / 100));
+                                        ctx.strokeStyle = '#60a5fa';
+                                        ctx.lineWidth = 4.4;
+                                        ctx.lineCap = 'round';
+                                        ctx.beginPath();
+                                        ctx.arc(cx, cy, 88, -Math.PI / 2, -Math.PI / 2 + pct * Math.PI * 2);
+                                        ctx.stroke();
+                                    }
+
+                                    state.rafId = requestAnimationFrame(drawFrame);
+                                }
+
+                                window.startStudioGyroLoop = function() {
+                                    state.lastTs = 0;
+                                    if (!state.rafId) state.rafId = requestAnimationFrame(drawFrame);
+                                    pollGyroState();
+                                    if (!state.pollTimer) state.pollTimer = setInterval(pollGyroState, 300);
+                                };
+                                window.stopStudioGyroLoop = function() {
+                                    if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = null; }
+                                    if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
+                                };
+                            })();
                             function onChatImagePicked(event) {
                                 var file = (event.target && event.target.files && event.target.files[0]);
                                 if (file && window.handleChatFileUpload) {
@@ -2324,6 +2755,20 @@
                         </div>
                         <input type="checkbox" id="chatSpeakRepliesToggle" onchange="toggleChatSpeech(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
                     </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Windows Startup Auto-Arm Toggle for Floating Gyro Sphere -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                                <span>Launch Gyro Sphere at Windows Startup</span>
+                                <span style="font-size: 0.65rem; font-family: var(--font-mono); background: rgba(96, 165, 250, 0.14); color: #60a5fa; padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(96, 165, 250, 0.28);">Ctrl+Shift+Space</span>
+                            </div>
+                            <div id="hudStartupStatusDesc" style="font-size: 0.71rem; color: var(--text-muted);">Arms the global hotkey in silent standby on login (0 px &amp; Mic OFF until summoned)</div>
+                        </div>
+                        <input type="checkbox" id="chatHudStartupToggle" onchange="toggleHudStartupSetting(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+                    </div>
                 </div>
             </div>
 
@@ -2539,7 +2984,7 @@
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <div>
                             <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Docker Container Engine</div>
-                            <div style="font-size: 0.71rem; color: var(--text-muted);">Ephemeral isolation sandbox runtime</div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">Ephemeral isolation sandbox runtime (auto-starts only when risky code needs it)</div>
                         </div>
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <span id="chatDockerStatusBadge" style="font-size: 0.7rem; font-family: var(--font-mono); padding: 2px 8px; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; background: var(--bg-surface); color: var(--text-muted); border: 1px solid var(--border-subtle); cursor: pointer;" onclick="openDockerSetupModal()">
@@ -2550,6 +2995,17 @@
                                 <span id="btnDockerIcon" style="display:none;"></span> <span id="btnDockerText">Start container</span>
                             </button>
                         </div>
+                    </div>
+
+                    <div style="height: 1px; background: var(--border-subtle);"></div>
+
+                    <!-- Auto-Start Docker on Launch Toggle (default OFF) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-primary);">Auto-Start Docker on Launch</div>
+                            <div style="font-size: 0.71rem; color: var(--text-muted);">Pre-warm Docker Desktop &amp; WSL2 when Unleash starts (off keeps RAM/thermals low)</div>
+                        </div>
+                        <input type="checkbox" id="chatDockerAutoStartToggle" onchange="toggleDockerAutoStart(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
                     </div>
                 </div>
             </div>
@@ -3106,6 +3562,57 @@ function playJarvisWakeChime() {
     } catch(e) {}
 }
 
+async function loadHudStartupSetting() {
+    const toggle = document.getElementById('chatHudStartupToggle');
+    const popToggle = document.getElementById('popoverHudStartupToggle');
+    try {
+        const res = await fetch('/api/daemon/hud/startup');
+        if (res.ok) {
+            const data = await res.json();
+            if (toggle) toggle.checked = !!data.enabled;
+            if (popToggle) popToggle.checked = !!data.enabled;
+        }
+    } catch (e) {
+        console.warn('HUD startup status check failed:', e);
+    }
+}
+
+async function toggleHudStartupSetting(enabled) {
+    const toggle = document.getElementById('chatHudStartupToggle');
+    const popToggle = document.getElementById('popoverHudStartupToggle');
+    const desc = document.getElementById('hudStartupStatusDesc');
+    if (toggle) toggle.disabled = true;
+    if (popToggle) popToggle.disabled = true;
+    try {
+        const res = await fetch('/api/daemon/hud/startup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: !!enabled })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            if (toggle) toggle.checked = !!data.enabled;
+            if (popToggle) popToggle.checked = !!data.enabled;
+            if (desc) {
+                desc.textContent = data.enabled
+                    ? 'Armed at Windows Startup — press Ctrl+Shift+Space anytime to show/hide'
+                    : 'Arms the global hotkey in silent standby on login (0 px & Mic OFF until summoned)';
+            }
+        } else {
+            if (toggle) toggle.checked = !enabled;
+            if (popToggle) popToggle.checked = !enabled;
+            alert('Notice: ' + (data.error || 'Failed to update Windows Startup setting.'));
+        }
+    } catch (e) {
+        if (toggle) toggle.checked = !enabled;
+        if (popToggle) popToggle.checked = !enabled;
+        console.warn('HUD startup toggle error:', e);
+    } finally {
+        if (toggle) toggle.disabled = false;
+        if (popToggle) popToggle.disabled = false;
+    }
+}
+
 async function initJarvisVoiceUI() {
     try {
         const res = await fetch('/api/voice/config');
@@ -3146,6 +3653,7 @@ async function initJarvisVoiceUI() {
             
             // Initialize Chat Speech Toggle independently from localStorage
             initChatSpeechToggle();
+            loadHudStartupSetting();
             
             if (cfg.wake_word_enabled) {
                 startWakeWordListening();

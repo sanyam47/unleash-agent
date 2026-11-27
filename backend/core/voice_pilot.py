@@ -36,12 +36,101 @@ _SPEECH_WORKER_STARTED = False
 _SPEECH_LOCK = threading.RLock()
 _STOP_REQUESTED = threading.Event()
 _IS_SPEAKING = False
+_SPEECH_SESSION_LOCK = threading.Lock()
+_SPEECH_SESSION: Dict[str, Any] = {"id": 0, "started_at": 0.0, "envelope": None}
 
 
 def is_speaking() -> bool:
     """Returns True if Jarvis is currently outputting audio via system speakers."""
     global _IS_SPEAKING
     return _IS_SPEAKING or not _SPEECH_QUEUE.empty()
+
+
+def _extract_audio_envelope_async(audio_path: str, session_id: int):
+    """Computes a lightweight 20 Hz RMS speech amplitude envelope asynchronously with zero playback delay."""
+    def _worker():
+        try:
+            samples = None
+            sr = 24000
+            lower = audio_path.lower()
+            if lower.endswith(".wav"):
+                import wave
+                import numpy as np
+                with wave.open(audio_path, "rb") as wf:
+                    sr = wf.getframerate() or 24000
+                    n_channels = wf.getnchannels() or 1
+                    sampwidth = wf.getsampwidth()
+                    raw = wf.readframes(wf.getnframes())
+                dtype = np.int16 if sampwidth == 2 else (np.int32 if sampwidth == 4 else np.uint8)
+                arr = np.frombuffer(raw, dtype=dtype).astype(np.float32)
+                if sampwidth == 1:
+                    arr = (arr - 128.0) / 128.0
+                else:
+                    arr = arr / float(1 << (8 * sampwidth - 1))
+                if n_channels > 1 and len(arr) >= n_channels:
+                    arr = arr.reshape(-1, n_channels).mean(axis=1)
+                samples = arr
+            else:
+                import numpy as np
+                import soundfile as sf
+                arr, sr = sf.read(audio_path, dtype="float32")
+                if arr.ndim > 1:
+                    arr = arr.mean(axis=1)
+                samples = arr
+
+            if samples is not None and len(samples) > 0:
+                import numpy as np
+                hop = max(1, int(sr / 20))  # 20 Hz = 50ms buckets
+                usable = (len(samples) // hop) * hop
+                if usable > 0:
+                    frames = samples[:usable].reshape(-1, hop)
+                    rms = np.sqrt(np.mean(frames * frames, axis=1))
+                    peak = float(np.percentile(rms, 95)) if len(rms) > 4 else float(np.max(rms))
+                    scale = max(peak, 1e-4)
+                    norm = np.clip(rms / scale, 0.0, 1.0).tolist()
+                    with _SPEECH_SESSION_LOCK:
+                        if _SPEECH_SESSION["id"] == session_id:
+                            _SPEECH_SESSION["envelope"] = norm
+        except Exception:
+            pass
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
+def _begin_speech_session(audio_path: Optional[str] = None) -> int:
+    """Marks the start of an active speech utterance and schedules optional amplitude extraction."""
+    with _SPEECH_SESSION_LOCK:
+        sid = _SPEECH_SESSION["id"] + 1
+        _SPEECH_SESSION["id"] = sid
+        _SPEECH_SESSION["started_at"] = time.monotonic()
+        _SPEECH_SESSION["envelope"] = None
+    if audio_path and os.path.exists(audio_path):
+        _extract_audio_envelope_async(audio_path, sid)
+    return sid
+
+
+def _end_speech_session():
+    with _SPEECH_SESSION_LOCK:
+        _SPEECH_SESSION["id"] += 1
+        _SPEECH_SESSION["envelope"] = None
+
+
+def get_speech_energy() -> float:
+    """Returns normalized real-time speaker energy [0.0..1.0] for reactive UI animations."""
+    if not is_speaking():
+        return 0.0
+    import math
+    with _SPEECH_SESSION_LOCK:
+        started_at = float(_SPEECH_SESSION.get("started_at", 0.0) or 0.0)
+        envelope = _SPEECH_SESSION.get("envelope")
+    t = max(0.0, time.monotonic() - started_at)
+    if envelope:
+        idx = min(len(envelope) - 1, int(t * 20.0))
+        val = float(envelope[idx])
+        return round(min(1.0, max(0.08, val)), 3)
+    # Prosody fallback before envelope decode completes (or for non-file utterances)
+    cadence = abs(math.sin(t * 11.5) * math.cos(t * 5.3))
+    return round(min(1.0, 0.30 + 0.62 * cadence), 3)
 
 
 def _speech_queue_worker():
@@ -61,6 +150,7 @@ def _speech_queue_worker():
             audio_path = item.get("audio_path")
             if audio_path and os.path.exists(audio_path):
                 abs_path = os.path.abspath(audio_path)
+                _begin_speech_session(abs_path)
                 alias = f"jarvis_{int(time.time() * 1000)}"
                 file_type = "mpegvideo" if abs_path.lower().endswith(".mp3") else "waveaudio"
                 winmm.mciSendStringW(f'open "{abs_path}" type {file_type} alias {alias}', None, 0, None)
@@ -71,8 +161,10 @@ def _speech_queue_worker():
             _SPEECH_QUEUE.task_done()
             if _SPEECH_QUEUE.empty():
                 _IS_SPEAKING = False
+                _end_speech_session()
         except Exception as e:
             _IS_SPEAKING = False
+            _end_speech_session()
             print(f"[Voice Pilot] Queue playback notice: {e}")
 
 
@@ -514,6 +606,7 @@ def play_audio_file(audio_path: str, serialize: bool = True) -> Dict[str, Any]:
     if res_open != 0:
         return {"success": False, "error": f"Failed to open audio: winmm code {res_open}"}
 
+    _begin_speech_session(abs_path)
     _IS_SPEAKING = True
     res_play = winmm.mciSendStringW(f"play {alias}", None, 0, None)
     return {
@@ -541,6 +634,7 @@ def get_duplex_state() -> Dict[str, Any]:
     """Returns real-time duplex voice playback & barge-in readiness state."""
     return {
         "is_speaking": is_speaking(),
+        "speech_energy": get_speech_energy(),
         "last_cutoff_ms": _LAST_CUTOFF_MS,
         "barge_in_ready": True,
     }
@@ -552,6 +646,7 @@ def stop_speaking() -> float:
     t0 = time.perf_counter()
     _STOP_REQUESTED.set()
     _IS_SPEAKING = False
+    _end_speech_session()
     if os.name == "nt":
         try:
             winmm = ctypes.windll.winmm

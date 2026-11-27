@@ -13,6 +13,7 @@ import html
 import json
 import os
 import re
+import threading
 import time
 import urllib.request
 from dataclasses import dataclass, field, asdict
@@ -297,8 +298,8 @@ def _run_research_planner(
     return subqs, queries, float(resp.get("duration_sec", 0.1)), int(resp.get("eval_tokens", 0))
 
 
-def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
-    """Fetches clean readable text via HTTP, falling back to Playwright browser_extract for JS-rendered pages."""
+def _fetch_url_http(url: str, max_chars: int = 8000) -> str:
+    """Thread-safe static HTTP fetch & HTML text cleanup."""
     if not url or not url.lower().startswith(("http://", "https://")):
         return ""
     try:
@@ -307,7 +308,6 @@ def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
             return ""
     except Exception:
         pass
-    cleaned = ""
     try:
         req = urllib.request.Request(
             url,
@@ -322,22 +322,43 @@ def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
                 cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
                 cleaned = html.unescape(cleaned)
                 cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    except Exception:
-        cleaned = ""
-
-    if len(cleaned) >= 150:
-        return cleaned[:max_chars]
-
-    # Automatic Playwright sandbox fallback for JS-rendered or anti-bot pages
-    try:
-        from backend.core.browser_pilot import browser_extract
-        b_res = browser_extract(url=url)
-        b_txt = (b_res.get("text") or b_res.get("content") or "").strip() if isinstance(b_res, dict) else ""
-        if len(b_txt) > len(cleaned):
-            return b_txt[:max_chars]
+                return cleaned[:max_chars]
     except Exception:
         pass
-    return cleaned[:max_chars]
+    return ""
+
+
+_PLAYWRIGHT_FETCH_LOCK = threading.Lock()
+
+
+def _fetch_url_playwright(url: str, max_chars: int = 8000) -> str:
+    """Sequential lock-guarded headless Playwright fallback for JS-rendered or anti-bot pages."""
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return ""
+    try:
+        from backend.core.privacy_mode import is_air_gapped
+        if is_air_gapped():
+            return ""
+    except Exception:
+        pass
+    with _PLAYWRIGHT_FETCH_LOCK:
+        try:
+            from backend.core.browser_pilot import browser_navigate, browser_extract
+            browser_navigate(url=url, headless=True)
+            b_res = browser_extract(max_chars=max_chars)
+            b_txt = (b_res.get("text") or b_res.get("content") or "").strip() if isinstance(b_res, dict) else ""
+            return b_txt[:max_chars]
+        except Exception:
+            return ""
+
+
+def _fetch_url_text(url: str, max_chars: int = 8000) -> str:
+    """Fetches clean readable text via HTTP, falling back to Playwright browser_extract for JS-rendered pages."""
+    cleaned = _fetch_url_http(url, max_chars=max_chars)
+    if len(cleaned) >= 150:
+        return cleaned
+    b_txt = _fetch_url_playwright(url, max_chars=max_chars)
+    return b_txt if len(b_txt) > len(cleaned) else cleaned
 
 
 def _discover_sources_for_queries(
@@ -440,17 +461,28 @@ def _discover_sources_for_queries(
         except Exception as exc:
             step_logs.append({"step": step_num, "action": "search_web_docs", "query": q, "status": "error", "error": str(exc)})
 
-    # 4. Deep-fetch top web URLs (adaptive limit: 2..6 URLs by tier)
-    fetched_count = 0
-    for src in list(ledger.sources.values()):
-        if fetched_count >= max_fetch_urls:
-            break
-        if src.source_type == "web" and src.location.startswith(("http://", "https://")) and len(src.raw_text) < 400:
-            full_txt = _fetch_url_text(src.location)
+    # 4. Deep-fetch top web URLs concurrently (HTTP in ThreadPoolExecutor + safe sequential Playwright fallback)
+    candidate_srcs = [
+        src for src in list(ledger.sources.values())
+        if src.source_type == "web" and src.location.startswith(("http://", "https://")) and len(src.raw_text) < 400
+    ][:max_fetch_urls]
+
+    if candidate_srcs:
+        from concurrent.futures import ThreadPoolExecutor
+        http_results: Dict[str, str] = {}
+        with ThreadPoolExecutor(max_workers=min(4, len(candidate_srcs))) as pool:
+            fut_map = {pool.submit(_fetch_url_text, src.location): src for src in candidate_srcs}
+            for fut, src in fut_map.items():
+                try:
+                    http_results[src.source_id] = fut.result(timeout=12) or ""
+                except Exception:
+                    http_results[src.source_id] = ""
+
+        for src in candidate_srcs:
+            full_txt = http_results.get(src.source_id, "")
             if len(full_txt) > len(src.raw_text):
                 src.raw_text = full_txt
                 src.source_date, src.freshness_status = _detect_source_date_and_freshness(src.location, src.source_type, full_txt)
-                fetched_count += 1
                 step_logs.append({"step": step_num, "action": "deep_fetch_url", "target": src.location, "bytes": len(full_txt), "status": "success"})
 
     return step_logs

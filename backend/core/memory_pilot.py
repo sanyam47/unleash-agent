@@ -783,12 +783,17 @@ def recall_memory(query: str, category: Optional[str] = None, top_k: int = 5, al
     results: List[Dict[str, Any]] = []
     seen_contents = set()
     matched_raw_ids: List[int] = []
-
-    # Pre-generate query vector non-blockingly on hot chat reads
-    q_vec = generate_dense_embedding(clean_query, allow_cold_import=allow_cold_import)
     norm_q = re.sub(r"[^a-z0-9]+", "", clean_query.lower())
+    q_vec = None
 
     with get_db_connection() as conn:
+        # Lazy on-demand vector check: only warm/query neural embedder if active vector memories exist
+        has_embedded_raw = bool(
+            conn.execute("SELECT 1 FROM raw_memories WHERE is_active = 1 AND embedding IS NOT NULL LIMIT 1").fetchone()
+        )
+        if has_embedded_raw:
+            q_vec = generate_dense_embedding(clean_query, allow_cold_import=allow_cold_import)
+
         # Stream 1: Direct Entity Match & Bidirectional Multi-Hop Neighborhood Expansion
         entities = conn.execute("SELECT id, name, entity_type, attributes, importance FROM entities").fetchall()
         for ent in entities:

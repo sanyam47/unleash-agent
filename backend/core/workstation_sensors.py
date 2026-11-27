@@ -209,10 +209,11 @@ def _refresh_gpu_async():
             _GPU_REFRESH_IN_PROGRESS = False
 
 
-def get_live_gpu_metrics() -> Optional[Dict[str, Any]]:
+def get_live_gpu_metrics(skip_if_idle: bool = False) -> Optional[Dict[str, Any]]:
     """
     Reads NVIDIA GPU thermals, clock load, and VRAM non-blockingly.
-    Returns cached hardware metrics in < 0.05ms; triggers asynchronous refresh when stale (>3s).
+    Returns cached hardware metrics in < 0.05ms; triggers asynchronous refresh when stale (>3s),
+    unless `skip_if_idle=True` and cached metrics confirm GPU was idle/cool (<600s stale budget).
     """
     global _LAST_GPU_CACHE
     now = time.time()
@@ -225,11 +226,24 @@ def get_live_gpu_metrics() -> Optional[Dict[str, Any]]:
             _LAST_GPU_CACHE["data"] = data
             return data
 
+    cached = _LAST_GPU_CACHE["data"]
+    age = now - _LAST_GPU_CACHE["time"]
+
+    # Skip nvidia-smi spawn in background daemon ticks when GPU is already confirmed cool & idle
+    if skip_if_idle and cached is not None:
+        was_idle = (
+            int(cached.get("utilization_percent", 0)) == 0
+            and int(cached.get("temperature_c", 0)) < 60
+            and age < 600.0
+        )
+        if was_idle:
+            return cached
+
     # If cache is older than 3.0 seconds, dispatch non-blocking background refresh
-    if (now - _LAST_GPU_CACHE["time"]) > 3.0:
+    if age > 3.0:
         threading.Thread(target=_refresh_gpu_async, daemon=True, name="GPU-Sensors-Worker").start()
 
-    return _LAST_GPU_CACHE["data"]
+    return cached
 
 
 def get_live_active_window() -> Dict[str, Any]:
@@ -330,14 +344,14 @@ def get_live_top_processes(top_n: int = 5) -> List[Dict[str, Any]]:
     return []
 
 
-def get_ambient_sensory_summary() -> str:
+def get_ambient_sensory_summary(skip_idle_gpu_poll: bool = False) -> str:
     """
     Returns a unified, ultra-compact sensory snapshot string (~25 words) for context injection.
     Execution time: < 12ms total.
     """
     ram = get_live_ram_metrics()
     bat = get_live_battery_metrics()
-    gpu = get_live_gpu_metrics()
+    gpu = get_live_gpu_metrics(skip_if_idle=skip_idle_gpu_poll)
     win = get_live_active_window()
 
     parts = [
@@ -357,9 +371,10 @@ def get_ambient_sensory_summary() -> str:
     return f"[Sensory Telemetry: {' | '.join(parts)}]"
 
 
-def get_full_workstation_telemetry() -> Dict[str, Any]:
+def get_full_workstation_telemetry(skip_idle_gpu_poll: bool = False) -> Dict[str, Any]:
     """
     Returns a complete, structured telemetry dictionary for direct diagnostics.
+    When `skip_idle_gpu_poll=True` (used by background watchdog), avoids spawning nvidia-smi if GPU was cool & idle.
     """
     now = time.localtime()
     return {
@@ -369,8 +384,8 @@ def get_full_workstation_telemetry() -> Dict[str, Any]:
         "formatted_datetime": time.strftime("%I:%M %p on %A, %B %d, %Y", now),
         "ram": get_live_ram_metrics(),
         "battery": get_live_battery_metrics(),
-        "gpu": get_live_gpu_metrics(),
+        "gpu": get_live_gpu_metrics(skip_if_idle=skip_idle_gpu_poll),
         "active_window": get_live_active_window(),
         "top_processes": get_live_top_processes(top_n=5),
-        "sensory_summary": get_ambient_sensory_summary()
+        "sensory_summary": get_ambient_sensory_summary(skip_idle_gpu_poll=skip_idle_gpu_poll)
     }

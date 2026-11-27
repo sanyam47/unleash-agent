@@ -77,12 +77,6 @@ def startup_event():
     start_proactive_watchdog_loop(interval_sec=120)
 
     try:
-        from backend.core.memory_pilot import prewarm_local_embedder
-        threading.Thread(target=prewarm_local_embedder, daemon=True, name="MemoryEmbedderWarmup").start()
-    except Exception:
-        pass
-
-    try:
         from backend.core.voice_pilot import load_voice_config
         v_cfg = load_voice_config()
         if v_cfg.get("wake_word_enabled", False):

@@ -461,7 +461,7 @@ def proactive_watchdog_tick() -> Dict[str, Any]:
     triggered_alerts = []
     try:
         from backend.core.workstation_sensors import get_full_workstation_telemetry
-        telemetry = get_full_workstation_telemetry()
+        telemetry = get_full_workstation_telemetry(skip_idle_gpu_poll=True)
 
         ram_cfg_pct = _WATCHDOG_CONFIG.get("ram_threshold_pct", 90)
         gpu_cfg_temp = _WATCHDOG_CONFIG.get("gpu_temp_threshold_c", 82)

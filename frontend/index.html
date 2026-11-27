@@ -4579,6 +4579,7 @@ function startMemoryLivePoll() {
     stopMemoryLivePoll();
     _startNeuralAnimationLoop();
     _memoryLivePollTimer = setInterval(() => {
+        if (document.hidden) return;
         const modal = document.getElementById('chatSettingsModal');
         if (modal && modal.style.display !== 'none') {
             refreshMemoriesUI(true);
@@ -5352,7 +5353,20 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshMemoriesUI();
     refreshDaemonTasksUI();
     initPersonaForge();
-    setInterval(refreshDaemonTasksUI, 5000);
+    setInterval(() => {
+        if (!document.hidden) {
+            refreshDaemonTasksUI();
+        }
+    }, 8000);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            refreshDaemonTasksUI();
+            const modal = document.getElementById('chatSettingsModal');
+            if (modal && modal.style.display !== 'none') {
+                refreshMemoriesUI(true);
+            }
+        }
+    });
 });
 </script>
 

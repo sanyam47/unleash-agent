@@ -4,9 +4,9 @@
 
 # ⚡ Unleash-Agent Studio
 
-### The Autonomous Local AI Operating System & Multi-Agent Swarm Platform
+### The Offline-First Voice OS Pilot, Floating 3D HUD & Parameter-Adaptive AI Studio
 
-**Empower modest 8B & 14B local models with real-world executive capability, hardware telemetry nerves, full-duplex hands-free voice, cloud QLoRA fine-tuning, and zero-crash sequential swarms on consumer GPUs.**
+**Empower compact `1.5B`, `8B`, and `14B` local models — or scale seamlessly to frontier models — with real-time executive OS control, offline Silero VAD + Whisper voice, a floating 3D Gyro Sphere HUD, cloud QLoRA fine-tuning, and zero-crash sequential swarms on consumer GPUs.**
 
 [![GitHub stars](https://img.shields.io/badge/GitHub-Stars%20Welcome-yellow?style=flat-square&logo=github)](https://github.com/sanyam47/unleash-agent)
 [![Hardware](https://img.shields.io/badge/Hardware-Any%20GPU%20%7C%20RTX%203050%20(6GB)%20Safe-green?style=flat-square)](#)
@@ -17,7 +17,7 @@
 
 <br/>
 
-*Zero API Costs • 100% Air-Gapped Privacy • Unleash Executive Pilot • Dynamic Swarm Relay • Cloud QLoRA Bridge*
+*Zero Cloud LLM Dependency • Parameter-Adaptive Harness (`1.5B`–Frontier) • Floating 3D Gyro Sphere HUD • Silero VAD + Whisper • Cloud QLoRA Bridge*
 
 </div>
 
@@ -47,15 +47,16 @@ Most AI tools on the market are superficial prompt wrappers around cloud APIs. I
 └──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
-### 1️⃣ Unleash Executive OS Pilot (Real-World System Nerves)
-* **Sub-20ms Telemetry Fast-Path:** Direct Win32 C-types hooks (`kernel32.GlobalMemoryStatusEx`, `nvidia-smi`) monitor RAM, VRAM, and GPU thermals in 0.9–19ms, completely eliminating LLM template hallucinations.
-* **Dynamic Application Discovery:** Replaces static app dictionaries with live Windows Registry (`App Paths`, `%APPDATA%`, and PATH) discovery—zero hardcoding.
-* **Goal-Driven Task Chaining:** Decomposes complex spoken commands (*"Open WhatsApp and message Sanyam"*) into atomic milestones via `goal_stepper.py` and visual coordinates via `vision_pilot.py`.
+### 1️⃣ Parameter-Adaptive Executive OS Pilot & Dynamic Discovery
+* **Parameter-Adaptive Architecture (`adaptive_tier.py`):** Automatically detects the active model size (`COMPACT ≤4B`, `BALANCED 5B–15B`, `FRONTIER ≥16B / Cloud`) and dynamically toggles compact context budgets, few-shot hints, Dynamic App/Search Grounding, and JSON auto-repair — extracting peak accuracy even from a **`1.5B` (`986 MB`)** model (`jarvis-qlora`) while dropping crutches on larger models.
+* **Sub-20ms Telemetry & Lazy Docker:** Direct Win32 C-types hooks (`kernel32.GlobalMemoryStatusEx`, `nvidia-smi`) monitor RAM, VRAM, and thermals in `<20ms`, while Docker isolation starts lazily on demand for high-risk executions.
+* **Dynamic Application Discovery (`app_discovery.py`):** Auto-indexes installed **Microsoft Store / UWP apps (`Get-StartApps`)**, **Start Menu `.lnk` shortcuts**, **Windows Registry (`App Paths`)**, and system `PATH` with fuzzy matching — zero static app lists.
+* **Fast Live `web_lookup` & Browser Routing:** Opens Google/YouTube in your visible browser (`open_url`) when requested, or runs a 1-step `web_lookup` summary aloud for real-time internet facts while keeping reasoning local.
 
-### 2️⃣ Full-Duplex Acoustic Voice Engine
-* **Always-On Wake Word Detection:** Native background Windows listener for *"Hey Unleash"*, *"Pilot"*, or custom wake phrases.
-* **Sub-15ms Duplex Barge-In:** Hardware-level audio interrupt via Windows `winmm.dll` instantly halts host speaker playback the millisecond the user speaks.
-* **100% Offline Neural Voice Synthesis:** Direct Python-native Piper TTS integration running offline neural ONNX models with zero external `.exe` dependencies, alongside high-fidelity Edge Neural streaming (`en-GB-RyanNeural`).
+### 2️⃣ Full-Duplex Offline Voice & Floating 3D Gyro Sphere HUD
+* **Offline Silero VAD + `faster-whisper` (`base`, INT8 CPU):** Rejects room noise before STT runs, with `hotwords` decoding, PCM gain/padding conditioning, and start-anchored wake-word matching (`"Hey Jarvis"`, or custom phrases in `voice_config.json`).
+* **Sub-15ms Duplex Barge-In & Anti-Self-Echo Guard:** Hardware-level audio interrupt via Windows `winmm.dll` halts host speaker playback in `<15ms` on explicit stop/wake commands while ignoring speaker self-echo.
+* **Floating 3D Gyro Sphere HUD (`jarvis_desktop_hud.py`):** Per-pixel alpha Win32 desktop widget (`0` GDI leaks) with steady idle light, voice-reactive **Listening pop** driven by live `mic_energy`, sapphire thinking sweep, and **Jarvis speech pop** — backed by offline **Piper ONNX TTS** (`jarvis-medium.onnx`).
 
 ### 3️⃣ LLM Studio & Cloud QLoRA Bridge
 * **Zero-Overheating Dual-Tier Architecture:** Heavy fine-tuning runs on free cloud GPUs (Kaggle Dual T4), protecting local laptop GPUs from thermal stress.

@@ -34,6 +34,7 @@ class SphereVisualState:
     mode: str = "IDLE"              # "IDLE" | "LISTENING" | "THINKING" | "SPEAKING"
     mic_active: bool = False        # User toggle: True keeps ring/core emerald
     speech_energy: float = 0.0      # [0.0 .. 1.0] speaker amplitude during reply
+    mic_energy: float = 0.0         # [0.0 .. 1.0] live user mic amplitude while listening
     task_progress: float = 0.0      # [0.0 .. 100.0] active background task %
     active_tasks_count: int = 0
     hovered: bool = False
@@ -63,9 +64,12 @@ class GyroSphereRenderer:
         self._pop_vel = 0.0
         self._click_pop = 0.0
         self._glow_smooth = 0.0
+        self._mic_smooth = 0.0
+        self._inward_phase = 0.0
         self._ripple = 0.0
         self._ripple_alpha = 0.0
         self._last_peak = 0.0
+        self._last_mic_peak = 0.0
 
         # Precompute 3D ring parameter grid
         self._num_pts = 72
@@ -81,19 +85,27 @@ class GyroSphereRenderer:
     def _step_physics(self, state: SphereVisualState, dt: float):
         dt = max(0.004, min(0.05, float(dt)))
 
-        # Angular speed ramps smoothly by cognitive state
+        # Smooth live microphone voice level with punchy attack and fluid decay
+        raw_mic = max(0.0, min(1.0, float(getattr(state, "mic_energy", 0.0) or 0.0)))
+        if state.mode == "SPEAKING" or not (state.mic_active or state.mode == "LISTENING"):
+            raw_mic = 0.0
+        mic_rate = 16.0 if raw_mic > self._mic_smooth else 7.5
+        self._mic_smooth += (raw_mic - self._mic_smooth) * min(1.0, dt * mic_rate)
+
+        # Angular speed ramps smoothly by cognitive state + live voice lock-on
         if state.mode == "SPEAKING":
             speed = 2.6 + 1.8 * state.speech_energy
         elif state.mode == "THINKING":
-            speed = 2.35
+            speed = 2.65
         elif state.mic_active or state.mode == "LISTENING":
-            speed = 1.55
+            speed = 1.45 + 1.95 * self._mic_smooth
+            self._inward_phase = (self._inward_phase + dt * (0.48 + 1.35 * self._mic_smooth)) % 1.0
         else:
             speed = 0.62
 
         self._phase += dt * speed
 
-        # Spring-damper for Jarvis speech "pop" + tactile click feedback
+        # Spring-damper for Jarvis speech "pop" + voice-reactive listening "pop"
         if state.mode == "SPEAKING":
             energy = max(0.0, min(1.0, float(state.speech_energy)))
             # Punchy attack curve makes syllables pop distinctly
@@ -102,12 +114,21 @@ class GyroSphereRenderer:
                 self._ripple = 0.0
                 self._ripple_alpha = min(0.95, 0.45 + energy * 0.5)
             self._last_peak = energy * 0.85
+            self._last_mic_peak *= 0.85
         else:
             self._last_peak *= 0.85
             target_pop = 0.08 if state.hovered else 0.0
-            if state.mic_active:
-                # Subtle organic breathing while listening
-                target_pop += 0.05 * (0.5 + 0.5 * math.sin(self._phase * 2.1))
+            if state.mic_active or state.mode == "LISTENING":
+                # Pop noticeably as live mic picks up user's voice + gentle standby pulse
+                mic_e = self._mic_smooth
+                target_pop += (mic_e ** 0.68) * 0.78 + 0.06 * (0.5 + 0.5 * math.sin(self._phase * 2.1))
+                if mic_e - self._last_mic_peak > 0.18 and mic_e > 0.28:
+                    self._ripple = 0.0
+                    self._ripple_alpha = min(0.85, 0.35 + mic_e * 0.5)
+                self._last_mic_peak = mic_e * 0.82
+            else:
+                # Not listening & not talking -> keep core completely steady/constant
+                self._last_mic_peak *= 0.85
 
         if self._click_pop > 0.001:
             target_pop = max(target_pop, self._click_pop * 0.7)
@@ -171,7 +192,7 @@ class GyroSphereRenderer:
         buf[:, :, 2] += ab * 0.55 * aura_glow
         buf[:, :, 3] += aura_glow * 155.0
 
-        # Subtle harmonic ripple wave during Jarvis speech peaks
+        # Subtle harmonic ripple wave during Jarvis speech peaks (outward)
         if self._ripple_alpha > 0.02:
             rip_r = core_r + 11.0 + self._ripple * 20.0
             rip_band = np.exp(-((dist - rip_r) ** 2) / 2.2) * self._ripple_alpha
@@ -179,6 +200,16 @@ class GyroSphereRenderer:
             buf[:, :, 1] += ag * rip_band * 0.95
             buf[:, :, 2] += ab * rip_band * 0.95
             buf[:, :, 3] += rip_band * 185.0
+        elif (state.mic_active or state.mode == "LISTENING") and state.mode != "SPEAKING":
+            # Inward emerald absorption pulse while listening (gentle in standby, bright on voice)
+            in_r = (core_r + 18.5) - self._inward_phase * 17.0
+            fade = math.sin(self._inward_phase * math.pi)
+            in_strength = fade * (0.24 + 0.70 * self._mic_smooth)
+            in_band = np.exp(-((dist - in_r) ** 2) / 2.4) * in_strength
+            buf[:, :, 0] += ar * in_band * 0.90
+            buf[:, :, 1] += ag * in_band * 0.95
+            buf[:, :, 2] += ab * in_band * 0.90
+            buf[:, :, 3] += in_band * 175.0
 
         # 2. Central 3D Obsidian Metallic Sphere
         # Anti-aliased edge mask within 1px border
@@ -216,10 +247,13 @@ class GyroSphereRenderer:
         lens_core = np.exp(-(lens_d ** 2) * 1.45)
         lens_hot = np.exp(-(lens_d ** 2) * 5.0)
 
-        core_power = (
-            0.34 if (not state.mic_active and state.mode == "IDLE")
-            else (0.88 + 0.24 * math.sin(self._phase * 2.2) if state.mode != "SPEAKING" else 1.08 + pop * 0.45)
-        )
+        if state.mode == "SPEAKING":
+            core_power = 1.08 + pop * 0.45
+        elif state.mic_active or state.mode == "LISTENING":
+            core_power = 0.82 + 0.18 * math.sin(self._phase * 2.2) + 0.65 * self._mic_smooth
+        else:
+            # Constant steady light when not listening (and not speaking)
+            core_power = 0.72 if (state.mode == "THINKING" or state.active_tasks_count > 0) else 0.40
         core_power = max(0.2, min(1.5, core_power))
 
         sph_r = np.where(inside, sph_r * (1.0 - lens_core * 0.68) + (ar * lens_core + 255.0 * lens_hot * 0.88) * core_power, 0.0)
@@ -265,7 +299,13 @@ class GyroSphereRenderer:
 
         circle_pts = np.stack([self._cos_u, self._sin_u, np.zeros_like(self._cos_u)], axis=0)
         ar, ag, ab = accent
-        accent_mix = 0.65 if state.mode == "SPEAKING" else (0.45 if state.mic_active else (0.36 if state.active_tasks_count > 0 else 0.12))
+        accent_mix = (
+            0.65 if state.mode == "SPEAKING"
+            else (
+                0.45 + 0.25 * self._mic_smooth if (state.mic_active or state.mode == "LISTENING")
+                else (0.48 if (state.mode == "THINKING" or state.active_tasks_count > 0) else 0.12)
+            )
+        )
 
         n = self._num_pts
 
@@ -331,13 +371,19 @@ class GyroSphereRenderer:
                     s1 = max(s0 + 2, min(len(poly), q1 + shift))
                     target_draw.line(poly[s0:s1], fill=hi_color, width=w_hi, joint="curve")
 
-        # Optional outer task progress arc (sweeps clockwise from top 12 o'clock)
+        # Optional outer task progress arc (or sapphire orbital sweep while THINKING)
         if state.active_tasks_count > 0 or state.task_progress > 0.5:
             pct = max(2.0, min(100.0, float(state.task_progress)))
             pad = 7.0 * self.ss
             bbox = [pad, pad, self.hi - pad, self.hi - pad]
             pr, pg, pb = PALETTE["progress_arc"]
             d_front.arc(bbox, start=-90, end=-90 + pct * 3.6, fill=(pr, pg, pb, 240), width=max(2, int(2.3 * self.ss)))
+        elif state.mode == "THINKING":
+            pad = 7.0 * self.ss
+            bbox = [pad, pad, self.hi - pad, self.hi - pad]
+            pr, pg, pb = PALETTE["thinking_core"]
+            sweep_start = (self._phase * 180.0 / math.pi) % 360.0
+            d_front.arc(bbox, start=sweep_start, end=sweep_start + 82.0, fill=(pr, pg, pb, 225), width=max(2, int(2.1 * self.ss)))
 
         resample = getattr(Image, "Resampling", Image).LANCZOS
         return back_img.resize((self.size, self.size), resample), front_img.resize((self.size, self.size), resample)

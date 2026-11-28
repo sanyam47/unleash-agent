@@ -1068,6 +1068,10 @@ def run_agentic_react_loop(
     from backend.core.adaptive_tier import probe_active_compute_tier
 
     tier_profile = probe_active_compute_tier(model_name=model)
+    param_profile = tier_profile.get("param_profile") or {}
+    param_scaff = param_profile.get("scaffolding") or {}
+    if temperature == 0.35 and "agent_temperature" in param_scaff:
+        temperature = float(param_scaff["agent_temperature"])
 
     caller_custom_steps = (max_steps != DEFAULT_MAX_STEPS)
     if not caller_custom_steps:
@@ -1239,7 +1243,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
         system_prompt = format_agentic_system_prompt(base_system_prompt, clean_proj, skills_prompt, toolset_mode=toolset_mode)
 
         system_prompt += (
-            f"\n=== ACTIVE COMPUTE TIER: {tier_profile['tier_display']} ===\n"
+            f"\n=== ACTIVE COMPUTE TIER: {tier_profile['tier_display']} | {param_profile.get('param_label', 'BALANCED')} ===\n"
             f"Hardware Profile: {tier_profile['gpu_name']} ({tier_profile['vram_gb']}GB VRAM)\n"
             f"Execution Budget: Max {tier_profile['max_milestones']} atomic milestones, {max_steps} ReAct turns, {context_window} context tokens.\n"
             f"Verification Engine: Mode '{tier_profile['visual_mode']}' with {len(viewports)} responsive target viewports.\n\n"
@@ -1252,7 +1256,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
         from backend.core.symbol_extractor import format_symbol_table_for_prompt, get_workspace_tree
 
         manifest = get_or_create_manifest(proj_dir, user_prompt, is_new=is_new_app_creation)
-        if toolset_mode != "lean":
+        if toolset_mode != "lean" and param_profile.get("param_tier") != "compact":
             manifest_prompt = format_manifest_for_prompt(manifest)
             if manifest_prompt:
                 system_prompt += f"{manifest_prompt}\n"
@@ -1262,7 +1266,7 @@ Final Answer: <Your clear, professional, factual answer to the user>
             system_prompt += f"\n=== ACTIVE WORKSPACE DIRECTORY TREE ===\n{workspace_tree_str}\n\n"
             system_prompt += "CONTINUATION MANDATE: You are modifying an EXISTING project. Preserve the existing design, layout, and colors. For targeted modifications, prefer 'edit_project_file' to surgically replace code blocks without wiping existing functions!\n"
 
-            if toolset_mode != "lean":
+            if toolset_mode != "lean" and param_profile.get("param_tier") != "compact":
                 sym_hint = format_symbol_table_for_prompt(proj_dir)
                 if sym_hint:
                     system_prompt += f"{sym_hint}\n"

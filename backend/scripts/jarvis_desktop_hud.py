@@ -320,6 +320,7 @@ class BackendBridge:
                 mode=self._visual_state.mode,
                 mic_active=self._visual_state.mic_active,
                 speech_energy=self._visual_state.speech_energy,
+                mic_energy=self._visual_state.mic_energy,
                 task_progress=self._visual_state.task_progress,
                 active_tasks_count=self._visual_state.active_tasks_count,
                 hovered=self._visual_state.hovered,
@@ -375,6 +376,7 @@ class BackendBridge:
                     mode = "THINKING"
                 self._visual_state.mode = mode
                 self._visual_state.speech_energy = float(data.get("speech_energy", 0.0) or 0.0)
+                self._visual_state.mic_energy = float(data.get("mic_energy", 0.0) or 0.0)
                 self._visual_state.active_tasks_count = int(data.get("active_tasks_count", 0) or 0)
                 self._visual_state.task_progress = float(data.get("top_task_progress", 0.0) or 0.0)
         return self.snapshot()
@@ -424,6 +426,7 @@ class BackendBridge:
             "is_speaking": bool(duplex.get("is_speaking", False)),
             "duplex_state": duplex.get("duplex_state", "IDLE"),
             "speech_energy": float(duplex.get("speech_energy", 0.0) or 0.0),
+            "mic_energy": float(duplex.get("mic_energy", 0.0) or 0.0),
             "active_tasks_count": len(active_tasks),
             "top_task_progress": float(top.get("progress", 0.0)) if top else 0.0,
         }

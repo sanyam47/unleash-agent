@@ -33,11 +33,16 @@ def test_gyro_renderer_states_and_pop():
     assert r._phase > phase_1, "Orbital rings must rotate continuously while visible"
     assert not np.array_equal(f_idle_1, f_idle_2), "Consecutive visible frames must animate rings"
 
-    # Mic active -> emerald dominance in core/aura
+    # Mic active -> emerald dominance in core/aura + voice-reactive listening pop
     for _ in range(12):
-        f_mic = np.array(r.render_frame(SphereVisualState(mode="LISTENING", mic_active=True), dt=1 / 30.0))
+        f_mic_quiet = np.array(r.render_frame(SphereVisualState(mode="LISTENING", mic_active=True, mic_energy=0.0), dt=1 / 30.0))
+    for _ in range(12):
+        f_mic = np.array(r.render_frame(SphereVisualState(mode="LISTENING", mic_active=True, mic_energy=0.85), dt=1 / 30.0))
+    mic_pop = r._pop
     green_excess_mic = int(np.sum(f_mic[:, :, 1].astype(np.int32) - f_mic[:, :, 0].astype(np.int32)))
     assert green_excess_mic > 2000, f"Expected emerald Mic glow, got G-R sum={green_excess_mic}"
+    assert mic_pop > 0.35, f"Expected sphere to pop visibly during LISTENING voice peak, got pop={mic_pop:.3f}"
+    assert int(f_mic[:, :, 1].sum()) > int(f_mic_quiet[:, :, 1].sum()), "Listening core should flare brighter on mic_energy"
 
     # Background task progress arc -> blue outer perimeter arc pixels
     for _ in range(12):
@@ -236,14 +241,71 @@ def test_hud_startup_endpoint():
 
 
 def test_local_stt_complex_routing_and_tray_shutdown():
-    print("\n[7/8] Testing local STT routing, complex task classifier, tray icon, & WM_QUERYENDSESSION...")
-    from backend.core.wake_word_listener import _is_complex_task_prompt, _get_local_whisper_model
+    print("\n[7/8] Testing Silero VAD, anchored wake gate, dynamic apps, tray icon, & WM_QUERYENDSESSION...")
+    from backend.core.wake_word_listener import (
+        _get_local_whisper_model,
+        has_human_speech,
+        is_valid_barge_in_text,
+        match_wake_word,
+        transcribe_audio_local_or_cloud,
+    )
+    from backend.core.app_discovery import find_best_app_match, refresh_app_cache
+    from backend.core.jarvis_executive import launch_app
     from backend.scripts.jarvis_desktop_hud import JarvisFloatingHUD, WM_QUERYENDSESSION
 
-    assert _is_complex_task_prompt("build a python script to sort my downloads folder") is True
-    assert _is_complex_task_prompt("research local LLM quantization benchmarks") is True
-    assert _is_complex_task_prompt("what time") is False
-    assert _get_local_whisper_model() is not None, "Cached offline faster-whisper ('tiny') model should load cleanly"
+    assert _get_local_whisper_model() is not None, "Cached offline faster-whisper model should load cleanly"
+
+    # Verify Silero VAD rejects pure silence cleanly without touching Whisper
+    assert has_human_speech(np.zeros(16000, dtype=np.float32)) is False, "Pure silence must be rejected by VAD"
+
+    # Verify anchored wake matching, mid-sentence rejection, and repeated wake echo stripping
+    w, cmd = match_wake_word("Hey, Jarvis! Check my GPU temperature.")
+    assert w in ("hey jarvis", "jarvis") and "check my gpu temperature" in cmd, f"Got {(w, cmd)}"
+    w_echo, cmd_echo = match_wake_word("hey jarvis, jarvis,")
+    assert w_echo == "hey jarvis" and cmd_echo == "", f"Repeated wake echo must strip cleanly, got {(w_echo, cmd_echo)}"
+    w_mid, _ = match_wake_word("I was just talking about jarvis earlier today")
+    assert w_mid is None, f"Mid-sentence casual mention must NOT trigger wake word, got {w_mid}"
+    w_fri, _ = match_wake_word("Let us grab lunch on Friday afternoon")
+    assert w_fri is None, f"Non-configured word 'friday' must NOT trigger wake word, got {w_fri}"
+
+    # Verify dynamic Windows app discovery & honest error for nonexistent apps
+    dyn_apps = refresh_app_cache(force=True)
+    assert len(dyn_apps) > 0, "Dynamic OS app discovery must index installed apps"
+    assert find_best_app_match("calculator", dyn_apps) is not None or find_best_app_match("notepad", dyn_apps) is not None
+    fake_res = launch_app("totally_nonexistent_xyz_app_999")
+    assert fake_res.get("status") == "error", f"Unknown app must return error, not fake success: {fake_res}"
+
+    # Verify acoustic speaker self-echo protection in barge-in
+    cut_noise, _ = is_valid_barge_in_text("I don't know where there is a name.")
+    assert cut_noise is False, "Random noise / self-echo must NOT cut off Jarvis mid-sentence"
+    cut_stop, _ = is_valid_barge_in_text("stop")
+    assert cut_stop is True
+    cut_wake, dir_wake = is_valid_barge_in_text("Hey Jarvis, open notepad")
+    assert cut_wake is True and "open notepad" in dir_wake
+
+    # Synthesize a real 'Hey Jarvis' audio clip & verify offline faster-whisper recognizes it
+    try:
+        import soundfile as sf
+        import speech_recognition as sr
+        from backend.core.voice_pilot import synthesize_speech
+
+        synth = synthesize_speech("Hey Jarvis, open calculator")
+        if synth.get("success") and synth.get("audio_path"):
+            data, rate = sf.read(synth["audio_path"], dtype="float32")
+            if data.ndim > 1:
+                data = data.mean(axis=1)
+            # Resample cleanly to 16kHz int16 if needed
+            if rate != 16000:
+                idx = np.round(np.linspace(0, len(data) - 1, int(len(data) * 16000 / rate))).astype(int)
+                data = data[idx]
+            pcm16 = (np.clip(data, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+            audio = sr.AudioData(pcm16, 16000, 2)
+            heard = transcribe_audio_local_or_cloud(sr.Recognizer(), audio)
+            matched_tts, _ = match_wake_word(heard)
+            assert matched_tts is not None, f"Offline Whisper failed to match synthesized wake phrase: heard='{heard}'"
+            print(f"PASS: End-to-end Whisper heard '{heard}' -> matched '{matched_tts}'.")
+    except Exception as e:
+        raise AssertionError(f"Offline wake-word end-to-end test failed: {e}")
 
     hud = JarvisFloatingHUD(start_visible=False)
     try:
@@ -251,7 +313,7 @@ def test_local_stt_complex_routing_and_tray_shutdown():
         if ctypes.windll.user32.FindWindowW("Shell_TrayWnd", None):
             assert hud._tray_added is True, "Windows notification tray icon must register cleanly when Explorer shell is present"
         assert hud._wnd_proc(hud._hwnd, WM_QUERYENDSESSION, 0, 0) == 1, "WM_QUERYENDSESSION must allow instant Windows shutdown"
-        print("PASS: Cached offline STT, complex task classifier, orb HICON/tray handling, and shutdown guard verified.")
+        print("PASS: Cached offline STT, wake matcher, orb HICON/tray, and shutdown guard verified.")
     finally:
         hud.quit()
 

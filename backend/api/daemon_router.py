@@ -111,6 +111,7 @@ def get_hud_state_endpoint() -> Dict[str, Any]:
         "is_speaking": bool(duplex.get("is_speaking", False)),
         "duplex_state": duplex.get("duplex_state", "IDLE"),
         "speech_energy": float(duplex.get("speech_energy", 0.0) or 0.0),
+        "mic_energy": float(duplex.get("mic_energy", 0.0) or 0.0),
         "active_tasks_count": len(active_tasks),
         "top_task_progress": float(top_task.get("progress", 0.0)) if top_task else 0.0,
         "top_task_title": str(top_task.get("title", "")) if top_task else "",

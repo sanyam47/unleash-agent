@@ -217,18 +217,9 @@ def try_fast_path_os_dispatch(prompt: str) -> Optional[Dict[str, Any]]:
         target_raw = app_launch_match.group(1).strip()
         non_app_words = {"discussion", "over", "a new chat", "conversation", "thinking", "talking", "helping", "working"}
         if target_raw not in non_app_words:
-            clean_target = target_raw.replace(" ", "")
-
-            known_match = None
-            for key, meta in APPLICATION_PROTOCOL_MAP.items():
-                if key == clean_target or key in target_raw or meta.get("display_name", "").lower() == target_raw:
-                    known_match = key
-                    break
-
-            app_to_launch = known_match or target_raw
-            launch_res = launch_app(app_to_launch)
+            launch_res = launch_app(target_raw)
             if launch_res.get("status") == "success":
-                disp_name = launch_res.get("app") or app_to_launch.title()
+                disp_name = launch_res.get("app") or target_raw.title()
                 reply = f"Opening {disp_name} now."
                 latency_ms = round((time.perf_counter() - t0) * 1000.0, 3)
                 return {

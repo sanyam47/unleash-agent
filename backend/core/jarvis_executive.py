@@ -9,6 +9,7 @@ Empowers Unleash with real executive capability on Windows:
   5. Direct Host CLI Gateway (Safe user-delegated host commands)
 """
 
+import json
 import os
 import re
 import sys
@@ -199,14 +200,19 @@ APPLICATION_PROTOCOL_MAP: Dict[str, Dict[str, Any]] = {
     }
 }
 
-# Merge with dynamic app registry
-from backend.core.app_discovery import refresh_app_cache
+# Merge with dynamic OS app registry (StartApps/UWP, Start Menu shortcuts, App Paths)
+from backend.core.app_discovery import find_best_app_match, refresh_app_cache
 _DYNAMIC_APP_REGISTRY = refresh_app_cache()
 
-# Merge dynamically discovered apps into our existing protocol map
+# Prioritize real installed Windows apps while preserving protocol/web fallback hints
 for app_name, meta in _DYNAMIC_APP_REGISTRY.items():
     if app_name not in APPLICATION_PROTOCOL_MAP:
         APPLICATION_PROTOCOL_MAP[app_name] = meta
+    elif meta.get("source") in ("startapps", "start_menu", "registry"):
+        existing = APPLICATION_PROTOCOL_MAP[app_name]
+        # Keep fallback_url if already mapped, attach discovered app_id/shortcut/exe
+        merged = {**existing, **meta}
+        APPLICATION_PROTOCOL_MAP[app_name] = merged
 
 
 
@@ -281,8 +287,41 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
     if not clean_target:
         return {"status": "error", "error": "Application name cannot be empty."}
 
-    # Match against mapped applications
-    app_meta = APPLICATION_PROTOCOL_MAP.get(clean_target)
+    # Dynamically match against installed Windows apps & protocols
+    matched = find_best_app_match(clean_target, APPLICATION_PROTOCOL_MAP)
+    app_meta = matched[1] if matched else APPLICATION_PROTOCOL_MAP.get(clean_target)
+
+    # 0A. Windows Store / UWP AppID (discovered dynamically via Get-StartApps)
+    if app_meta and app_meta.get("app_id"):
+        disp = app_meta.get("display_name", clean_target.title())
+        apps_uri = f"shell:AppsFolder\\{app_meta['app_id']}"
+        try:
+            c_flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS) if os.name == "nt" else 0
+            subprocess.Popen(["explorer.exe", apps_uri], shell=False, creationflags=c_flags)
+            return {
+                "status": "success",
+                "mode": "startapps_uwp",
+                "app": disp,
+                "target": apps_uri,
+                "message": f"Launched {disp}."
+            }
+        except Exception:
+            pass
+
+    # 0B. Windows Start Menu .lnk shortcut
+    if app_meta and app_meta.get("shortcut") and os.path.exists(app_meta["shortcut"]):
+        disp = app_meta.get("display_name", clean_target.title())
+        try:
+            os.startfile(app_meta["shortcut"])
+            return {
+                "status": "success",
+                "mode": "start_menu_shortcut",
+                "app": disp,
+                "target": app_meta["shortcut"],
+                "message": f"Launched {disp} from Start Menu."
+            }
+        except Exception:
+            pass
 
     # 1. If application uses a Windows Protocol scheme (whatsapp:, spotify:, ms-settings:)
     if app_meta and "protocol" in app_meta:
@@ -388,17 +427,21 @@ def launch_app(app_name: str, args: Optional[str] = None) -> Dict[str, Any]:
                 return {"status": "error", "error": f"Failed to invoke protocol '{app_name}': {str(e)}"}
         return {"status": "error", "error": f"Protocol '{app_name}' has no registered handler on this system."}
 
-    # 4. Generic executable invocation
+    # 4. Generic executable invocation (verify executable exists before claiming success)
+    resolved_generic = resolve_windows_executable(app_name)
+    if not resolved_generic:
+        return {"status": "error", "error": f"Application '{app_name}' was not found on this system."}
     try:
-        cmd_list = [app_name]
+        cmd_list = [resolved_generic]
         if args:
             cmd_list.extend(str(args).split())
         c_flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS) if os.name == 'nt' else 0
-        threading.Thread(target=subprocess.Popen, args=(cmd_list,), kwargs={"shell": False, "creationflags": c_flags}, daemon=True).start()
+        subprocess.Popen(cmd_list, shell=False, creationflags=c_flags)
         return {
             "status": "success",
             "mode": "custom_executable",
-            "target": app_name,
+            "app": Path(resolved_generic).stem.title(),
+            "target": resolved_generic,
             "message": f"Launched '{app_name}'."
         }
     except Exception as e:
@@ -862,51 +905,197 @@ def dispatch_jarvis_executive_action(prompt: str, history: Optional[List[Dict[st
     return dispatch_semantic_executive_action(clean, history=history)
 
 
+def _get_grounding_app_candidates(prompt: str, limit: int = 5) -> List[str]:
+    """Extracts up to `limit` real installed app display names relevant to words in `prompt`."""
+    tokens = [t for t in re.findall(r"[a-zA-Z0-9]{3,}", (prompt or "").lower()) if t not in {"open", "launch", "start", "run", "the", "app", "please", "can", "you", "for", "and", "hey", "jarvis"}]
+    seen = set()
+    hits: List[str] = []
+    # Check full phrase fragments and single tokens via dynamic app matcher
+    probes = list(tokens)
+    for i in range(len(tokens) - 1):
+        probes.append(f"{tokens[i]} {tokens[i + 1]}")
+    for probe in probes:
+        m = find_best_app_match(probe, APPLICATION_PROTOCOL_MAP)
+        if m:
+            disp = m[1].get("display_name") or m[0].title()
+            if disp.lower() not in seen:
+                seen.add(disp.lower())
+                hits.append(disp)
+                if len(hits) >= limit:
+                    return hits
+    return hits
+
+
+def _extract_json_object(raw_text: str) -> Optional[Dict[str, Any]]:
+    """Safely extracts a JSON object from model output, even if wrapped in fences/text."""
+    text = (raw_text or "").strip()
+    if not text:
+        return None
+    try:
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        pass
+    # Strip markdown code fences or prose around outer {...}
+    fenced = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
+    start = fenced.find("{")
+    end = fenced.rfind("}")
+    if start != -1 and end > start:
+        try:
+            obj = json.loads(fenced[start:end + 1])
+            return obj if isinstance(obj, dict) else None
+        except Exception:
+            pass
+    return None
+
+
+def _execute_fast_web_lookup(
+    query: str,
+    model: str,
+    ollama_url: str,
+    scaff: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Fast 1-step live internet lookup + concise spoken synthesis for voice queries
+    that need real current info without opening Chrome or spinning up a 12-step agent.
+    """
+    import urllib.request
+    try:
+        from backend.core.privacy_mode import is_frontier_allowed
+        if not is_frontier_allowed():
+            return {
+                "status": "blocked",
+                "action": "web_lookup",
+                "query": query,
+                "reply": "Live internet search is disabled while offline privacy mode is active.",
+            }
+    except Exception:
+        pass
+
+    from backend.core.agent_tools import search_web_docs
+    web_res = search_web_docs(query=query)
+    raw_items = web_res.get("results") or [] if isinstance(web_res, dict) else []
+    snippets: List[str] = []
+    for item in raw_items[:3]:
+        snip = str(item.get("snippet") or item.get("title") or "").strip()
+        # Strip injection-guard wrapper tags cleanly before summary / TTS playback
+        snip = re.sub(r"</?untrusted_external_content[^>]*>", "", snip, flags=re.I)
+        snip = re.sub(r"\[/?UNTRUSTED[^\]]*\]", "", snip).strip()
+        if snip:
+            snippets.append(snip[:260])
+
+    if not snippets:
+        return {
+            "status": "error",
+            "action": "web_lookup",
+            "query": query,
+            "reply": f"I checked the web for {query}, but didn't get readable live results.",
+        }
+
+    joined = "\n- ".join(snippets)
+    synth_messages = [
+        {
+            "role": "system",
+            "content": "Summarize these live web search snippets into 1-2 crisp, natural spoken sentences directly answering the user's question. Be factual and concise.",
+        },
+        {"role": "user", "content": f"Question: {query}\n\nWeb results:\n- {joined}"},
+    ]
+
+    summary_reply = ""
+    try:
+        from backend.core.cloud_llm_client import is_cloud_model, call_cloud_llm_chat
+        if is_cloud_model(model):
+            c_res = call_cloud_llm_chat(model, synth_messages, temperature=0.2, max_tokens=160)
+            summary_reply = (c_res.get("content") or "").strip()
+    except Exception:
+        pass
+
+    if not summary_reply:
+        try:
+            req = urllib.request.Request(
+                f"{ollama_url.rstrip('/')}/api/chat",
+                data=json.dumps({
+                    "model": model or "jarvis-qlora:latest",
+                    "messages": synth_messages,
+                    "stream": False,
+                    "options": {"temperature": 0.2, "num_predict": min(160, scaff.get("executive_num_predict", 180))},
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=15.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                summary_reply = (data.get("message", {}).get("content", "") or "").strip()
+        except Exception:
+            pass
+
+    if not summary_reply:
+        summary_reply = snippets[0]
+
+    return {
+        "status": "success",
+        "action": "web_lookup",
+        "source": web_res.get("engine", "live_web") if isinstance(web_res, dict) else "live_web",
+        "query": query,
+        "results": raw_items[:3],
+        "reply": summary_reply,
+    }
+
+
 def dispatch_semantic_executive_action(
     prompt: str,
     history: Optional[List[Dict[str, str]]] = None,
     model: str = "jarvis-qlora:latest"
 ) -> Optional[Dict[str, Any]]:
     """
-    True Hollywood Jarvis Semantic Action Gateway (Zero-Regex Tool Execution):
-    Uses the local neural LLM to dynamically interpret arbitrary conversational phrasing,
-    slang, colloquial instructions, and multi-turn corrections into structured OS actions.
+    Parameter-Adaptive Semantic Executive Gateway:
+    Scales context diet, grounding hints, few-shot scaffolding, and JSON repair dynamically
+    by the active model's parameter tier (COMPACT / BALANCED / FRONTIER).
     """
     clean = (prompt or "").strip()
     if not clean:
         return None
 
-    import json
     import urllib.request
     from backend.core.paths import get_ollama_base_url
+    from backend.core.adaptive_tier import get_model_parameter_profile
 
     ollama_url = get_ollama_base_url()
+    active_model = model or "jarvis-qlora:latest"
+    param_profile = get_model_parameter_profile(active_model, ollama_url=ollama_url)
+    scaff = param_profile["scaffolding"]
 
     context_msgs = []
     if history:
-        for h in history[-4:]:
+        hist_cap = 2 if param_profile["param_tier"] == "compact" else 4
+        for h in history[-hist_cap:]:
             r = h.get("role")
             c = h.get("content")
             if r in ("user", "assistant") and c:
                 context_msgs.append({"role": r, "content": c})
 
     live_ambient_narrative = ""
-    try:
-        from backend.core.desktop_perception import get_ambient_desktop_context
-        perception = get_ambient_desktop_context()
-        if perception.get("narrative"):
-            live_ambient_narrative = f"Live Workstation Telemetry & Active Apps: {perception.get('narrative')}\n"
-    except Exception:
-        pass
-
     user_habit_context = ""
-    try:
-        from backend.core.habit_miner import get_current_habit_summary
-        summary = get_current_habit_summary()
-        if summary:
-            user_habit_context = f"Learned User Profile & Habits: {summary}\n"
-    except Exception:
-        pass
+    if scaff.get("include_ambient_narrative", True):
+        try:
+            from backend.core.desktop_perception import get_ambient_desktop_context
+            perception = get_ambient_desktop_context()
+            if perception.get("narrative"):
+                live_ambient_narrative = f"Live Workstation Telemetry & Active Apps: {perception.get('narrative')}\n"
+        except Exception:
+            pass
+        try:
+            from backend.core.habit_miner import get_current_habit_summary
+            summary = get_current_habit_summary()
+            if summary:
+                user_habit_context = f"Learned User Profile & Habits: {summary}\n"
+        except Exception:
+            pass
+
+    app_grounding_line = ""
+    if scaff.get("inject_dynamic_app_grounding", True):
+        candidates = _get_grounding_app_candidates(clean, limit=5)
+        if candidates:
+            app_grounding_line = f"Installed Matching Apps on this PC: {', '.join(candidates)}\n"
 
     proactive_advisory_context = ""
     try:
@@ -927,156 +1116,199 @@ def dispatch_semantic_executive_action(
         pass
 
     now_clock_str = time.strftime("%I:%M %p on %A, %B %d, %Y")
+    search_url_hint = " (e.g. 'https://www.google.com/search?q=<urlencoded_query>')" if scaff.get("inject_search_url_hint", True) else ""
+    few_shot_block = ""
+    if scaff.get("inject_few_shot_examples", False):
+        few_shot_block = (
+            "\nExamples:\n"
+            '- "open whatsapp" -> {"action":"launch_app","app":"WhatsApp","url":null,"query":null,"command":null,"metric":null,"reply":"Opening WhatsApp now."}\n'
+            '- "search quantum physics on google" -> {"action":"open_url","app":null,"url":"https://www.google.com/search?q=quantum+physics","query":"quantum physics","command":null,"metric":null,"reply":"Searching Google for quantum physics."}\n'
+            '- "search internet for current bitcoin price" -> {"action":"web_lookup","app":null,"url":null,"query":"current bitcoin price","command":null,"metric":null,"reply":"Checking live results now."}\n'
+        )
 
     system_instruction = (
         "You are an autonomous AI executive OS pilot operating directly on this Windows workstation.\n"
         f"Live Real-Time Clock: {now_clock_str}\n"
         f"{user_habit_context}"
         f"{live_ambient_narrative}"
+        f"{app_grounding_line}"
         f"{proactive_advisory_context}"
-        "Analyze the user's intent from their natural language. You have executive control over desktop apps, browser URLs, system controls, and diagnostics.\n"
+        "Analyze the user's intent from their natural language. You have executive control over desktop apps, browser URLs, live web lookup, system controls, and diagnostics.\n"
         "Output ONLY a valid JSON object matching this exact schema:\n"
         "{\n"
-        '  "action": "launch_app" | "open_url" | "system_control" | "hardware_telemetry" | "desktop_perception" | "inspect_screen" | "auxiliary_task" | "conversational",\n'
-        '  "app": string or null (application or process to launch e.g. "terminal", "vscode", "chrome", "calc"),\n'
-        '  "url": string or null (web URL if user wants to visit a site or link),\n'
+        '  "action": "launch_app" | "open_url" | "web_lookup" | "system_control" | "hardware_telemetry" | "desktop_perception" | "inspect_screen" | "auxiliary_task" | "conversational",\n'
+        '  "app": string or null (application or process to launch),\n'
+        '  "url": string or null (full web URL to open visibly in browser),\n'
+        '  "query": string or null (search terms for open_url search or web_lookup),\n'
         '  "command": string or null (e.g. "volume_up", "volume_down", "volume_mute", "lock_workstation"),\n'
         '  "metric": string or null (e.g. "thermals", "cpu", "battery", "processes"),\n'
-        '  "reply": string (A crisp, direct 1-2 sentence response confirming the action without generic disclaimers)\n'
+        '  "reply": string (A crisp, direct 1-2 sentence response without generic disclaimers)\n'
         "}\n\n"
         "Guidelines:\n"
         f"- If user asks what time it is, the date, day, or clock, answer immediately using the Live Real-Time Clock ({now_clock_str}) with action='conversational'. Never say '[insert time]' or guess.\n"
-        "- If user asks about RAM, memory, battery, or hardware thermals, set action='hardware_telemetry'. Never put placeholder text like '[insert %]' or make up numbers in 'reply'; the system will supply the verified hardware readings automatically.\n"
-        "- If user asks a general question, conceptual question, or asks for elaboration/explanation, set action='conversational' and provide an articulate, factual answer in 'reply'.\n"
-        "- If user asks to open or launch an application, set action='launch_app' and set 'app' to the requested application name.\n"
-        "- If user asks to visit or open a website or URL, set action='open_url' and set 'url' to the target URL.\n"
-        "- If user specifically asks what is running right now, what they are doing, or asks about open apps, set action='desktop_perception'.\n"
-        "- If user asks why the PC is heating, hot, or asks about fans/temperature, set action='hardware_telemetry'.\n"
-        "- If user asks to look at the screen, inspect an error, or check what is displayed, set action='inspect_screen'.\n"
-        "- If user asks to start a background task, simulation, long test, or deep analysis, set action='auxiliary_task'.\n"
+        "- If user asks about RAM, memory, battery, or hardware thermals, set action='hardware_telemetry'. Never put placeholder text or fake numbers in 'reply'.\n"
+        f"- If user asks to visit a website OR wants to open/search something visibly on Google, YouTube, or in a browser, set action='open_url' and 'url'{search_url_hint}.\n"
+        "- If user asks for live, current, or real-time internet info to be answered aloud WITHOUT asking to open a browser, set action='web_lookup' and set 'query'.\n"
+        "- If user asks a general conceptual explanation, set action='conversational' and answer cleanly in 'reply'.\n"
+        "- If user asks to open or launch an installed application, set action='launch_app' and 'app'.\n"
+        "- If user asks what is running right now or about open apps, set action='desktop_perception'.\n"
+        "- If user asks to look at the screen or inspect what is displayed, set action='inspect_screen'.\n"
+        "- ONLY set action='auxiliary_task' for genuine multi-step coding, file edits, build tasks, or autonomous background research/analysis.\n"
         "- NEVER output markdown or text outside the JSON object."
+        f"{few_shot_block}"
     )
 
     messages = [{"role": "system", "content": system_instruction}]
     messages.extend(context_msgs)
     messages.append({"role": "user", "content": clean})
 
-    payload = {
-        "model": model or "jarvis-qlora:latest",
-        "messages": messages,
-        "format": "json",
-        "stream": False,
-        "options": {
-            "temperature": 0.1,
-            "num_predict": 180
-        }
-    }
+    def _invoke_router_llm(msgs: List[Dict[str, str]]) -> str:
+        try:
+            from backend.core.cloud_llm_client import is_cloud_model, call_cloud_llm_chat
+            if is_cloud_model(active_model):
+                c_res = call_cloud_llm_chat(
+                    active_model,
+                    msgs,
+                    temperature=float(scaff.get("executive_temperature", 0.15)),
+                    max_tokens=int(scaff.get("executive_num_predict", 320)),
+                )
+                return (c_res.get("content") or "").strip()
+        except Exception:
+            pass
 
-    try:
         req = urllib.request.Request(
             f"{ollama_url}/api/chat",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            data=json.dumps({
+                "model": active_model,
+                "messages": msgs,
+                "format": "json",
+                "stream": False,
+                "options": {
+                    "temperature": float(scaff.get("executive_temperature", 0.1)),
+                    "num_predict": int(scaff.get("executive_num_predict", 220)),
+                },
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=30.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("message", {}).get("content", "").strip()
-            parsed = json.loads(content)
-            action = parsed.get("action")
-            reply = parsed.get("reply")
+            return (data.get("message", {}).get("content", "") or "").strip()
 
-            if action == "launch_app" and parsed.get("app"):
-                app_target = parsed.get("app").strip()
-                
-                # INTEGRATE GOAL STEPPER FOR ACTION INTENTS
-                from backend.core.goal_stepper import decompose_goals
-                milestones = decompose_goals(user_prompt)
-                print(f"[Jarvis Executive]: Initiating sequence of {len(milestones)} milestones.")
-                
-                res = launch_app(app_target)
+    try:
+        content = _invoke_router_llm(messages)
+        parsed = _extract_json_object(content)
+        if parsed is None and scaff.get("json_repair_and_retry", True):
+            retry_msgs = messages + [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": "Return ONLY a valid JSON object matching the schema. No markdown, no extra text."},
+            ]
+            parsed = _extract_json_object(_invoke_router_llm(retry_msgs))
+        if parsed is None:
+            return None
+
+        action = parsed.get("action")
+        reply = parsed.get("reply")
+
+        if action == "launch_app" and parsed.get("app"):
+            app_target = parsed.get("app").strip()
+            res = launch_app(app_target)
+            if res.get("status") == "success":
+                disp = res.get("app") or app_target.title()
                 return {
+                    "status": "success",
                     "action": "launch_app",
-                    "reply": reply or f"Opening {app_target}.",
+                    "reply": reply or f"Opening {disp} now.",
                     "result": res
                 }
+            return {
+                "status": "error",
+                "action": "launch_app",
+                "reply": f"I couldn't find '{app_target}' installed on this PC.",
+                "result": res
+            }
 
-            elif action == "open_url" and parsed.get("url"):
-                target_url = parsed.get("url").strip()
-                if not target_url.startswith(("http://", "https://")):
-                    target_url = f"https://{target_url}"
-                import webbrowser
-                webbrowser.open(target_url)
-                return {
-                    "action": "open_url",
-                    "reply": reply or f"Navigating to {target_url}.",
-                    "url": target_url
-                }
+        elif action == "open_url" and (parsed.get("url") or parsed.get("query")):
+            import urllib.parse
+            import webbrowser
+            target_url = (parsed.get("url") or "").strip()
+            query_text = (parsed.get("query") or "").strip()
+            if query_text and (not target_url or target_url.rstrip("/") in ("https://www.google.com", "http://www.google.com", "google.com", "www.google.com")):
+                target_url = f"https://www.google.com/search?q={urllib.parse.quote_plus(query_text)}"
+            elif target_url and not target_url.startswith(("http://", "https://")):
+                target_url = f"https://{target_url}"
+            webbrowser.open(target_url)
+            return {
+                "status": "success",
+                "action": "open_url",
+                "reply": reply or "Opening that in your browser now.",
+                "url": target_url
+            }
 
-            elif action == "launch_app":
-                target_app = (parsed.get("app") or "").strip().lower()
-                if target_app:
-                    launch_res = launch_app(target_app)
-                    disp = APPLICATION_PROTOCOL_MAP.get(target_app, {}).get("display_name", target_app.title())
-                    return {
-                        "status": "success",
-                        "reply": reply or f"Opening {disp}.",
-                        "action": "launch_app",
-                        "app": target_app,
-                        "details": launch_res
-                    }
+        elif action == "web_lookup":
+            lookup_q = (parsed.get("query") or clean).strip()
+            return _execute_fast_web_lookup(lookup_q, active_model, ollama_url, scaff)
 
-            elif action == "system_control":
-                cmd = (parsed.get("command") or "").strip().lower()
-                if cmd:
-                    ctrl_res = system_control(cmd)
-                    return {
-                        "status": "success",
-                        "reply": reply or "Adjusting system controls.",
-                        "action": "system_control",
-                        "command": cmd,
-                        "details": ctrl_res
-                    }
-
-            elif action == "hardware_telemetry":
-                telemetry_res = get_system_telemetry()
-                ram_info = telemetry_res.get("ram", {})
-                ram_pct = ram_info.get("used_percent", 0)
-                ram_used = ram_info.get("used_gb", 0)
-                ram_total = ram_info.get("total_gb", 0)
-                top_proc = telemetry_res.get("top_processes", [{}])[0]
-                top_str = f" Top consumer is {top_proc.get('name', 'unknown')} at {int(top_proc.get('memory_mb', 0))} MB." if top_proc else ""
-                dynamic_reply = f"System RAM utilization is at {ram_pct}% ({ram_used}/{ram_total} GB).{top_str}"
+        elif action == "system_control":
+            cmd = (parsed.get("command") or "").strip().lower()
+            if cmd:
+                ctrl_res = system_control(cmd)
                 return {
                     "status": "success",
-                    "reply": dynamic_reply if (not reply or "insert" in reply.lower() or "%" in reply) else reply,
-                    "action": "hardware_telemetry",
-                    "telemetry": telemetry_res
+                    "reply": reply or "Adjusting system controls.",
+                    "action": "system_control",
+                    "command": cmd,
+                    "details": ctrl_res
                 }
 
-            elif action == "desktop_perception":
-                from backend.core.desktop_perception import get_ambient_desktop_context
-                p_ctx = get_ambient_desktop_context()
-                top_proc = p_ctx.get('top_ram_consumer', {}).get('name', 'unknown')
-                clean_top = top_proc.replace("_", " ")
-                default_reply = f"Your active environment includes {', '.join(p_ctx.get('dev_stack', []))}. Top memory consumer is {clean_top}."
+        elif action == "hardware_telemetry":
+            telemetry_res = get_system_telemetry()
+            ram_info = telemetry_res.get("ram", {})
+            ram_pct = ram_info.get("used_percent", 0)
+            ram_used = ram_info.get("used_gb", 0)
+            ram_total = ram_info.get("total_gb", 0)
+            top_proc = telemetry_res.get("top_processes", [{}])[0]
+            top_str = f" Top consumer is {top_proc.get('name', 'unknown')} at {int(top_proc.get('memory_mb', 0))} MB." if top_proc else ""
+            dynamic_reply = f"System RAM utilization is at {ram_pct}% ({ram_used}/{ram_total} GB).{top_str}"
+            return {
+                "status": "success",
+                "reply": dynamic_reply if (not reply or "insert" in reply.lower() or "%" in reply) else reply,
+                "action": "hardware_telemetry",
+                "telemetry": telemetry_res
+            }
+
+        elif action == "desktop_perception":
+            from backend.core.desktop_perception import get_ambient_desktop_context
+            p_ctx = get_ambient_desktop_context()
+            top_proc = p_ctx.get('top_ram_consumer', {}).get('name', 'unknown')
+            clean_top = top_proc.replace("_", " ")
+            default_reply = f"Your active environment includes {', '.join(p_ctx.get('dev_stack', []))}. Top memory consumer is {clean_top}."
+            return {
+                "status": "success",
+                "reply": reply or default_reply,
+                "action": "desktop_perception",
+                "perception": p_ctx
+            }
+
+        elif action == "inspect_screen":
+            from backend.core.visual_inspector import inspect_screen_on_demand
+            insp_res = inspect_screen_on_demand(prompt=clean)
+            return {
+                "status": "success",
+                "reply": reply or insp_res.get("reply", "Screen inspection complete."),
+                "action": "inspect_screen",
+                "details": insp_res
+            }
+
+        elif action == "auxiliary_task":
+            try:
+                from backend.core.wake_word_listener import dispatch_complex_background_task
+                bg_reply = dispatch_complex_background_task(clean)
                 return {
                     "status": "success",
-                    "reply": reply or default_reply,
-                    "action": "desktop_perception",
-                    "perception": p_ctx
+                    "reply": reply or bg_reply,
+                    "action": "auxiliary_task",
                 }
-
-            elif action == "inspect_screen":
-                from backend.core.visual_inspector import inspect_screen_on_demand
-                insp_res = inspect_screen_on_demand(prompt=clean)
-                return {
-                    "status": "success",
-                    "reply": reply or insp_res.get("reply", "Screen inspection complete."),
-                    "action": "inspect_screen",
-                    "details": insp_res
-                }
-
-            elif action == "auxiliary_task":
+            except Exception:
                 task_title = (parsed.get("app") or parsed.get("command") or clean).strip()
                 from backend.core.task_daemon import spawn_daemon_task
                 t = spawn_daemon_task(title=task_title, description=clean)
@@ -1087,12 +1319,12 @@ def dispatch_semantic_executive_action(
                     "task_id": t.get("task_id")
                 }
 
-            elif action == "conversational" and reply:
-                return {
-                    "status": "success",
-                    "reply": reply,
-                    "action": "conversational"
-                }
+        elif action == "conversational" and reply:
+            return {
+                "status": "success",
+                "reply": reply,
+                "action": "conversational"
+            }
 
     except Exception as e:
         print(f"[Semantic Dispatcher Notice]: {e}")

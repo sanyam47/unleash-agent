@@ -158,6 +158,10 @@ def probe_active_compute_tier(model_name: Optional[str] = None, user_override: O
         profile["privacy_mode"] = "hybrid"
         profile["privacy_short"] = "HYBRID"
         profile["privacy_label"] = "Hybrid (Local + Web)"
+    try:
+        profile["param_profile"] = get_model_parameter_profile(model_name)
+    except Exception:
+        pass
     return profile
 
 
@@ -521,7 +525,7 @@ def _probe_active_compute_tier_impl(model_name: Optional[str] = None, user_overr
                 "max_doc_pages": 10,
                 "rate_pace_seconds": 0.0,
             },
-            "memory_profile": {
+        "memory_profile": {
                 "top_k": 6,
                 "max_inject_chars": 1800,
                 "max_hops": 3,
@@ -533,3 +537,134 @@ def _probe_active_compute_tier_impl(model_name: Optional[str] = None, user_overr
             },
             "description": "Optimized offline mode: 4K-stable VRAM cache, structured 4-step 8B scaffolding, zero GPU lock."
         }
+
+
+_PARAM_PROFILE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_PARAM_CACHE_TTL = 600.0
+
+
+def _parse_param_size_billions(raw: Optional[str]) -> Optional[float]:
+    """Parses strings like '3.2B', '8B', '14.8B', '500M', 'qwen2.5:7b' into billions."""
+    if not raw:
+        return None
+    m = re.search(r"(\d+(?:\.\d+)?)\s*([bm])\b", str(raw).lower())
+    if not m:
+        return None
+    val = float(m.group(1))
+    unit = m.group(2)
+    return round(val / 1000.0, 3) if unit == "m" else val
+
+
+def _query_ollama_param_billions(model_name: str, ollama_url: Optional[str] = None) -> Optional[float]:
+    """Inspects Ollama /api/show details.parameter_size with short non-blocking timeout."""
+    if not model_name:
+        return None
+    try:
+        import urllib.request
+        base = ollama_url
+        if not base:
+            try:
+                from backend.core.paths import get_ollama_base_url
+                base = get_ollama_base_url()
+            except Exception:
+                base = "http://127.0.0.1:11434"
+        req = urllib.request.Request(
+            f"{base.rstrip('/')}/api/show",
+            data=json.dumps({"name": model_name}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=1.2) as resp:
+            info = json.loads(resp.read().decode("utf-8"))
+        details = info.get("details") or {}
+        parsed = _parse_param_size_billions(details.get("parameter_size"))
+        if parsed is not None:
+            return parsed
+        return _parse_param_size_billions(details.get("family"))
+    except Exception:
+        return None
+
+
+def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Parameter-Adaptive Model Profiler:
+    Classifies any local or cloud model into COMPACT (<=4B), BALANCED (5B-15B), or
+    FRONTIER (>=16B / Cloud) and dynamically enables or drops scaffolding features so
+    every model operates at its maximum output ceiling.
+    """
+    import time
+    raw_name = (model_name or "").strip()
+    cache_key = raw_name.lower() or "__default__"
+    now = time.monotonic()
+    cached = _PARAM_PROFILE_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _PARAM_CACHE_TTL:
+        return cached[1]
+
+    param_b: Optional[float] = None
+    is_cloud = False
+    try:
+        from backend.core.cloud_llm_client import is_cloud_model
+        is_cloud = bool(is_cloud_model(raw_name))
+    except Exception:
+        is_cloud = False
+
+    low = raw_name.lower()
+    if is_cloud or any(tok in low for tok in ("gemini", "claude", "gpt-4", "gpt-5", "o1", "o3", "deepseek-r1", "deepseek-v3")):
+        is_cloud = True
+        param_b = _parse_param_size_billions(raw_name) or 70.0
+    else:
+        param_b = _parse_param_size_billions(raw_name)
+        if param_b is None:
+            param_b = _query_ollama_param_billions(raw_name, ollama_url=ollama_url)
+
+    # Determine capability tier cleanly from parameter count (unknown custom local defaults to balanced)
+    if is_cloud or (param_b is not None and param_b >= 16.0):
+        param_tier = "frontier"
+        tier_label = f"FRONTIER ({param_b:.0f}B+ / Cloud)" if param_b else "FRONTIER (Cloud)"
+        scaffolding = {
+            "inject_few_shot_examples": False,
+            "inject_dynamic_app_grounding": False,
+            "inject_search_url_hint": False,
+            "include_ambient_narrative": True,
+            "json_repair_and_retry": False,
+            "executive_temperature": 0.15,
+            "executive_num_predict": 320,
+            "agent_temperature": 0.35,
+        }
+    elif param_b is not None and param_b < 5.0:
+        param_tier = "compact"
+        tier_label = f"COMPACT ({param_b:g}B)"
+        scaffolding = {
+            "inject_few_shot_examples": True,
+            "inject_dynamic_app_grounding": True,
+            "inject_search_url_hint": True,
+            "include_ambient_narrative": False,
+            "json_repair_and_retry": True,
+            "executive_temperature": 0.05,
+            "executive_num_predict": 160,
+            "agent_temperature": 0.2,
+        }
+    else:
+        param_tier = "balanced"
+        tier_label = f"BALANCED ({param_b:g}B)" if param_b else "BALANCED (Local)"
+        scaffolding = {
+            "inject_few_shot_examples": False,
+            "inject_dynamic_app_grounding": True,
+            "inject_search_url_hint": True,
+            "include_ambient_narrative": True,
+            "json_repair_and_retry": True,
+            "executive_temperature": 0.1,
+            "executive_num_predict": 220,
+            "agent_temperature": 0.3,
+        }
+
+    profile = {
+        "model": raw_name,
+        "param_billions": param_b,
+        "param_tier": param_tier,
+        "param_label": tier_label,
+        "is_cloud": is_cloud,
+        "scaffolding": scaffolding,
+    }
+    _PARAM_PROFILE_CACHE[cache_key] = (now, profile)
+    return profile

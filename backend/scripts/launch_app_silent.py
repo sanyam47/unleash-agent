@@ -62,6 +62,7 @@ def ensure_backend_running() -> bool:
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(PROJECT_ROOT)
+    env["PYTHONUNBUFFERED"] = "1"
     flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW) if os.name == "nt" else 0
 
     with open(log_path, "ab") as log_f:

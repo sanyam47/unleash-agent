@@ -438,6 +438,27 @@ class LocalPermissionController:
             action_title = f"Autonomous Executive ({tool_name})"
             reason = f"Background daemon worker or governance management: '{tool_name}' ({target})."
 
+        elif tool_name in ("send_email", "bulk_send_emails", "send_whatsapp_message"):
+            target = str(tool_args.get("to") or tool_args.get("recipient") or "")[:80]
+            is_sensitive = True
+            risk_level = "high"
+            action_title = "External Message / Email Dispatch"
+            reason = f"Sends external communication ({tool_name}) to '{target}'. Dry-run confirmation required."
+
+        elif tool_name in ("configure_email_credentials", "configure_email_vault", "store_secret"):
+            target = str(tool_args.get("email_address") or tool_args.get("service_name") or "vault")[:80]
+            is_sensitive = True
+            risk_level = "medium"
+            action_title = "Modify Encrypted Credential Vault"
+            reason = f"Updates encrypted credentials in vault ({target})."
+
+        elif tool_name in ("read_emails", "check_emails", "fetch_emails", "find_files", "read_document", "read_pdf"):
+            target = str(tool_args.get("file_path") or tool_args.get("dir_path") or tool_args.get("folder") or tool_args.get("query") or "")[:80]
+            is_sensitive = False
+            risk_level = "low"
+            action_title = f"Read / Discover ({tool_name})"
+            reason = f"Read-only document, folder, or inbox inspection: '{tool_name}' ({target})."
+
         elif tool_name in ("run_host_cli", "host_cli", "run_host_command", "execute_host_command"):
             cmd = tool_args.get("command") or tool_args.get("cmd") or ""
             target = cmd[:80]

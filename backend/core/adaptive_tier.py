@@ -555,10 +555,11 @@ def _parse_param_size_billions(raw: Optional[str]) -> Optional[float]:
     return round(val / 1000.0, 3) if unit == "m" else val
 
 
-def _query_ollama_param_billions(model_name: str, ollama_url: Optional[str] = None) -> Optional[float]:
-    """Inspects Ollama /api/show details.parameter_size with short non-blocking timeout."""
+def _query_ollama_model_info(model_name: str, ollama_url: Optional[str] = None) -> Dict[str, Optional[Any]]:
+    """Inspects Ollama /api/show for details.parameter_size AND trained max context_length."""
+    out: Dict[str, Optional[Any]] = {"param_billions": None, "trained_max_ctx": None}
     if not model_name:
-        return None
+        return out
     try:
         import urllib.request
         base = ollama_url
@@ -576,13 +577,29 @@ def _query_ollama_param_billions(model_name: str, ollama_url: Optional[str] = No
         )
         with urllib.request.urlopen(req, timeout=1.2) as resp:
             info = json.loads(resp.read().decode("utf-8"))
+
         details = info.get("details") or {}
         parsed = _parse_param_size_billions(details.get("parameter_size"))
-        if parsed is not None:
-            return parsed
-        return _parse_param_size_billions(details.get("family"))
+        if parsed is None:
+            parsed = _parse_param_size_billions(details.get("family"))
+        out["param_billions"] = parsed
+
+        # Inspect model_info.<arch>.context_length for trained window
+        model_info = info.get("model_info") or {}
+        for k, v in model_info.items():
+            if str(k).endswith(".context_length") and isinstance(v, (int, float)) and v > 0:
+                out["trained_max_ctx"] = int(v)
+                break
+
+        # Fallback: inspect Modelfile parameters line if explicit num_ctx is pinned there
+        if out["trained_max_ctx"] is None:
+            params_txt = str(info.get("parameters") or "")
+            m_ctx = re.search(r"\bnum_ctx\s+(\d+)", params_txt)
+            if m_ctx:
+                out["trained_max_ctx"] = int(m_ctx.group(1))
     except Exception:
-        return None
+        pass
+    return out
 
 
 def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[str] = None) -> Dict[str, Any]:
@@ -601,6 +618,7 @@ def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[
         return cached[1]
 
     param_b: Optional[float] = None
+    trained_max_ctx: Optional[int] = None
     is_cloud = False
     try:
         from backend.core.cloud_llm_client import is_cloud_model
@@ -613,9 +631,11 @@ def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[
         is_cloud = True
         param_b = _parse_param_size_billions(raw_name) or 70.0
     else:
+        ollama_meta = _query_ollama_model_info(raw_name, ollama_url=ollama_url)
         param_b = _parse_param_size_billions(raw_name)
         if param_b is None:
-            param_b = _query_ollama_param_billions(raw_name, ollama_url=ollama_url)
+            param_b = ollama_meta.get("param_billions")
+        trained_max_ctx = ollama_meta.get("trained_max_ctx")
 
     # Determine capability tier cleanly from parameter count (unknown custom local defaults to balanced)
     if is_cloud or (param_b is not None and param_b >= 16.0):
@@ -661,6 +681,7 @@ def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[
     profile = {
         "model": raw_name,
         "param_billions": param_b,
+        "trained_max_ctx": trained_max_ctx,
         "param_tier": param_tier,
         "param_label": tier_label,
         "is_cloud": is_cloud,
@@ -668,3 +689,35 @@ def get_model_parameter_profile(model_name: Optional[str], ollama_url: Optional[
     }
     _PARAM_PROFILE_CACHE[cache_key] = (now, profile)
     return profile
+
+
+def resolve_ollama_num_ctx(
+    model_name: Optional[str],
+    requested_ctx: int = 4096,
+    ollama_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Computes explicit Ollama `num_ctx` bounded cleanly by BOTH GPU VRAM headroom and the model's
+    trained max context from `/api/show`, preventing silent Ollama default truncation or VRAM spillover.
+    """
+    headroom = get_realtime_gpu_headroom_mb()
+    hw_limit = int(headroom.get("dynamic_context_window", 4096) or 4096)
+    if not headroom.get("context_clamped") and float(headroom.get("vram_free_gb", 8.0) or 8.0) < 6.5:
+        hw_limit = min(hw_limit, 4096)
+
+    param_prof = get_model_parameter_profile(model_name, ollama_url=ollama_url)
+    trained_max = param_prof.get("trained_max_ctx")
+
+    allocated = min(max(1024, int(requested_ctx)), hw_limit)
+    if trained_max is not None and trained_max > 0:
+        allocated = min(allocated, int(trained_max))
+
+    return {
+        "model": model_name or "",
+        "requested_ctx": int(requested_ctx),
+        "allocated_ctx": int(allocated),
+        "hw_limit": int(hw_limit),
+        "trained_max_ctx": trained_max,
+        "vram_clamped": bool(int(allocated) < int(requested_ctx) and int(hw_limit) < int(requested_ctx)),
+        "headroom": headroom,
+    }

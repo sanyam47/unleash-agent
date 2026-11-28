@@ -44,7 +44,8 @@ JARVIS_EXECUTIVE_TOOLS = {
     "desktop_click", "desktop_type", "desktop_hotkey", "desktop_move", "desktop_scroll", "desktop_cursor_pos",
     "speak_aloud", "set_voice_mode", "get_voice_mode", "configure_wake_word",
     "remember_fact", "recall_memory", "forget_memory", "multi_hop_query", "consolidate_memory",
-    "start_background_task", "check_background_tasks", "control_background_task", "set_project_permission_policy", "inspect_preflight_safety"
+    "start_background_task", "check_background_tasks", "control_background_task", "set_project_permission_policy", "inspect_preflight_safety",
+    "find_files", "read_document", "read_emails", "send_email", "configure_email_credentials"
 }
 
 
@@ -712,16 +713,14 @@ def call_ollama_chat(model: str, messages: List[Dict[str, Any]], temperature: fl
     actual_ctx = context_window
     extra_opts = {}
     try:
-        from backend.core.adaptive_tier import get_realtime_gpu_headroom_mb
-        headroom = get_realtime_gpu_headroom_mb()
-        if headroom.get("context_clamped"):
-            clamped_limit = headroom.get("dynamic_context_window", 4096)
-            actual_ctx = min(actual_ctx, clamped_limit)
-        elif headroom.get("vram_free_gb", 8.0) < 6.5:
-            # Keep 8B Q4 models 100% inside 6GB RTX 3050 VRAM without CPU spill
-            actual_ctx = min(actual_ctx, 4096)
+        from backend.core.adaptive_tier import resolve_ollama_num_ctx
+        ctx_info = resolve_ollama_num_ctx(model, requested_ctx=context_window)
+        actual_ctx = int(ctx_info["allocated_ctx"])
+        headroom = ctx_info.get("headroom") or {}
         if not headroom.get("has_gpu", True) and headroom.get("recommended_num_gpu") == 0:
             extra_opts["num_gpu"] = 0
+        trained_str = str(ctx_info["trained_max_ctx"]) if ctx_info.get("trained_max_ctx") else "unknown"
+        print(f"[Ollama Context]: model={model} allocated_num_ctx={actual_ctx} trained_max_ctx={trained_str} hw_limit={ctx_info['hw_limit']}")
     except Exception:
         pass
 

@@ -1012,13 +1012,19 @@ def _execute_fast_web_lookup(
 
     if not summary_reply:
         try:
+            from backend.core.adaptive_tier import resolve_ollama_num_ctx
+            ctx_info = resolve_ollama_num_ctx(model or "jarvis-qlora:latest", requested_ctx=4096, ollama_url=ollama_url)
             req = urllib.request.Request(
                 f"{ollama_url.rstrip('/')}/api/chat",
                 data=json.dumps({
                     "model": model or "jarvis-qlora:latest",
                     "messages": synth_messages,
                     "stream": False,
-                    "options": {"temperature": 0.2, "num_predict": min(160, scaff.get("executive_num_predict", 180))},
+                    "options": {
+                        "temperature": 0.2,
+                        "num_predict": min(160, scaff.get("executive_num_predict", 180)),
+                        "num_ctx": int(ctx_info["allocated_ctx"]),
+                    },
                 }).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
             )
@@ -1057,11 +1063,12 @@ def dispatch_semantic_executive_action(
 
     import urllib.request
     from backend.core.paths import get_ollama_base_url
-    from backend.core.adaptive_tier import get_model_parameter_profile
+    from backend.core.adaptive_tier import get_model_parameter_profile, resolve_ollama_num_ctx
 
     ollama_url = get_ollama_base_url()
     active_model = model or "jarvis-qlora:latest"
     param_profile = get_model_parameter_profile(active_model, ollama_url=ollama_url)
+    ctx_info = resolve_ollama_num_ctx(active_model, requested_ctx=4096, ollama_url=ollama_url)
     scaff = param_profile["scaffolding"]
 
     context_msgs = []
@@ -1153,7 +1160,7 @@ def dispatch_semantic_executive_action(
         "- If user asks to open or launch an installed application, set action='launch_app' and 'app'.\n"
         "- If user asks what is running right now or about open apps, set action='desktop_perception'.\n"
         "- If user asks to look at the screen or inspect what is displayed, set action='inspect_screen'.\n"
-        "- ONLY set action='auxiliary_task' for genuine multi-step coding, file edits, build tasks, or autonomous background research/analysis.\n"
+        "- ONLY set action='auxiliary_task' for genuine multi-step workflows such as coding, file/document/PDF processing across folders, reading/sending emails, or autonomous background research/analysis.\n"
         "- NEVER output markdown or text outside the JSON object."
         f"{few_shot_block}"
     )
@@ -1186,6 +1193,7 @@ def dispatch_semantic_executive_action(
                 "options": {
                     "temperature": float(scaff.get("executive_temperature", 0.1)),
                     "num_predict": int(scaff.get("executive_num_predict", 220)),
+                    "num_ctx": int(ctx_info["allocated_ctx"]),
                 },
             }).encode("utf-8"),
             headers={"Content-Type": "application/json"},

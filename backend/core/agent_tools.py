@@ -593,6 +593,40 @@ def read_document_file(
                 "pages": slides_out,
             }
 
+        if ext in (".xlsx", ".xls", ".csv", ".tsv"):
+            import pandas as pd
+            if ext in (".xlsx", ".xls"):
+                xl = pd.read_excel(str(target), sheet_name=None)
+                sheets_out: List[Dict[str, Any]] = []
+                for idx, (sname, df) in enumerate(xl.items(), start=1):
+                    preview_csv = df.head(120).to_csv(index=False)
+                    sheets_out.append({
+                        "page": idx,
+                        "sheet": str(sname),
+                        "rows": int(len(df)),
+                        "columns": [str(c) for c in df.columns],
+                        "text": f"[Sheet: {sname} | Rows: {len(df)}]\n{preview_csv}"[:8000],
+                    })
+                return {
+                    "status": "success",
+                    "file": str(target),
+                    "format": ext.lstrip("."),
+                    "total_pages": len(sheets_out),
+                    "pages": sheets_out,
+                }
+            sep = "\t" if ext == ".tsv" else ","
+            df = pd.read_csv(str(target), sep=sep)
+            preview_csv = df.head(150).to_csv(index=False)
+            return {
+                "status": "success",
+                "file": str(target),
+                "format": ext.lstrip("."),
+                "rows": int(len(df)),
+                "columns": [str(c) for c in df.columns],
+                "total_pages": 1,
+                "pages": [{"page": 1, "text": f"[Rows: {len(df)} | Columns: {', '.join(map(str, df.columns))}]\n{preview_csv}"[:16000]}],
+            }
+
         txt = target.read_text(encoding="utf-8", errors="replace")
         return {
             "status": "success",
@@ -638,6 +672,61 @@ def list_dir(project_name: str, dir_path: str = ".") -> Dict[str, Any]:
         }
     except Exception as e:
         return {"status": "error", "error": f"Failed to list directory '{dir_path}': {str(e)}"}
+
+
+def find_files(
+    project_name: str,
+    dir_path: str = ".",
+    name_pattern: str = "*",
+    max_results: int = 100,
+) -> Dict[str, Any]:
+    """Recursively locates files matching a glob pattern (e.g. '*.pdf', '*growth*') inside a permitted folder."""
+    import fnmatch
+    try:
+        raw_dir = str(dir_path or ".").strip()
+        target_dir = resolve_safe_project_path(project_name, raw_dir if raw_dir != "." else "")
+        if not target_dir.exists() or not target_dir.is_dir():
+            return {"status": "error", "error": f"Directory '{dir_path}' does not exist."}
+
+        skip_dirs = {".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+        pat = (name_pattern or "*").strip().lower()
+        matches: List[Dict[str, Any]] = []
+        cap = max(1, min(int(max_results or 100), 250))
+
+        for root, dirs, files in os.walk(target_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            for fname in files:
+                if fnmatch.fnmatch(fname.lower(), pat) or (pat != "*" and pat.strip("*") in fname.lower()):
+                    fpath = Path(root) / fname
+                    try:
+                        st = fpath.stat()
+                        matches.append({
+                            "name": fname,
+                            "path": str(fpath),
+                            "size_bytes": int(st.st_size),
+                        })
+                    except OSError:
+                        matches.append({"name": fname, "path": str(fpath)})
+                    if len(matches) >= cap:
+                        return {
+                            "status": "success",
+                            "dir": str(target_dir),
+                            "pattern": name_pattern,
+                            "count": len(matches),
+                            "truncated": True,
+                            "files": matches,
+                        }
+
+        return {
+            "status": "success",
+            "dir": str(target_dir),
+            "pattern": name_pattern,
+            "count": len(matches),
+            "truncated": False,
+            "files": matches,
+        }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to find files in '{dir_path}': {str(e)}"}
 
 
 def search_files(project_name: str, query: str, dir_path: str = ".", file_pattern: Optional[str] = None) -> Dict[str, Any]:
@@ -1624,6 +1713,55 @@ AGENT_TOOLS_SCHEMA = [
             "target": "The command, package name, or URL to inspect",
             "target_type": "Optional target type: 'command', 'package', or 'url' (auto-detected if omitted)"
         }
+    },
+    {
+        "name": "find_files",
+        "description": "Recursively locate files matching a glob or name pattern (e.g. '*.pdf', '*growth*', '*.csv') in any workspace or OS folder.",
+        "parameters": {
+            "dir_path": "Directory path to search (e.g. 'D:\\\\Reports', 'C:\\\\Users\\\\...\\\\Downloads', or '.')",
+            "name_pattern": "Filename glob pattern (e.g. '*.pdf', '*invoice*')",
+            "max_results": "Optional max matches to return (default 100)"
+        }
+    },
+    {
+        "name": "read_document",
+        "description": "Read and extract structured text or tables from PDF, CSV, Excel (.xlsx/.xls), Word (.docx), PowerPoint (.pptx), image (OCR), or text files.",
+        "parameters": {
+            "file_path": "Path to the document file",
+            "start_page": "Optional 1-indexed start page for PDFs (default 1)",
+            "end_page": "Optional 1-indexed end page for PDFs"
+        }
+    },
+    {
+        "name": "read_emails",
+        "description": "Read recent or unread emails from the user's inbox via IMAP4_SSL using encrypted credentials.",
+        "parameters": {
+            "folder": "Mailbox folder name (default 'INBOX')",
+            "unread_only": "Boolean: True for unread messages only (default True)",
+            "query": "Optional keyword filter across sender, subject, or body",
+            "limit": "Optional max emails to return (default 10)"
+        }
+    },
+    {
+        "name": "send_email",
+        "description": "Send an email with optional file attachments via SMTP. Enforces a dry-run preview first unless confirm=True after explicit user confirmation.",
+        "parameters": {
+            "to": "Recipient email address or list of email addresses",
+            "subject": "Email subject line",
+            "body": "Plain-text email body",
+            "attachments": "Optional list of file paths to attach",
+            "confirm": "Boolean: set False first for dry-run preview; set True only after user confirms sending"
+        }
+    },
+    {
+        "name": "configure_email_credentials",
+        "description": "Store SMTP/IMAP email address and app password encrypted at rest in the local AES-256-GCM Credential Vault.",
+        "parameters": {
+            "email_address": "User email address",
+            "app_password": "Email app password / SMTP credential",
+            "smtp_host": "Optional custom SMTP hostname",
+            "imap_host": "Optional custom IMAP hostname"
+        }
     }
 ]
 
@@ -1701,6 +1839,12 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         d_path = args.get("dir_path") or args.get("path") or args.get("directory") or "."
         f_pat = args.get("file_pattern") or args.get("glob") or None
         return search_files(project_name, str(q), dir_path=str(d_path), file_pattern=str(f_pat) if f_pat else None)
+
+    elif tool_name in ("find_files", "glob_files", "locate_files"):
+        d_path = args.get("dir_path") or args.get("path") or args.get("directory") or "."
+        pat = args.get("name_pattern") or args.get("pattern") or args.get("glob") or "*"
+        max_r = int(args.get("max_results") or 100)
+        return find_files(project_name, dir_path=str(d_path), name_pattern=str(pat), max_results=max_r)
 
     elif tool_name in ("update_plan", "update_steps", "set_plan"):
         steps_arg = args.get("steps") or []
@@ -2054,6 +2198,38 @@ def dispatch_tool(tool_name: str, args: Dict[str, Any], context: Dict[str, Any])
         else:
             return inspect_command_safety(tgt)
 
+    elif tool_name in ("read_emails", "check_emails", "fetch_emails", "list_emails"):
+        from backend.core.comms_tools import read_emails
+        return read_emails(
+            folder=str(args.get("folder") or "INBOX"),
+            unread_only=bool(args.get("unread_only", True)),
+            query=args.get("query"),
+            limit=int(args.get("limit") or 10),
+        )
+
+    elif tool_name in ("send_email", "send_mail", "email_send"):
+        from backend.core.comms_tools import send_email
+        return send_email(
+            to=args.get("to") or args.get("recipient") or "",
+            subject=str(args.get("subject") or ""),
+            body=str(args.get("body") or args.get("message") or ""),
+            attachments=args.get("attachments"),
+            cc=args.get("cc"),
+            confirm=bool(args.get("confirm", False)),
+            project_name=project_name,
+        )
+
+    elif tool_name in ("configure_email_credentials", "configure_email_vault"):
+        from backend.core.comms_tools import configure_email_credentials
+        return configure_email_credentials(
+            email_address=str(args.get("email_address") or args.get("email") or ""),
+            app_password=str(args.get("app_password") or args.get("password") or ""),
+            smtp_host=args.get("smtp_host"),
+            smtp_port=args.get("smtp_port"),
+            imap_host=args.get("imap_host"),
+            imap_port=args.get("imap_port"),
+        )
+
     else:
         # Check dynamic MCP (Model Context Protocol) tools
         try:
@@ -2241,12 +2417,40 @@ FRONTIER_PRO_EXTRA_TOOLS = [
         }
     },
     {
-        "name": "read_pdf",
-        "description": "Extract text page-by-page from a PDF document with page numbers for accurate citations.",
+        "name": "read_document",
+        "description": "Read PDF, CSV, Excel (.xlsx/.xls), Word (.docx), PowerPoint (.pptx), image (OCR), or plain-text documents cleanly.",
         "parameters": {
-            "file_path": "Path to the PDF file",
-            "start_page": "Optional 1-indexed start page (default 1)",
-            "end_page": "Optional 1-indexed end page (max 15 pages per call)"
+            "file_path": "Path to the document file",
+            "start_page": "Optional 1-indexed start page for PDFs (default 1)",
+            "end_page": "Optional 1-indexed end page for PDFs"
+        }
+    },
+    {
+        "name": "find_files",
+        "description": "Recursively locate files matching a glob pattern (e.g. '*.pdf', '*growth*') across permitted folders.",
+        "parameters": {
+            "dir_path": "Directory path to search",
+            "name_pattern": "Filename glob pattern (e.g. '*.pdf')"
+        }
+    },
+    {
+        "name": "read_emails",
+        "description": "Read recent or unread inbox emails via IMAP4_SSL.",
+        "parameters": {
+            "unread_only": "True for unread messages (default True)",
+            "query": "Optional search filter",
+            "limit": "Max messages to inspect (default 10)"
+        }
+    },
+    {
+        "name": "send_email",
+        "description": "Send an email with optional attachments via SMTP. Returns dry-run preview when confirm=False.",
+        "parameters": {
+            "to": "Recipient email(s)",
+            "subject": "Email subject",
+            "body": "Plain-text body",
+            "attachments": "Optional list of file paths",
+            "confirm": "Set False first for preview; True after approval"
         }
     }
 ]
